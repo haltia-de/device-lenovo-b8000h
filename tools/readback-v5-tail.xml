@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flashtool-config version="2.0">
+  <general>
+    <chip-name>MT6589</chip-name>
+    <storage-type>EMMC</storage-type>
+    <download-agent>C:\Users\Public\MTK_B8000H\spft-v5\MTK_AllInOne_DA.bin</download-agent>
+    <scatter>C:\Users\Public\MTK_B8000H\firmware\MT6589_Android_scatter_emmc.txt</scatter>
+    <rom-list>
+      <rom index="0" enable="false">C:\Users\Public\MTK_B8000H\firmware\preloader_blade10_row_3gdata.bin</rom>
+    </rom-list>
+    <connection type="BromUSB" high-speed="false" without-battery="false"/>
+  </general>
+  <commands>
+    <readback>
+      <physical-readback is-physical-readback="false"/>
+      <readback-list>
+        <readback-rom-item readback-index="0" readback-enable="true" readback-flag="NUTL_READ_PAGE_ONLY" start-address="0x0000000002780000" readback-length="0x01A00000" addr-flag="NUTL_ADDR_LOGICAL" part-id="EMMC_USER">C:\Users\Public\MTK_B8000H\backups\tail-recovery-through-expdb.bin</readback-rom-item>
+      </readback-list>
+    </readback>
+  </commands>
+</flashtool-config>

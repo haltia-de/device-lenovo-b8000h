@@ -1,0 +1,58 @@
+#!/bin/busybox sh
+
+BB=/bin/busybox
+
+$BB mkdir -p /dev /proc /sys /run /tmp
+$BB mount -t devtmpfs devtmpfs /dev
+exec >/dev/console 2>&1
+
+$BB mount -t proc proc /proc
+$BB mount -t sysfs sysfs /sys
+$BB mkdir -p /dev/pts /sys/kernel/config /sys/kernel/debug /sys/fs/pstore
+$BB mount -t devpts devpts /dev/pts
+$BB mount -t configfs configfs /sys/kernel/config
+$BB mount -t debugfs debugfs /sys/kernel/debug
+$BB mount -t pstore pstore /sys/fs/pstore
+
+echo
+echo "B8000-H safe Linux bring-up initramfs"
+echo "No internal Android partition is mounted by this initramfs."
+echo "Kernel: $($BB uname -a)"
+echo "Command line: $($BB cat /proc/cmdline)"
+echo "Pstore:"
+$BB ls -la /sys/fs/pstore
+
+G=/sys/kernel/config/usb_gadget/b8000h
+if [ -d /sys/kernel/config/usb_gadget ]; then
+	$BB mkdir -p "$G/strings/0x409" "$G/configs/c.1/strings/0x409"
+	echo 0x1d6b > "$G/idVendor"
+	echo 0x0104 > "$G/idProduct"
+	echo B8000H-LINUX > "$G/strings/0x409/serialnumber"
+	echo "B8000-H" > "$G/strings/0x409/manufacturer"
+	echo "Safe Linux serial console" > "$G/strings/0x409/product"
+	echo "ACM console" > "$G/configs/c.1/strings/0x409/configuration"
+	$BB mkdir -p "$G/functions/acm.usb0"
+	$BB ln -s "$G/functions/acm.usb0" "$G/configs/c.1/acm.usb0"
+	UDC=$($BB ls /sys/class/udc | $BB head -n 1)
+	if [ -n "$UDC" ]; then
+		echo "$UDC" > "$G/UDC"
+		echo "USB ACM gadget bound to $UDC"
+	else
+		echo "No USB device controller appeared"
+	fi
+else
+	echo "USB gadget configfs is unavailable"
+fi
+
+(
+	while [ ! -e /dev/ttyGS0 ]; do
+		$BB sleep 1
+	done
+	echo "B8000-H Linux serial shell ready" > /dev/ttyGS0
+	$BB setsid $BB sh -c 'exec /bin/busybox sh </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+) &
+
+echo "Init is alive. Waiting for USB serial access."
+while true; do
+	$BB sleep 3600
+done

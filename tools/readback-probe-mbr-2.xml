@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flashtool-config version="1.0">
+  <readback>
+    <general-setting>
+      <logs-enable>true</logs-enable>
+      <flash-operation>EMMC</flash-operation>
+      <com-port>USB</com-port>
+      <check-bbchip-hardware-version>true</check-bbchip-hardware-version>
+      <download-agent-file-path>C:\Users\Public\MTK_B8000H\spft\MTK_AllInOne_DA.bin</download-agent-file-path>
+      <security-certification-file-path></security-certification-file-path>
+      <authentication-file-path></authentication-file-path>
+    </general-setting>
+    <readback-setting>
+      <is-physical-readback>false</is-physical-readback>
+      <readback-list>
+        <readback-rom-item>
+          <readback-index>0</readback-index>
+          <readback-enable>true</readback-enable>
+          <readback-flag>PageOnly</readback-flag>
+          <start-address>0x00600000</start-address>
+          <readback-length>0x00080000</readback-length>
+          <download-file-path>C:\Users\Public\MTK_B8000H\backups\probe-mbr-2.bin</download-file-path>
+        </readback-rom-item>
+      </readback-list>
+    </readback-setting>
+  </readback>
+</flashtool-config>

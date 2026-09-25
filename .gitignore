@@ -1,0 +1,6 @@
+artifacts/
+backups/
+build/
+external/
+
+__pycache__/
