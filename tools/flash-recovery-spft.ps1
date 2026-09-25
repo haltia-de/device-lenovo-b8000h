@@ -29,6 +29,13 @@ while ((Get-Date) -lt $deadline) {
         -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -Wait
     $text = Get-Content -LiteralPath $log -Raw
     if ($text -match 'Scaning USB port failed') { continue }
+    # Failures before the DA is connected cannot have written anything (e.g. SPFT
+    # grabbed the short BROM port instead of the preloader) - just retry.
+    $qt = Get-ChildItem C:\ProgramData\SP_FT_Logs -Directory | Sort-Object LastWriteTime | Select-Object -Last 1
+    if ($p.ExitCode -ne 0 -and -not (Select-String -Path "$($qt.FullName)\QT_FLASH_TOOL.log" -SimpleMatch 'DA Connected' -Quiet)) {
+        Write-Output "retry: failed before DA connect ($($qt.Name))"
+        continue
+    }
     Write-Output $text
     Write-Output "SPFT_DONE exit=$($p.ExitCode)"
     exit $p.ExitCode

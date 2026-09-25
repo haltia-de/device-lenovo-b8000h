@@ -1,14 +1,15 @@
 diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-blade_defconfig
-index 2db10bcc9..40668aa52 100644
+index 2db10bcc9..7ade6b505 100644
 --- a/arch/arm/configs/lenovo-blade_defconfig
 +++ b/arch/arm/configs/lenovo-blade_defconfig
-@@ -15,6 +15,9 @@ CONFIG_MODULES=y
+@@ -15,6 +15,10 @@ CONFIG_MODULES=y
  
  ### Drivers
  CONFIG_OF=y
 +CONFIG_ARM_APPENDED_DTB=y
 +CONFIG_ARM_ATAG_DTB_COMPAT=y
 +CONFIG_ARM_ATAG_DTB_COMPAT_CMDLINE_EXTEND=y
++CONFIG_MUSB_PIO_ONLY=y
  # Automatically enabled
  CONFIG_MTK_INFRACFG=y
  

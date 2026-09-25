@@ -49,10 +49,24 @@ fi
 		$BB sleep 1
 	done
 	echo "B8000-H Linux serial shell ready" > /dev/ttyGS0
-	$BB setsid $BB sh -c 'exec /bin/busybox sh </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+	# -v echoes every received input line to stderr = the screen, so the
+	# screen proves USB OUT (host->tablet) works; command output goes to USB IN.
+	$BB setsid $BB sh -c 'exec /bin/busybox sh -v </dev/ttyGS0 >/dev/ttyGS0 2>/dev/console'
+) &
+
+# USB IN (tablet->host) heartbeat.
+(
+	i=0
+	while true; do
+		i=$((i + 1))
+		[ -e /dev/ttyGS0 ] && echo "TX heartbeat $i" > /dev/ttyGS0
+		$BB sleep 2
+	done
 ) &
 
 echo "Init is alive. Waiting for USB serial access."
 while true; do
-	$BB sleep 3600
+	$BB sleep 10
+	echo "--- diag $($BB cut -d' ' -f1 /proc/uptime)s udc=$($BB cat /sys/class/udc/*/state 2>/dev/null)"
+	$BB grep -i -E 'musb|usb' /proc/interrupts
 done
