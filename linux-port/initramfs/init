@@ -48,39 +48,43 @@ fi
 	while [ ! -e /dev/ttyGS0 ]; do
 		$BB sleep 1
 	done
+	# Raw tty, no echo; a pipe makes ash non-interactive, so it never sends
+	# terminal queries (ESC[6n) and just executes each received line.
+	# Every line is also shown on the screen.
+	$BB stty -F /dev/ttyGS0 raw -echo
 	echo "B8000-H Linux serial shell ready" > /dev/ttyGS0
-	# -v echoes every received input line to stderr = the screen, so the
-	# screen proves USB OUT (host->tablet) works; command output goes to USB IN.
-	$BB setsid $BB sh -c 'exec /bin/busybox sh -v </dev/ttyGS0 >/dev/ttyGS0 2>/dev/console'
+	while true; do
+		$BB cat /dev/ttyGS0 | $BB tee /dev/console | $BB sh >/dev/ttyGS0 2>&1
+		echo "shell exited, restarting" > /dev/console
+		$BB sleep 1
+	done
 ) &
 
-# USB IN (tablet->host) works, USB OUT (host->tablet) wedges musb in PIO mode.
-# So push diagnostics to the host without ever needing input.
+# One full diagnostic report once the host had time to open the port.
 (
-	i=0
-	while true; do
-		i=$((i + 1))
-		if [ -e /dev/ttyGS0 ]; then
-			{
-				echo "=== REPORT $i uptime $($BB cut -d' ' -f1 /proc/uptime) ==="
-				echo "=== PSTORE ==="
-				for f in /sys/fs/pstore/*; do
-					[ -f "$f" ] && echo "--- $f" && $BB cat "$f"
-				done
-				echo "=== INTERRUPTS ==="
-				$BB cat /proc/interrupts
-				echo "=== DMESG ==="
-				$BB dmesg
-				echo "=== END REPORT $i ==="
-			} > /dev/ttyGS0
-		fi
-		$BB sleep 20
+	while [ ! -e /dev/ttyGS0 ]; do
+		$BB sleep 1
 	done
+	$BB sleep 15
+	{
+		echo "=== REPORT uptime $($BB cut -d' ' -f1 /proc/uptime) ==="
+		echo "=== TTY ==="
+		$BB stty -a -F /dev/ttyGS0
+		echo "=== PROCS ==="
+		for p in /proc/[0-9]*; do
+			echo "${p#/proc/} $($BB cat $p/wchan 2>/dev/null) $($BB tr '\0' ' ' < $p/cmdline 2>/dev/null)"
+		done
+		echo "=== INTERRUPTS ==="
+		$BB cat /proc/interrupts
+		echo "=== DMESG ==="
+		$BB dmesg
+		echo "=== END REPORT ==="
+	} > /dev/ttyGS0
 ) &
 
 echo "Init is alive. Waiting for USB serial access."
 while true; do
 	$BB sleep 10
-	echo "--- diag $($BB cut -d' ' -f1 /proc/uptime)s udc=$($BB cat /sys/class/udc/*/state 2>/dev/null)"
-	$BB grep -i -E 'musb|usb' /proc/interrupts
+	echo "--- diag $($BB cut -d' ' -f1 /proc/uptime)s udc=$($BB cat /sys/class/udc/*/state 2>/dev/null) $($BB grep musb /proc/interrupts | $BB tr -s ' ')"
+	$BB dmesg | $BB grep -E 'B8000H-DBG[23]' | $BB tail -n 14
 done
