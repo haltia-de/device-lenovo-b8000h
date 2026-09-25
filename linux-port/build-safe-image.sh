@@ -31,25 +31,34 @@ chmod 755 /opt/b8000h/initramfs/init
 
 cat arch/arm/boot/zImage "$DTB" > "$OUT/kernel-safe-zimage-dtb.bin"
 python3 "$REPO/tools/mkmtkimage.py" "$OUT/kernel-safe-zimage-dtb.bin" "$OUT/kernel-safe-mtk.bin" KERNEL
-python3 "$REPO/tools/mkmtkimage.py" /opt/b8000h/b8000h-safe-initramfs.cpio.gz "$OUT/ramdisk-mtk.bin" ROOTFS
 
-IMG="$OUT/b8000h-linux-firstboot-safe.img"
-mkbootimg --kernel "$OUT/kernel-safe-mtk.bin" --ramdisk "$OUT/ramdisk-mtk.bin" \
-	--base 0x10000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 \
-	--second_offset 0x00f00000 --tags_offset 0x00000100 --pagesize 2048 \
-	--board 39 --header_version 0 --output "$IMG"
-# Modern mkbootimg zeroes second_addr when there is no second stage; stock keeps it.
-python3 "$REPO/tools/fix-legacy-boot-header.py" "$IMG" --second-addr 0x10f00000
+# Two variants: the stock BOOT image labels its ramdisk ROOTFS, the stock
+# RECOVERY image labels it RECOVERY (LK checks the label per partition).
+for variant in firstboot:ROOTFS recovery:RECOVERY; do
+	name=${variant%%:*}
+	label=${variant##*:}
+	RD="$OUT/ramdisk-$name-mtk.bin"
+	python3 "$REPO/tools/mkmtkimage.py" /opt/b8000h/b8000h-safe-initramfs.cpio.gz "$RD" "$label"
 
-# Round-trip check: unpacked payloads must equal the inputs.
-rm -rf /opt/b8000h/unpacked-safe && mkdir /opt/b8000h/unpacked-safe
-unpack_bootimg --boot_img "$IMG" --out /opt/b8000h/unpacked-safe >/dev/null
-cmp "$OUT/kernel-safe-mtk.bin" /opt/b8000h/unpacked-safe/kernel
-cmp "$OUT/ramdisk-mtk.bin" /opt/b8000h/unpacked-safe/ramdisk
+	IMG="$OUT/b8000h-linux-$name-safe.img"
+	mkbootimg --kernel "$OUT/kernel-safe-mtk.bin" --ramdisk "$RD" \
+		--base 0x10000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 \
+		--second_offset 0x00f00000 --tags_offset 0x00000100 --pagesize 2048 \
+		--board 39 --header_version 0 --output "$IMG"
+	# Modern mkbootimg zeroes second_addr when there is no second stage; stock keeps it.
+	python3 "$REPO/tools/fix-legacy-boot-header.py" "$IMG" --second-addr 0x10f00000
+
+	# Round-trip check: unpacked payloads must equal the inputs.
+	rm -rf /opt/b8000h/unpacked-safe && mkdir /opt/b8000h/unpacked-safe
+	unpack_bootimg --boot_img "$IMG" --out /opt/b8000h/unpacked-safe >/dev/null
+	cmp "$OUT/kernel-safe-mtk.bin" /opt/b8000h/unpacked-safe/kernel
+	cmp "$RD" /opt/b8000h/unpacked-safe/ramdisk
+	cp "$IMG" "$DST/"
+	sha256sum "$IMG"
+done
 
 cp .config "$DST/.config"
 cp arch/arm/boot/zImage "$DTB" "$DST/"
 cp /opt/b8000h/b8000h-safe-initramfs.cpio.gz "$DST/"
-cp "$IMG" "$DST/"
 git rev-parse HEAD > "$DST/kernel-commit.txt"
-sha256sum "$IMG" "$DTB"
+sha256sum "$DTB"
