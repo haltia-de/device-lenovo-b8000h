@@ -54,13 +54,27 @@ fi
 	$BB setsid $BB sh -c 'exec /bin/busybox sh -v </dev/ttyGS0 >/dev/ttyGS0 2>/dev/console'
 ) &
 
-# USB IN (tablet->host) heartbeat.
+# USB IN (tablet->host) works, USB OUT (host->tablet) wedges musb in PIO mode.
+# So push diagnostics to the host without ever needing input.
 (
 	i=0
 	while true; do
 		i=$((i + 1))
-		[ -e /dev/ttyGS0 ] && echo "TX heartbeat $i" > /dev/ttyGS0
-		$BB sleep 2
+		if [ -e /dev/ttyGS0 ]; then
+			{
+				echo "=== REPORT $i uptime $($BB cut -d' ' -f1 /proc/uptime) ==="
+				echo "=== PSTORE ==="
+				for f in /sys/fs/pstore/*; do
+					[ -f "$f" ] && echo "--- $f" && $BB cat "$f"
+				done
+				echo "=== INTERRUPTS ==="
+				$BB cat /proc/interrupts
+				echo "=== DMESG ==="
+				$BB dmesg
+				echo "=== END REPORT $i ==="
+			} > /dev/ttyGS0
+		fi
+		$BB sleep 20
 	done
 ) &
 
