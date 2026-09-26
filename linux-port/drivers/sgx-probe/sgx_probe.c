@@ -18,6 +18,17 @@
 #define EUR_CR_DESIGNER_REV_FIELD1 0x0028
 #define EUR_CR_DESIGNER_REV_FIELD2 0x002c
 
+/*
+ * Reading the SGX register aperture stalled the MT6589 AXI bus during the
+ * first G1 experiments.  Keep the default probe limited to validating the
+ * power domain, clocks, reset and bus-protection state.  The destructive
+ * register read must be requested explicitly after those values look sane.
+ */
+static bool read_core;
+module_param(read_core, bool, 0400);
+MODULE_PARM_DESC(read_core,
+		 "Read SGX core registers after bring-up (may hang the SoC)");
+
 static int sgx_probe_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -46,29 +57,11 @@ static int sgx_probe_probe(struct platform_device *pdev)
 	 * vendor runs the GPU at 1.05 V (GPU_POWER_VRF18_1_05V). MTCMOS acks
 	 * without it, i.e. this board feeds MFG from VCORE.
 	 */
-	/*
-	 * Test: feed mfg_sel from univpll1_d4 (known running) instead of
-	 * mmpll_d5, to rule out a dead MMPLL.
-	 */
+	/* Keep the bootloader/vendor mfg_sel parent (MMPLL_D5, 286 MHz). */
 	{
-		struct device_node *tn = of_find_compatible_node(NULL, NULL,
-								 "mediatek,mt6589-topckgen");
-		struct of_phandle_args a = { .np = tn, .args_count = 1 };
-		struct clk *mux, *par;
-
-		a.args[0] = 36;		/* CLK_TOP_MUX_MFG */
-		mux = of_clk_get_from_provider(&a);
-		a.args[0] = 19;		/* CLK_TOP_UNIVPLL1_D4 */
-		par = of_clk_get_from_provider(&a);
-		if (!IS_ERR(mux) && !IS_ERR(par)) {
-			ret = clk_set_parent(mux, par);
-			dev_info(dev, "step1c mfg_sel -> univpll1_d4: %d, %lu Hz\n",
-				 ret, clk_get_rate(mux));
-		} else {
-			dev_info(dev, "step1c clk lookup failed %ld/%ld\n",
-				 PTR_ERR(mux), PTR_ERR(par));
-		}
-		of_node_put(tn);
+		struct device_node *tn;
+		struct of_phandle_args a = { .args_count = 1 };
+		struct clk *par;
 
 		/* CPU path to the MFG AXI (infracfg CG) and the 4th MFG gate HYD. */
 		tn = of_find_compatible_node(NULL, NULL, "mediatek,mt6589-infracfg");
@@ -183,13 +176,22 @@ static int sgx_probe_probe(struct platform_device *pdev)
 		iounmap(infra);
 		iounmap(mfg);
 	}
-	dev_info(dev, "step4 clocks on, reading SGX registers\n");
-	mdelay(200);
-	dev_info(dev, "SGX core_id=%08x core_rev=%08x designer=%08x/%08x (%d clocks)\n",
-		 readl(base + EUR_CR_CORE_ID), readl(base + EUR_CR_CORE_REVISION),
-		 readl(base + EUR_CR_DESIGNER_REV_FIELD1),
-		 readl(base + EUR_CR_DESIGNER_REV_FIELD2), nclks);
+	if (read_core) {
+		dev_warn(dev, "step4 reading SGX registers (AXI-stall risk)\n");
+		mdelay(200);
+		dev_info(dev,
+			 "SGX core_id=%08x core_rev=%08x designer=%08x/%08x (%d clocks)\n",
+			 readl(base + EUR_CR_CORE_ID),
+			 readl(base + EUR_CR_CORE_REVISION),
+			 readl(base + EUR_CR_DESIGNER_REV_FIELD1),
+			 readl(base + EUR_CR_DESIGNER_REV_FIELD2), nclks);
+	} else {
+		dev_info(dev,
+			 "step4 safe bring-up complete; SGX register read skipped\n");
+	}
 
+	if (hyd)
+		clk_disable_unprepare(hyd);
 	clk_bulk_disable_unprepare(nclks, clks);
 	pm_runtime_put(dev);
 	return 0;
