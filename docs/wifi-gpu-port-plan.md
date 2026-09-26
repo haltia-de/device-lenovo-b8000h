@@ -134,3 +134,23 @@ D4. Подсветка: BLS PWM (ddp_bls) → pwm-backlight.
 Панель: **1280×800**, 4 lane, RGB888, video sync-event. MIPI-TX (0x10012000):
 `00000003 00000821 00000401 00000101 / 00000101 00000101 ... / +0x40: 00000082 88492483 / +0x50: ac415423 00000501`
 (PLL/скорость линий — расшифровать по вендорскому `dsi_drv.c` DSI_PHY/MIPITX).
+
+### D2: сверка MT6589 ↔ mainline MT2701 (2026-09-26)
+
+| Блок | MT6589 (вендор + живой дамп) | mainline | Вывод |
+|---|---|---|---|
+| OVL `0x14003000` | смещения 0x00–0x44/слой +0x20, ADDR слоя +0x40, 4 слоя; `OVL_CON`: CLRFMT[15:12], BYTE_SWAP 24, RGB_SWAP 25, ALPHA_EN 8 | `mt2701_ovl_driver_data` (addr 0x40, 4 слоя, rgb565≠0) | **совместим**, кроме YUV (у вендора UYVY=9, в mainline 4) → свой список форматов без YUV |
+| RDMA0 `0x14006000` | 0x00–0x40 как в mainline, direct link | `mt2701_rdma_driver_data` | **совместим** |
+| DSI `0x1400d000` | `dsi_reg.h` = смещения `mtk_dsi.c` | mt2701 DSI | **совместим** |
+| MIPI-TX `0x10012000` | CON/CLK/DATA/TOP/BG/PLL_CON0/1 = 0x00/04/08/40/44/50/54 | `mediatek,mt2701-mipi-tx` | **совместим** |
+| MUTEX `0x14011000` | EN 0x20, MOD 0x2C, SOF 0x30 (как mt2701); **биты модулей свои**: ROT0 SCL1 OVL2 COLOR3 TDSHP4 WDMA0 5 WDMA1 6 RDMA0 7 RDMA1 8 BLS9 GAMMA10; SOF DSI=1 | `mt2701_mutex_mod` (другие биты) | **новая таблица `mt6589_mutex_mod`** |
+| MMSYS `0x14000000` | `*_MOUT_EN` 0x20–0x2C, `*_OUT_SEL`/`*_SEL` 0x34–0x5C, CG 0x100.. | нет | **новая таблица маршрутов** |
+
+Маршрут LK (живьём): `OVL_MOUT_EN(0x24)=0x2`, все SEL=0, MUTEX0 `MOD=0x284` (OVL|RDMA0|BLS),
+`SOF=1` → путь **OVL → RDMA0 → BLS → DSI** (COLOR не используется).
+
+D3 (реализация): mtk-mmsys `mt6589` (маршрут OVL→RDMA0: MOUT_EN 0x24 bit1; RDMA0→BLS и
+BLS→DSI — SEL=0), mtk-mutex `mt6589` (биты выше, SOF DSI0=1), mediatek-drm driver data
+`main = {OVL0, RDMA0, BLS, DSI0}`, DTS-узлы с клоками `clk-mt6589-disp` (уже есть в дереве),
+панель 1280×800 без init (её включает LK), BLS/PWM → pwm-backlight. Делать в отдельном
+git worktree ядра, чтобы не конфликтовать с работой над Wi-Fi (тот же DTS).
