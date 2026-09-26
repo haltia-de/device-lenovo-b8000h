@@ -1,0 +1,249 @@
+diff --git a/drivers/gpu/drm/mediatek/mtk_drm_drv.c b/drivers/gpu/drm/mediatek/mtk_drm_drv.c
+index c86a3f54f..eed3e50fa 100644
+--- a/drivers/gpu/drm/mediatek/mtk_drm_drv.c
++++ b/drivers/gpu/drm/mediatek/mtk_drm_drv.c
+@@ -59,6 +59,14 @@ static const struct drm_mode_config_funcs mtk_drm_mode_config_funcs = {
+ 	.atomic_commit = drm_atomic_helper_commit,
+ };
+ 
++/* MT6589: RDMA0 is the line buffer after BLS, right before DSI. */
++static const unsigned int mt6589_mtk_ddp_main[] = {
++	DDP_COMPONENT_OVL0,
++	DDP_COMPONENT_BLS,
++	DDP_COMPONENT_RDMA0,
++	DDP_COMPONENT_DSI0,
++};
++
+ static const unsigned int mt2701_mtk_ddp_main[] = {
+ 	DDP_COMPONENT_OVL0,
+ 	DDP_COMPONENT_RDMA0,
+@@ -231,6 +239,11 @@ static const unsigned int mt8195_mtk_ddp_ext[] = {
+ 	DDP_COMPONENT_DP_INTF1,
+ };
+ 
++static const struct mtk_mmsys_driver_data mt6589_mmsys_driver_data = {
++	.main_path = mt6589_mtk_ddp_main,
++	.main_len = ARRAY_SIZE(mt6589_mtk_ddp_main),
++};
++
+ static const struct mtk_mmsys_driver_data mt2701_mmsys_driver_data = {
+ 	.main_path = mt2701_mtk_ddp_main,
+ 	.main_len = ARRAY_SIZE(mt2701_mtk_ddp_main),
+@@ -332,6 +345,8 @@ static const struct mtk_mmsys_driver_data mt8365_mmsys_driver_data = {
+ };
+ 
+ static const struct of_device_id mtk_drm_of_ids[] = {
++	{ .compatible = "mediatek,mt6589-mmsys",
++	  .data = &mt6589_mmsys_driver_data},
+ 	{ .compatible = "mediatek,mt2701-mmsys",
+ 	  .data = &mt2701_mmsys_driver_data},
+ 	{ .compatible = "mediatek,mt7623-mmsys",
+@@ -738,6 +753,8 @@ static const struct of_device_id mtk_ddp_comp_dt_ids[] = {
+ 	  .data = (void *)MTK_DISP_GAMMA, },
+ 	{ .compatible = "mediatek,mt8195-disp-merge",
+ 	  .data = (void *)MTK_DISP_MERGE },
++	{ .compatible = "mediatek,mt6589-disp-mutex",
++	  .data = (void *)MTK_DISP_MUTEX },
+ 	{ .compatible = "mediatek,mt2701-disp-mutex",
+ 	  .data = (void *)MTK_DISP_MUTEX },
+ 	{ .compatible = "mediatek,mt2712-disp-mutex",
+@@ -778,6 +795,8 @@ static const struct of_device_id mtk_ddp_comp_dt_ids[] = {
+ 	  .data = (void *)MTK_DISP_OVL_2L },
+ 	{ .compatible = "mediatek,mt8192-disp-postmask",
+ 	  .data = (void *)MTK_DISP_POSTMASK },
++	{ .compatible = "mediatek,mt6589-disp-bls",
++	  .data = (void *)MTK_DISP_BLS },
+ 	{ .compatible = "mediatek,mt2701-disp-pwm",
+ 	  .data = (void *)MTK_DISP_BLS },
+ 	{ .compatible = "mediatek,mt8167-disp-pwm",
+diff --git a/drivers/gpu/drm/panel/panel-simple.c b/drivers/gpu/drm/panel/panel-simple.c
+index 236bd5620..df92d9712 100644
+--- a/drivers/gpu/drm/panel/panel-simple.c
++++ b/drivers/gpu/drm/panel/panel-simple.c
+@@ -5762,6 +5762,39 @@ static struct platform_driver panel_simple_platform_driver = {
+ 	.shutdown = panel_simple_platform_shutdown,
+ };
+ 
++/*
++ * Lenovo YOGA Tablet 10 (B8000) 1280x800 DSI video panel "cm_hx8896a01".
++ * Initialised by the bootloader; timings read back from the LK-programmed
++ * MT6589 DSI registers (4 lanes, RGB888, sync-event, 60.09 Hz).
++ */
++static const struct drm_display_mode lenovo_b8000_mode = {
++	.clock = 76130,
++	.hdisplay = 1280,
++	.hsync_start = 1280 + 186,
++	.hsync_end = 1280 + 186 + 10,
++	.htotal = 1280 + 186 + 10 + 45,
++	.vdisplay = 800,
++	.vsync_start = 800 + 21,
++	.vsync_end = 800 + 21 + 2,
++	.vtotal = 800 + 21 + 2 + 10,
++};
++
++static const struct panel_desc_dsi lenovo_b8000_panel = {
++	.desc = {
++		.modes = &lenovo_b8000_mode,
++		.num_modes = 1,
++		.bpc = 8,
++		.size = {
++			.width = 217,
++			.height = 136,
++		},
++		.connector_type = DRM_MODE_CONNECTOR_DSI,
++	},
++	.flags = MIPI_DSI_MODE_VIDEO,
++	.format = MIPI_DSI_FMT_RGB888,
++	.lanes = 4,
++};
++
+ static const struct drm_display_mode auo_b080uan01_mode = {
+ 	.clock = 154500,
+ 	.hdisplay = 1200,
+@@ -5938,6 +5971,9 @@ static const struct panel_desc_dsi osd101t2045_53ts = {
+ 
+ static const struct of_device_id dsi_of_match[] = {
+ 	{
++		.compatible = "lenovo,b8000-panel",
++		.data = &lenovo_b8000_panel,
++	}, {
+ 		.compatible = "auo,b080uan01",
+ 		.data = &auo_b080uan01
+ 	}, {
+diff --git a/drivers/soc/mediatek/mtk-mmsys.c b/drivers/soc/mediatek/mtk-mmsys.c
+index bb4639ca0..5d29e96c6 100644
+--- a/drivers/soc/mediatek/mtk-mmsys.c
++++ b/drivers/soc/mediatek/mtk-mmsys.c
+@@ -14,6 +14,7 @@
+ #include <linux/soc/mediatek/mtk-mmsys.h>
+ 
+ #include "mtk-mmsys.h"
++#include "mt6589-mmsys.h"
+ #include "mt8167-mmsys.h"
+ #include "mt8173-mmsys.h"
+ #include "mt8183-mmsys.h"
+@@ -25,6 +26,12 @@
+ 
+ #define MMSYS_SW_RESET_PER_REG 32
+ 
++static const struct mtk_mmsys_driver_data mt6589_mmsys_driver_data = {
++	.clk_driver = "clk-mt6589-disp",
++	.routes = mt6589_mmsys_routing_table,
++	.num_routes = ARRAY_SIZE(mt6589_mmsys_routing_table),
++};
++
+ static const struct mtk_mmsys_driver_data mt2701_mmsys_driver_data = {
+ 	.clk_driver = "clk-mt2701-mm",
+ 	.routes = mmsys_default_routing_table,
+@@ -456,6 +463,7 @@ static void mtk_mmsys_remove(struct platform_device *pdev)
+ }
+ 
+ static const struct of_device_id of_match_mtk_mmsys[] = {
++	{ .compatible = "mediatek,mt6589-mmsys", .data = &mt6589_mmsys_driver_data },
+ 	{ .compatible = "mediatek,mt2701-mmsys", .data = &mt2701_mmsys_driver_data },
+ 	{ .compatible = "mediatek,mt2712-mmsys", .data = &mt2712_mmsys_driver_data },
+ 	{ .compatible = "mediatek,mt6779-mmsys", .data = &mt6779_mmsys_driver_data },
+diff --git a/drivers/soc/mediatek/mtk-mutex.c b/drivers/soc/mediatek/mtk-mutex.c
+index 38179e8cd..b1f2b2f01 100644
+--- a/drivers/soc/mediatek/mtk-mutex.c
++++ b/drivers/soc/mediatek/mtk-mutex.c
+@@ -288,6 +288,14 @@
+ #define MT2712_MUTEX_MOD2_DISP_AAL1		33
+ #define MT2712_MUTEX_MOD2_DISP_OD1		34
+ 
++/* MT6589 (vendor ddp_path.c): mutex MOD bit per engine */
++#define MT6589_MUTEX_MOD_DISP_OVL		2
++#define MT6589_MUTEX_MOD_DISP_COLOR		3
++#define MT6589_MUTEX_MOD_DISP_WDMA0		5
++#define MT6589_MUTEX_MOD_DISP_RDMA0		7
++#define MT6589_MUTEX_MOD_DISP_RDMA1		8
++#define MT6589_MUTEX_MOD_DISP_BLS		9
++
+ #define MT2701_MUTEX_MOD_DISP_OVL		3
+ #define MT2701_MUTEX_MOD_DISP_WDMA		6
+ #define MT2701_MUTEX_MOD_DISP_COLOR		7
+@@ -368,6 +376,15 @@ struct mtk_mutex_ctx {
+ 	struct cmdq_client_reg		cmdq_reg;
+ };
+ 
++static const u8 mt6589_mutex_mod[DDP_COMPONENT_ID_MAX] = {
++	[DDP_COMPONENT_BLS] = MT6589_MUTEX_MOD_DISP_BLS,
++	[DDP_COMPONENT_COLOR0] = MT6589_MUTEX_MOD_DISP_COLOR,
++	[DDP_COMPONENT_OVL0] = MT6589_MUTEX_MOD_DISP_OVL,
++	[DDP_COMPONENT_RDMA0] = MT6589_MUTEX_MOD_DISP_RDMA0,
++	[DDP_COMPONENT_RDMA1] = MT6589_MUTEX_MOD_DISP_RDMA1,
++	[DDP_COMPONENT_WDMA0] = MT6589_MUTEX_MOD_DISP_WDMA0,
++};
++
+ static const u8 mt2701_mutex_mod[DDP_COMPONENT_ID_MAX] = {
+ 	[DDP_COMPONENT_BLS] = MT2701_MUTEX_MOD_DISP_BLS,
+ 	[DDP_COMPONENT_COLOR0] = MT2701_MUTEX_MOD_DISP_COLOR,
+@@ -730,6 +747,16 @@ static const u16 mt8195_mutex_sof[DDP_MUTEX_SOF_MAX] = {
+ 		MT8195_MUTEX_SOF_DP_INTF1 | MT8195_MUTEX_EOF_DP_INTF1,
+ };
+ 
++/* Same MOD/SOF layout as MT2701; no dedicated mutex clock gate. */
++static const struct mtk_mutex_data mt6589_mutex_driver_data = {
++	.mutex_mod = mt6589_mutex_mod,
++	.mutex_sof = mt2712_mutex_sof,
++	.mutex_mod_reg = MT2701_MUTEX0_MOD0,
++	.mutex_mod1_reg = MT2701_MUTEX0_MOD1,
++	.mutex_sof_reg = MT2701_MUTEX0_SOF0,
++	.no_clk = true,
++};
++
+ static const struct mtk_mutex_data mt2701_mutex_driver_data = {
+ 	.mutex_mod = mt2701_mutex_mod,
+ 	.mutex_sof = mt2712_mutex_sof,
+@@ -1130,6 +1157,7 @@ static int mtk_mutex_probe(struct platform_device *pdev)
+ }
+ 
+ static const struct of_device_id mutex_driver_dt_match[] = {
++	{ .compatible = "mediatek,mt6589-disp-mutex", .data = &mt6589_mutex_driver_data },
+ 	{ .compatible = "mediatek,mt2701-disp-mutex", .data = &mt2701_mutex_driver_data },
+ 	{ .compatible = "mediatek,mt2712-disp-mutex", .data = &mt2712_mutex_driver_data },
+ 	{ .compatible = "mediatek,mt6795-disp-mutex", .data = &mt6795_mutex_driver_data },
+diff --git a/drivers/soc/mediatek/mt6589-mmsys.h b/drivers/soc/mediatek/mt6589-mmsys.h
+new file mode 100644
+index 000000000..4cc173d0e
+--- /dev/null
++++ b/drivers/soc/mediatek/mt6589-mmsys.h
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#ifndef __SOC_MEDIATEK_MT6589_MMSYS_H
++#define __SOC_MEDIATEK_MT6589_MMSYS_H
++
++/*
++ * MT6589 DISPSYS config (vendor ddp_reg.h / ddp_path.c). The panel path set
++ * up by the bootloader is OVL -> BLS -> RDMA0 -> DSI: RDMA0 sits between BLS
++ * and DSI as a line buffer; BLS_SEL = 0 takes OVL, RDMA0_OUT_SEL = 0 is DSI.
++ */
++#define MT6589_DISP_REG_CONFIG_OVL_MOUT_EN	0x024
++#define MT6589_DISP_REG_CONFIG_RDMA0_OUT_SEL	0x034
++#define MT6589_DISP_REG_CONFIG_BLS_SEL		0x054
++
++#define MT6589_OVL_MOUT_EN_MASK			GENMASK(2, 0)
++#define MT6589_OVL_MOUT_EN_BLS			BIT(1)
++#define MT6589_BLS_SEL_MASK			BIT(0)
++#define MT6589_BLS_SEL_IN_OVL			0
++#define MT6589_RDMA0_OUT_SEL_MASK		GENMASK(1, 0)
++#define MT6589_RDMA0_OUT_SEL_DSI		0
++
++static const struct mtk_mmsys_routes mt6589_mmsys_routing_table[] = {
++	{
++		DDP_COMPONENT_OVL0, DDP_COMPONENT_BLS,
++		MT6589_DISP_REG_CONFIG_OVL_MOUT_EN, MT6589_OVL_MOUT_EN_MASK,
++		MT6589_OVL_MOUT_EN_BLS
++	}, {
++		DDP_COMPONENT_OVL0, DDP_COMPONENT_BLS,
++		MT6589_DISP_REG_CONFIG_BLS_SEL, MT6589_BLS_SEL_MASK,
++		MT6589_BLS_SEL_IN_OVL
++	}, {
++		DDP_COMPONENT_RDMA0, DDP_COMPONENT_DSI0,
++		MT6589_DISP_REG_CONFIG_RDMA0_OUT_SEL, MT6589_RDMA0_OUT_SEL_MASK,
++		MT6589_RDMA0_OUT_SEL_DSI
++	}
++};
++
++#endif /* __SOC_MEDIATEK_MT6589_MMSYS_H */

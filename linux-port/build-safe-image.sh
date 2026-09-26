@@ -6,7 +6,8 @@
 set -eu
 
 REPO="/mnt/c/Users/<user>/src/lenovo-b8000h-linux"
-K=/opt/b8000h/linux
+# K overrides the kernel tree, e.g. K=/opt/b8000h/linux-drm (display worktree).
+K=${K:-/opt/b8000h/linux}
 OUT=/opt/b8000h/out
 DST="$REPO/artifacts/linux-port"
 # DTB_VARIANT=safe (no eMMC, no SD) or sd (microSD only, eMMC still off).
