@@ -1,17 +1,3 @@
-diff --git a/arch/arm/boot/dts/mediatek/Makefile b/arch/arm/boot/dts/mediatek/Makefile
-index b67b94b7c..969b246b2 100644
---- a/arch/arm/boot/dts/mediatek/Makefile
-+++ b/arch/arm/boot/dts/mediatek/Makefile
-@@ -9,6 +9,9 @@ dtb-$(CONFIG_ARCH_MEDIATEK) += \
- 	mt6589-aquaris5.dtb \
- 	mt6589-fairphone-fp1.dtb \
- 	mt6589-lenovo-b8000-f.dtb \
-+	mt6589-lenovo-b8000-h.dtb \
-+	mt6589-lenovo-b8000-h-safe.dtb \
-+	mt6589-lenovo-b8000-h-sd.dtb \
- 	mt6592-evb.dtb \
- 	mt7623a-rfb-emmc.dtb \
- 	mt7623a-rfb-nand.dtb \
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 /*
  * Bring-up profile with the microSD slot enabled. Internal eMMC (Android)
@@ -36,5 +22,5 @@ index b67b94b7c..969b246b2 100644
 	/delete-property/ sd-uhs-ddr50;
 	/delete-property/ cap-sd-highspeed;
 	broken-cd;
-	max-frequency = <12500000>;
+	max-frequency = <400000>;
 };

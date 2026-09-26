@@ -1,7 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$Image = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\linux-port\b8000h-sd.img')
+    [string]$Image
 )
+if (-not $Image) {
+    # $PSScriptRoot is empty in param defaults on Windows PowerShell 5.1.
+    $Image = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\artifacts\linux-port\b8000h-sd.img'
+}
 # Writes the B8000-H microSD image to a removable card in a USB card reader.
 # Run from an elevated PowerShell (Run as administrator). Refuses anything that
 # is not a removable/USB/SD disk between 4 and 64 GB, and asks for confirmation.
@@ -39,7 +43,8 @@ if ($answer -ne 'YES') { throw 'Cancelled.' }
 # Take the card's volumes offline so Windows does not hold them open.
 Set-Disk -Number $disk.Number -IsReadOnly $false
 Clear-Disk -Number $disk.Number -RemoveData -RemoveOEM -Confirm:$false -ErrorAction SilentlyContinue
-Set-Disk -Number $disk.Number -IsOffline $true
+# Removable media cannot be set offline; after Clear-Disk no volume holds it.
+try { Set-Disk -Number $disk.Number -IsOffline $true -ErrorAction Stop } catch { Write-Host 'Removable disk: offline not supported, continuing.' }
 
 $src = [IO.File]::OpenRead($imageItem.FullName)
 $dst = [IO.FileStream]::new("\\.\PhysicalDrive$($disk.Number)", [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite, 4MB, [IO.FileOptions]::WriteThrough)
@@ -57,5 +62,5 @@ try {
 finally {
     $dst.Dispose(); $src.Dispose()
 }
-Set-Disk -Number $disk.Number -IsOffline $false
+try { Set-Disk -Number $disk.Number -IsOffline $false -ErrorAction Stop } catch { }
 Write-Host 'Done. Remove the card and insert it into the tablet.' -ForegroundColor Green
