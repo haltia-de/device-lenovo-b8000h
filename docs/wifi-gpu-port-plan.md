@@ -117,3 +117,20 @@ D4. Подсветка: BLS PWM (ddp_bls) → pwm-backlight.
   очистки XFER_COMPL/DXFER_DONE и остановки DMA.
 - HIGH_RES_TIMERS=y собрано, но не активируется: локальные таймеры CPU = dummy_timer
   (`Could not switch to high resolution mode`). Разрешение таймеров остаётся 10 мс.
+
+### D1: регистры DSI, настроенные LK (снято 2026-09-26 14:15 живьём, mmcwp)
+
+Раскладка DSI MT6589 (`dsi_reg.h`) = смещениям mainline `mtk_dsi.c` (как MT2701/8173).
+
+| Рег | Значение | Смысл |
+|---|---|---|
+| 0x00 START | 1 | видеорежим запущен |
+| 0x14 MODE_CTRL | 2 | sync event video mode |
+| 0x18 TXRX_CTRL | 0x1003c | LANE_NUM=0xf → **4 линии** |
+| 0x1c PSCTRL | 0x30f00 | RGB888 packed, WC=3840 → **1280 px** |
+| 0x20/24/28/2c | 2 / 10 / 21 / 800 | VSA / VBP / VFP / **VACT=800** |
+| 0x50/54/58 | 0x500 / 0x9c / 0x224 | HSA_WC 1280, HBP_WC 156, HFP_WC 548 (байты, вывести px по формуле вендора `dsi_drv.c`) |
+
+Панель: **1280×800**, 4 lane, RGB888, video sync-event. MIPI-TX (0x10012000):
+`00000003 00000821 00000401 00000101 / 00000101 00000101 ... / +0x40: 00000082 88492483 / +0x50: ac415423 00000501`
+(PLL/скорость линий — расшифровать по вендорскому `dsi_drv.c` DSI_PHY/MIPITX).
