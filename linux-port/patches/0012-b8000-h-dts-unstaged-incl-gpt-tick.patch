@@ -1,9 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 new file mode 100644
-index 000000000..2e89e17ea
+index 000000000..7862d0b3d
 --- /dev/null
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,266 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Lenovo YOGA Tablet 10 B8000-H (60047 / 3G data)
@@ -232,4 +232,41 @@ index 000000000..2e89e17ea
 +/* SGX544 sits in the MFG power domain; needed by any GPU driver. */
 +&gpu {
 +	power-domains = <&spm MT6589_POWER_DOMAIN_MFG>;
++};
++
++/*
++ * MT6628 Wi-Fi/BT/GPS/FM combo (vendor lenovo89_tb_x10_jb2 DCT/board.c):
++ * Wi-Fi on SDIO MSDC3, PMU_EN = GPIO14, RST = GPIO225, WIFI EINT9 = GPIO128.
++ * Vendor order: PMU_EN high, wait, RST high, wait. PMU_EN is modelled as the
++ * SDIO slot supply, RST as the pwrseq reset. Never use vemc (eMMC rails) here.
++ */
++/ {
++	mt6628_pmu_en: regulator-mt6628-pmu {
++		compatible = "regulator-fixed";
++		regulator-name = "mt6628-pmu-en";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		gpio = <&pio 14 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		startup-delay-us = <100000>;
++	};
++
++	mt6628_pwrseq: pwrseq-mt6628 {
++		compatible = "mmc-pwrseq-simple";
++		reset-gpios = <&pio 225 GPIO_ACTIVE_LOW>;
++		post-power-on-delay-ms = <100>;
++		power-off-delay-us = <10000>;
++	};
++};
++
++&mmc3 {
++	status = "okay";
++	/delete-property/ vqmmc-supply;
++	/delete-property/ sd-uhs-sdr104;
++	/delete-property/ sd-uhs-sdr50;
++	/delete-property/ sd-uhs-ddr50;
++	vmmc-supply = <&mt6628_pmu_en>;
++	mmc-pwrseq = <&mt6628_pwrseq>;
++	max-frequency = <25000000>;
++	keep-power-in-suspend;
 +};
