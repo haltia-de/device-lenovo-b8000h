@@ -54,6 +54,8 @@ fi
 ROOTDEV=/dev/mmcblk0p1
 for arg in $($BB cat /proc/cmdline); do
 	case "$arg" in
+		# LK appends its own "root=/dev/ram" after the DTB bootargs; ignore it.
+		root=/dev/ram*) ;;
 		root=/dev/*) ROOTDEV=${arg#root=} ;;
 	esac
 done

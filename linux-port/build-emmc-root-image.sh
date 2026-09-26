@@ -9,7 +9,10 @@ OUT=/opt/b8000h/out
 RAW="$OUT/b8000h-phosh-emmc-root.ext4"
 SPARSE="$OUT/b8000h-phosh-emmc-root.sparse.img"
 ROUNDTRIP="$OUT/b8000h-phosh-emmc-root.roundtrip.ext4"
-SIZE_MB=1024
+# LK fastboot reports userdata as 0x32000000 (800 MiB, the nominal PMT size of
+# the last "grow to end" partition), so keep the image below that; the root
+# filesystem grows to the real 14 GB partition on first boot.
+SIZE_MB=${SIZE_MB:-780}
 
 test -x "$ROOT/sbin/init"
 test -x "$ROOT/usr/bin/phosh-session"

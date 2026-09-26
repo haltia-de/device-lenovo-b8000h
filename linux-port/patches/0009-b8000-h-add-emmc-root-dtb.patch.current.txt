@@ -1,0 +1,49 @@
+diff --git a/arch/arm/boot/dts/mediatek/Makefile b/arch/arm/boot/dts/mediatek/Makefile
+index b67b94b7c..ad65a1bc4 100644
+--- a/arch/arm/boot/dts/mediatek/Makefile
++++ b/arch/arm/boot/dts/mediatek/Makefile
+@@ -9,6 +9,11 @@ dtb-$(CONFIG_ARCH_MEDIATEK) += \
+ 	mt6589-aquaris5.dtb \
+ 	mt6589-fairphone-fp1.dtb \
+ 	mt6589-lenovo-b8000-f.dtb \
++	mt6589-lenovo-b8000-h.dtb \
++	mt6589-lenovo-b8000-h-safe.dtb \
++	mt6589-lenovo-b8000-h-sd.dtb \
++	mt6589-lenovo-b8000-h-emmc.dtb \
++	mt6589-lenovo-b8000-h-install.dtb \
+ 	mt6592-evb.dtb \
+ 	mt7623a-rfb-emmc.dtb \
+ 	mt7623a-rfb-nand.dtb \
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * Internal-storage profile.  The existing Android USRDATA logical partition
+ * is /dev/mmcblk0p20; the partition table and identity partitions stay intact.
+ */
+
+#include "mt6589-lenovo-b8000-h.dts"
+
+/ {
+	model = "Lenovo YOGA Tablet 10 B8000-H (eMMC root)";
+
+	chosen {
+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=/dev/mmcblk0p20";
+	};
+};
+
+&mmc0 {
+	status = "okay";
+
+	card@0 {
+		partitions {
+			/* USRDATA is the Linux root; every other partition stays read-only. */
+			partition@58780000 {
+				/delete-property/ read-only;
+			};
+		};
+	};
+};
+
+/* Keep device numbering deterministic while validating the internal root. */
+&mmc1 {
+	status = "disabled";
+};
