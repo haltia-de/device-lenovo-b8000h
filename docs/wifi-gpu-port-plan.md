@@ -105,3 +105,15 @@ D2. Сравнить карты регистров вендора MT6589 с main
 D3. DTS-узлы + данные mt6589 в mtk-mmsys/mtk-mutex/mediatek-drm, панель
     как `panel-simple-dsi` с таймингами из D1 (без init-последовательности).
 D4. Подсветка: BLS PWM (ddp_bls) → pwm-backlight.
+
+## eMMC: медленно из-за шторма прерываний MSDC0 (2026-09-26 14:20)
+
+- Чтение 1,5–2,9 МБ/с, запись 0,64 МБ/с при 24 МГц/8 бит (ожидается 15–20 МБ/с).
+- **~67–104 тыс. IRQ MSDC0 на 16 МБ** (~2000 на запрос 512 КБ). DMA включён (PIO нет).
+- Однажды в покое: `MSDC_INT=0x3040`, `MSDC_INTEN=0xd000` → XFER_COMPL висел разрешённым,
+  7600 IRQ/с; ручной W1C `0x1000` → 0, шторм прекратился. После I/O INTEN=0, в покое 0.
+- Следующее: отладочный счётчик битов `events & event_mask` в `msdc_irq()`
+  (drivers/mmc/host/mtk-sd.c), сверить с вендорским msdc (mt6589) порядок
+  очистки XFER_COMPL/DXFER_DONE и остановки DMA.
+- HIGH_RES_TIMERS=y собрано, но не активируется: локальные таймеры CPU = dummy_timer
+  (`Could not switch to high resolution mode`). Разрешение таймеров остаётся 10 мс.
