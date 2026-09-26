@@ -1,9 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 new file mode 100644
-index 000000000..62cbbedc5
+index 000000000..2e89e17ea
 --- /dev/null
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,229 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Lenovo YOGA Tablet 10 B8000-H (60047 / 3G data)
@@ -227,4 +227,9 @@ index 000000000..62cbbedc5
 + */
 +&pmic {
 +	interrupts = <3 IRQ_TYPE_LEVEL_HIGH>;
++};
++
++/* SGX544 sits in the MFG power domain; needed by any GPU driver. */
++&gpu {
++	power-domains = <&spm MT6589_POWER_DOMAIN_MFG>;
 +};
