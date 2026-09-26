@@ -1,5 +1,5 @@
 diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-blade_defconfig
-index 2db10bcc9..b5d57e15c 100644
+index 2db10bcc9..4f756be5b 100644
 --- a/arch/arm/configs/lenovo-blade_defconfig
 +++ b/arch/arm/configs/lenovo-blade_defconfig
 @@ -15,6 +15,10 @@ CONFIG_MODULES=y
@@ -21,4 +21,4 @@ index 2db10bcc9..b5d57e15c 100644
 +CONFIG_SERIAL_DEV_BUS=y
 +CONFIG_SERIAL_DEV_CTRL_TTYPORT=y
 +CONFIG_RFKILL=y
-+CONFIG_CFG80211=m
++CONFIG_CFG80211=y
