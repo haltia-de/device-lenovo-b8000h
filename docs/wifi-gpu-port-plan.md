@@ -83,3 +83,25 @@ G3. Userspace — главный риск: Linux-библиотек DDK 1.17 д�
 ревизии (риск зависаний из-за разных BRN), Debian armhf chroot/rootfs (glibc).
 Сток 1.12 — только Android bionic (libhybris, не совместим с wlroots/phoc).
 До G3 — ускорять программную отрисовку (llvmpipe/pixman, cpufreq).
+
+## Дисплей: mediatek-drm вместо simpledrm (приоритет после Wi-Fi, SGX заморожен)
+
+Зачем: DPMS (выключение экрана/подсветки), vsync/page flip, имя выхода DSI-1 (без
+`fake-builtin`), аппаратные слои OVL. В mainline для MT6589 нет ничего, кроме syscon
+`dispsys@14000000`; `DRM_MEDIATEK` выключен. Ближайший поддерживаемый родственник —
+**MT2701** (OVL, RDMA, COLOR, BLS, DSI, MIPI-TX).
+
+Исходники вендора (sparse): `mediatek/platform/mt6589/kernel/drivers/dispsys/`
+(ddp_ovl/rdma/color/bls/path/reg.h), `.../drivers/video/dsi_drv.c`,
+`mediatek/kernel/drivers/video/{mtkfb,disp_drv}.c`.
+Панель `cm_hx8896a01_dsi_vdo` (из cmdline LK) в релизе Lenovo отсутствует (конфиг
+указывает шаблонную NT35521) → панель не инициализируем, её включает LK;
+тайминги/линии снять живьём из регистров DSI после загрузки.
+
+D1. Дамп регистров DSI/OVL/RDMA/MUTEX/MMSYS-путей, настроенных LK →
+    тайминги, число линий, формат, маршрут OVL→RDMA→COLOR→BLS→DSI.
+D2. Сравнить карты регистров вендора MT6589 с mainline MT2701 (ovl/rdma/color/dsi/
+    mipi-tx/mutex/mmsys routing) — объёмная сверка, кандидат на отдельную задачу.
+D3. DTS-узлы + данные mt6589 в mtk-mmsys/mtk-mutex/mediatek-drm, панель
+    как `panel-simple-dsi` с таймингами из D1 (без init-последовательности).
+D4. Подсветка: BLS PWM (ddp_bls) → pwm-backlight.
