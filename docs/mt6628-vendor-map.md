@@ -533,3 +533,27 @@ mtk_wcn_stp_debug_gpio_assert() - asserts or toggles debug GPIO pins using mt_se
 mtk_sdio_probe() - SDIO client probe function for MTK_WCN_HIF_SDIO mode - hif_sdio (MTK_WCN_HIF_SDIO_CLTCTX), MTK_WCN_HIF_SDIO_FUNCINFO
 mtk_sdio_remove() - SDIO client remove function for MTK_WCN_HIF_SDIO mode - hif_sdio (MTK_WCN_HIF_SDIO_CLTCTX)
 mtk_sdio_interrupt() - SDIO interrupt callback for MTK_WCN_HIF_SDIO mode - hif_sdio (MTK_WCN_HIF_SDIO_CLTCTX), mtk_wcn_hif_sdio_get_drvdata
+<!-- lines 401-800, 39 s -->
+mtk_sdio_interrupt() - handles SDIO interrupts, clears flags, wakes up TX service thread - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+mtk_sdio_probe() - initializes SDIO function, enables it, and probes the WLAN layer - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+mtk_sdio_remove() - uninitializes SDIO function, disables it, and removes the WLAN layer - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+mtk_sdio_suspend() - suspends the SDIO device (stub implementation) - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+mtk_sdio_resume() - resumes the SDIO device (stub implementation) - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+glRegisterBus() - registers the SDIO bus driver with the OS - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+glUnregisterBus() - unregisters the SDIO bus driver from the OS - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+glSetHifInfo() - stores HIF-related info into the glue info structure - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+glClearHifInfo() - clears HIF-related info from the glue info structure - old kernel/Android APIs it uses that do not exist in Linux 7.x (wakelock, wext, proc_create old style, init_timer, mt_set_gpio_*, mt65xx_eint_*, hif_sdio, etc.; write "-" if none)
+glBusInit() - initializes bus operations and requests
+<!-- lines 801-1200, 17 s -->
+glBusInit() - Initializes bus operation and acquires resources.
+glBusRelease() - Stops bus operation and releases resources.
+glBusSetIrq() - Setup bus interrupt operation and interrupt handler for os.
+glBusFreeIrq() - Stop bus interrupt operation and disable interrupt handling for os.
+kalDevRegRead() - Read a 32-bit device register.
+kalDevRegWrite() - Write a 32-bit device register.
+kalDevPortRead() - Read device I/O port.
+kalDevPortWrite() - Write device I/O port.
+<!-- lines 1201-1284, 9 s -->
+kalDevPortWrite() - writes buffer to SDIO port in block or byte mode using mtk_wcn_hif_sdio_write_buf - sdio_writesb, kalSendAeeWarning, DBGLOG, in_interrupt, sdio_claim_host, sdio_release_host
+kalDevWriteWithSdioCmd52() - writes single byte to SDIO port using CMD52 or helper - sdio_writeb, mtk_wcn_hif_sdio_writeb, kalSendAeeWarning, DBGLOG, in_interrupt, sdio_claim_host, sdio_release_host
+glSetPowerState() - stub function that currently does nothing - none
