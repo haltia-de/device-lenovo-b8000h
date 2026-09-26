@@ -41,18 +41,11 @@ static int sgx_probe_probe(struct platform_device *pdev)
 	 * The SGX core rail is MT6320 VRF18_2 (vendor get_gpu_power_src()==0);
 	 * it is off after boot. No DT supply yet: look it up by regulator name.
 	 */
-	{
-		struct regulator *vgpu = devm_regulator_get(dev, "vrf18_2");
-
-		if (IS_ERR(vgpu))
-			return dev_err_probe(dev, PTR_ERR(vgpu), "vrf18_2\n");
-		ret = regulator_enable(vgpu);
-		dev_info(dev, "step1b vrf18_2 enable=%d, %d uV\n", ret,
-			 regulator_get_voltage(vgpu));
-		if (ret)
-			return ret;
-		mdelay(200);
-	}
+	/*
+	 * NOT enabling VRF18_2 any more: its default is 1.825 V, while the
+	 * vendor runs the GPU at 1.05 V (GPU_POWER_VRF18_1_05V). MTCMOS acks
+	 * without it, i.e. this board feeds MFG from VCORE.
+	 */
 	/*
 	 * Test: feed mfg_sel from univpll1_d4 (known running) instead of
 	 * mmpll_d5, to rule out a dead MMPLL.
@@ -166,7 +159,15 @@ static int sgx_probe_probe(struct platform_device *pdev)
 		udelay(10);
 		writel(0xf, mfg + 0x4);		/* MFG clocks off (CG_SET) */
 		writel(0x0, mfg + 0xc);		/* release reset */
-		writel(0xf, mfg + 0x8);		/* MFG clocks on */
+		writel(0x1f, mfg + 0x8);	/* MFG clocks on, incl. unknown bit 4 */
+		{
+			int i;
+
+			for (i = 0; i < 0x40; i += 16)
+				dev_info(dev, "mfgsys+%02x: %08x %08x %08x %08x\n", i,
+					 readl(mfg + i), readl(mfg + i + 4),
+					 readl(mfg + i + 8), readl(mfg + i + 12));
+		}
 		writel(readl(infra) | 0x400, infra);
 		dev_info(dev, "step3c mfg cg=%08x rst=%08x way=%08x\n", readl(mfg),
 			 readl(mfg + 0xc), readl(infra));
