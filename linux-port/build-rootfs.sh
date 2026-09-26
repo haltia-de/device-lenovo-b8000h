@@ -1,6 +1,6 @@
 #!/bin/sh
-# Build an Alpine armv7 root filesystem with a lightweight touch GUI
-# (Weston, pixman renderer on simpledrm) for the B8000-H microSD card.
+# Build an Alpine armv7 root filesystem for the B8000-H microSD card.
+# UI_PROFILE=labwc (known-good rescue desktop) or phosh (target mobile shell).
 # Runs inside WSL B8000Build. Output: artifacts/linux-port/b8000h-sd.img
 set -eu
 
@@ -9,6 +9,13 @@ ROOT=/opt/b8000h/rootfs
 IMG=/opt/b8000h/out/b8000h-sd.img
 MIRROR=https://dl-cdn.alpinelinux.org/alpine/v3.24
 IMG_MB=3072
+UI_PROFILE=${UI_PROFILE:-labwc}
+
+case "$UI_PROFILE" in
+	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
+	phosh) UI_PACKAGES="phosh phoc squeekboard gnome-session gnome-control-center foot pcmanfm dbus elogind polkit upower networkmanager networkmanager-openrc" ;;
+	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
+esac
 
 apk add --no-cache qemu-arm e2fsprogs sfdisk alpine-keys >/dev/null
 
@@ -29,7 +36,7 @@ cp /usr/share/apk/keys/armv7/* "$ROOT/etc/apk/keys/"
 apk --root "$ROOT" --arch armv7 --initdb --update-cache add \
 	alpine-base openrc busybox-openrc eudev udev-init-scripts \
 	seatd seatd-openrc libinput \
-	labwc waybar fuzzel foot wvkbd swaybg pcmanfm \
+	$UI_PACKAGES \
 	adwaita-icon-theme font-dejavu font-noto xdg-utils \
 	bash htop nano e2fsprogs
 
@@ -38,7 +45,7 @@ echo b8000h > "$ROOT/etc/hostname"
 printf 'root::0:0:root:/root:/bin/sh\n' > /tmp/root-pw
 sed -i 's|^root:[^:]*:|root::|' "$ROOT/etc/shadow"
 cat > "$ROOT/etc/fstab" <<'EOF'
-/dev/mmcblk0p1	/	ext4	rw,noatime	0 1
+/dev/root	/	ext4	rw,noatime	0 1
 EOF
 for s in devfs dmesg udev udev-trigger udev-settle; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/sysinit/$s"
@@ -49,6 +56,11 @@ done
 for s in seatd local; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 done
+if [ "$UI_PROFILE" = phosh ]; then
+	for s in dbus elogind polkit openrc-settingsd networkmanager; do
+		[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
+	done
+fi
 for s in mount-ro killprocs savecache; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/shutdown/$s"
 done
@@ -67,6 +79,12 @@ EOF
 chmod +x "$ROOT/usr/local/bin/acm-shell"
 grep -q acm-shell "$ROOT/etc/inittab" ||
 	echo 'ttyGS0::respawn:/usr/local/bin/acm-shell' >> "$ROOT/etc/inittab"
+
+# The installer is inert without its explicit destructive token and validates
+# the installer-only DTB, source device and target size before formatting.
+mkdir -p "$ROOT/usr/local/sbin"
+cp "$REPO/linux-port/install-root-to-emmc.sh" "$ROOT/usr/local/sbin/"
+chmod +x "$ROOT/usr/local/sbin/install-root-to-emmc.sh"
 
 # Desktop: labwc (stacking compositor, wlroots pixman renderer: no GPU yet)
 # + waybar panel (Start menu, windows, keyboard, battery, clock, power).
@@ -159,9 +177,21 @@ esac
 EOF
 chmod +x "$ROOT/usr/local/bin/b8k-kbd" "$ROOT/usr/local/bin/b8k-power"
 
-# Start the desktop from OpenRC local.d as root on seat0.
+# Start the selected desktop from OpenRC local.d as root on seat0.
 rm -f "$ROOT/etc/local.d/weston.start"
-cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
+if [ "$UI_PROFILE" = phosh ]; then
+	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
+#!/bin/sh
+export HOME=/root XDG_RUNTIME_DIR=/run/user/0
+export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
+export XDG_SESSION_DESKTOP=phosh LANG=ru_RU.UTF-8
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+( dbus-run-session -- phosh-session >/var/log/phosh.log 2>&1 & ) >/dev/null 2>&1
+EOF
+else
+	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
 export HOME=/root XDG_RUNTIME_DIR=/run/user/0
 export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
@@ -170,6 +200,7 @@ mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 ( labwc >/var/log/labwc.log 2>&1 & ) >/dev/null 2>&1
 EOF
+fi
 chmod +x "$ROOT/etc/local.d/desktop.start"
 
 # Make the SD image: one MBR partition, ext4, label B8000ROOT.
@@ -184,6 +215,6 @@ dd if=/tmp/p1.ext4 of="$IMG" bs=1M seek=1 conv=notrunc status=none
 rm -f /tmp/p1.ext4
 
 mkdir -p "$REPO/artifacts/linux-port"
-cp "$IMG" "$REPO/artifacts/linux-port/"
+cp "$IMG" "$REPO/artifacts/linux-port/b8000h-$UI_PROFILE-sd.img"
 du -sh "$ROOT"
 sha256sum "$IMG"

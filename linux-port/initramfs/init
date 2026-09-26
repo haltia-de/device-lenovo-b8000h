@@ -46,30 +46,39 @@ else
 	echo "USB gadget configfs is unavailable"
 fi
 
-# Boot the microSD root filesystem when present. Without a card (or when it
-# cannot be mounted) stay in this initramfs with the USB console below.
-# Internal eMMC is disabled in the DTB, so mmcblk0 can only be the microSD.
-echo "Waiting up to 20 s for microSD root (mmcblk0p1)..."
+# Boot the root filesystem selected by the DTB command line.  The SD rescue
+# image uses mmcblk0p1; the future internal-storage image uses the existing
+# USRDATA logical partition (mmcblk0p8).  If no root= argument is present,
+# retain the proven SD default.  Without a usable root stay in this initramfs
+# with the USB console below.
+ROOTDEV=/dev/mmcblk0p1
+for arg in $($BB cat /proc/cmdline); do
+	case "$arg" in
+		root=/dev/*) ROOTDEV=${arg#root=} ;;
+	esac
+done
+echo "Waiting up to 20 s for root filesystem ($ROOTDEV)..."
 i=0
-while [ ! -b /dev/mmcblk0p1 ] && [ $i -lt 20 ]; do
+while [ ! -b "$ROOTDEV" ] && [ $i -lt 20 ]; do
 	$BB sleep 1
 	i=$((i + 1))
 done
-if [ -b /dev/mmcblk0p1 ]; then
+if [ -b "$ROOTDEV" ]; then
+	$BB ln -sf "${ROOTDEV#/dev/}" /dev/root
 	$BB mkdir -p /newroot
-	if $BB mount -t ext4 -o rw,noatime /dev/mmcblk0p1 /newroot &&
+	if $BB mount -t ext4 -o rw,noatime "$ROOTDEV" /newroot &&
 	   [ -x /newroot/sbin/init ]; then
-		echo "Switching to microSD root filesystem"
+		echo "Switching to root filesystem on $ROOTDEV"
 		for m in /dev /proc /sys; do
 			$BB mkdir -p "/newroot$m"
 			$BB mount --move "$m" "/newroot$m"
 		done
 		exec $BB switch_root /newroot /sbin/init
 	fi
-	echo "microSD root not usable, staying in initramfs"
+	echo "Root filesystem on $ROOTDEV is not usable, staying in initramfs"
 	$BB umount /newroot 2>/dev/null
 else
-	echo "No microSD root found, staying in initramfs"
+	echo "No root device $ROOTDEV found, staying in initramfs"
 fi
 
 (

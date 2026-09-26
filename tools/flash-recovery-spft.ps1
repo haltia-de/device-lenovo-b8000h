@@ -3,7 +3,7 @@ param(
     [int]$Minutes = 10,
     [string]$Config = 'C:\Users\Public\MTK_B8000H\configs\download-recovery-idx11.xml',
     [string]$Image = 'C:\Users\Public\MTK_B8000H\flash-recovery\recovery.img',
-    [string]$ExpectedHash = '7EFBD36BD66B26CEB8CEC06B4C25898AC7A62393A31ABCD56DCEC5A0DA1F9ADA'
+    [string]$ExpectedHash = 'F4EF22FFA2A19828E57EBB54C0FDF01CA2158EEFD1C9F288675668071B028D92'
 )
 # Writes ONLY the RECOVERY partition (SPFT rom index 11, verified by a dry run:
 # index 11 = RECOVERY @ 0x2D80000; index 5 would be __NODL_NVRAM).
@@ -11,7 +11,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $spft = 'C:\Users\Public\MTK_B8000H\spft-v5'
-$log = 'C:\Users\Public\MTK_B8000H\backups\dl-recovery.stdout.txt'
+$logDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\linux-port\logs'
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+$log = Join-Path $logDir 'dl-recovery.stdout.txt'
 
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Image).Hash -ne $ExpectedHash) {
     throw 'Image hash mismatch'

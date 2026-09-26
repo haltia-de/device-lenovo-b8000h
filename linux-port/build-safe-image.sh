@@ -11,6 +11,9 @@ OUT=/opt/b8000h/out
 DST="$REPO/artifacts/linux-port"
 # DTB_VARIANT=safe (no eMMC, no SD) or sd (microSD only, eMMC still off).
 DTB=arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h-${DTB_VARIANT:-safe}.dtb
+# Optional suffix keeps experimental profiles from overwriting the proven
+# recovery/firstboot artifacts, e.g. IMAGE_SUFFIX=-emmc.
+IMAGE_SUFFIX=${IMAGE_SUFFIX:-}
 
 mkdir -p "$OUT" "$DST"
 cd "$K"
@@ -41,7 +44,7 @@ for variant in firstboot:ROOTFS recovery:RECOVERY; do
 	RD="$OUT/ramdisk-$name-mtk.bin"
 	python3 "$REPO/tools/mkmtkimage.py" /opt/b8000h/b8000h-safe-initramfs.cpio.gz "$RD" "$label"
 
-	IMG="$OUT/b8000h-linux-$name-safe.img"
+	IMG="$OUT/b8000h-linux-$name$IMAGE_SUFFIX-safe.img"
 	mkbootimg --kernel "$OUT/kernel-safe-mtk.bin" --ramdisk "$RD" \
 		--base 0x10000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 \
 		--second_offset 0x00f00000 --tags_offset 0x00000100 --pagesize 2048 \

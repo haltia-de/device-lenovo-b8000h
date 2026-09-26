@@ -30,6 +30,31 @@ the TeamYogaBlade2 near-mainline kernel at commit
 Generated build artifacts are under `artifacts/linux-port/` and are ignored by
 Git. The first-boot image is `b8000h-linux-firstboot-safe.img`.
 
+## Current boot and rootfs profiles
+
+- `DTB_VARIANT=sd`: proven rescue/development boot; internal eMMC is disabled,
+  root is `/dev/mmcblk0p1` on microSD.
+- `DTB_VARIANT=install IMAGE_SUFFIX=-install`: exposes eMMC as `mmcblk0` and
+  boots the SD root as `mmcblk1p1`. Use it only to validate the live geometry
+  and run `install-root-to-emmc.sh` after explicit confirmation.
+- `DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc`: final boot profile; root is the
+  existing USRDATA logical partition `/dev/mmcblk0p8`.
+- `UI_PROFILE=labwc` builds the known-good lightweight desktop.
+- `UI_PROFILE=phosh` builds the target Phosh/Phoc mobile desktop with
+  Squeekboard, NetworkManager and GNOME Settings.
+
+Examples (run from PowerShell):
+
+```powershell
+wsl.exe -d B8000Build -- env UI_PROFILE=phosh sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-rootfs.sh"
+wsl.exe -d B8000Build -- env DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-safe-image.sh"
+```
+
+The installer formats only `/dev/mmcblk0p8`, after checking the installer DTB,
+the SD root device and a 12–15 GB target size. It never writes BOOT, RECOVERY,
+NVRAM or the partition table. The final BOOT image is written separately only
+after the copied eMMC root has been verified.
+
 ## Verified build
 
 - Kernel branch: `blade/v7.1`
