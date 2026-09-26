@@ -1,9 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 new file mode 100644
-index 000000000..189d2f488
+index 000000000..ce5b87a9c
 --- /dev/null
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,187 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Lenovo YOGA Tablet 10 B8000-H (60047 / 3G data)
@@ -180,5 +180,14 @@ index 000000000..189d2f488
 +	touchscreen@38 {
 +		vdd-supply = <&mt6320_ldo_vgp5>;
 +	};
++};
++
++/*
++ * The ID pin polarity in the shared blade description has not been verified
++ * on B8000-H; with correct GPIO input readback it selects host mode and the
++ * USB console disappears. Force device mode for bring-up.
++ */
++&usb0 {
++	dr_mode = "peripheral";
 +};
 +
