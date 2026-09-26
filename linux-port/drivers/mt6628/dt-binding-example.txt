@@ -1,0 +1,66 @@
+MT6628 DT example for Lenovo B8000-H (documentation only; not applied to DTS)
+===========================================================================
+
+The GPIO numbers below are facts from the Lenovo vendor DCT.  Pin-control
+groups and the provider for the MT6320 RTC 32 kHz output still have to match
+the final B8000-H DTS.  GPIO_ACTIVE_HIGH describes the electrical level of
+PMU_EN and RST (RST high means run).
+
+&uart3 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3_pins>;
+
+	mt6628 {
+		compatible = "mediatek,mt6628-wmt";
+		current-speed = <115200>;
+
+		pmu-en-gpios = <&pio 14 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&pio 225 GPIO_ACTIVE_HIGH>;
+
+		/* BGF: GPIO26 / EINT8, level low. */
+		interrupt-parent = <&pio>;
+		interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+
+		clocks = <&mt6320_rtc_32k>;
+		clock-names = "rtc32k";
+
+		mediatek,patch-firmware = "mt6628_patch_e2_0_hdr.bin";
+		mediatek,ldo-stable-ms = <100>;
+		mediatek,rtc-stable-ms = <100>;
+		mediatek,off-stable-ms = <10>;
+		mediatek,reset-stable-ms = <30>;
+		mediatek,on-stable-ms = <30>;
+	};
+};
+
+/ {
+	mt6628_pwrseq: mt6628-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		/* A real DTS must not duplicate ownership of GPIO14/GPIO225 between
+		 * pwrseq and wmt.  Prefer WMT ownership; use post-power-on-delay-ms
+		 * here only if the host cannot enumerate after WMT turns power on.
+		 */
+		clocks = <&mt6320_rtc_32k>;
+	};
+};
+
+&mmc3 {
+	status = "okay";
+	bus-width = <4>;
+	max-frequency = <50000000>;
+	non-removable;
+	cap-sdio-irq;
+	keep-power-in-suspend;
+	mmc-pwrseq = <&mt6628_pwrseq>;
+
+	/* Do not copy the blade.dtsi vemc supplies: they belong to eMMC. */
+	mt6628_wifi: wifi@1 {
+		compatible = "mediatek,mt6628-wifi";
+		reg = <1>;
+		/* Native SDIO IRQ is preferred.  Vendor fallback was GPIO128 /
+		 * EINT9, active low; the current driver does not request both.
+		 */
+	};
+};
+

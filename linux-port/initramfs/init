@@ -168,6 +168,30 @@ fi
 if [ -b "$ROOTDEV" ]; then
 	$BB ln -sf "${ROOTDEV#/dev/}" /dev/root
 	$BB mkdir -p /newroot
+	# Check ext4 before mounting it rw: run the root's own e2fsck chrooted
+	# into the read-only mounted root (allowed for a ro-mounted "/").
+	if $BB mount -t ext4 -o ro "$ROOTDEV" /newroot 2>/dev/null; then
+		if [ -x /newroot/sbin/e2fsck ] && { [ -z "$MARK" ] || [ -e "$MARK" ]; }; then
+			$BB mount --bind /dev /newroot/dev
+			$BB mount --bind /proc /newroot/proc
+			echo "Checking $ROOTDEV"
+			$BB chroot /newroot /sbin/e2fsck -p "$ROOTDEV" > /tmp/fsck.log 2>&1
+			rc=$?
+			if [ $rc -ge 4 ]; then
+				echo "e2fsck -p rc=$rc, repairing with -fy" >> /tmp/fsck.log
+				$BB chroot /newroot /sbin/e2fsck -fy "$ROOTDEV" >> /tmp/fsck.log 2>&1
+				rc=$?
+			fi
+			echo "e2fsck rc=$rc" >> /tmp/fsck.log
+			# Screen and kernel log (readable over the USB console later).
+			while read -r l; do
+				echo "$l"
+				echo "b8k-fsck: $l" > /dev/kmsg
+			done < /tmp/fsck.log
+			$BB umount /newroot/proc /newroot/dev
+		fi
+		$BB umount /newroot
+	fi
 	if $BB mount -t ext4 -o rw,noatime "$ROOTDEV" /newroot &&
 	   [ -x /newroot/sbin/init ] && { [ -z "$MARK" ] || [ -e "$MARK" ]; }; then
 		echo "Switching to root filesystem on $ROOTDEV"
