@@ -38,7 +38,7 @@ apk --root "$ROOT" --arch armv7 --initdb --update-cache add \
 	seatd seatd-openrc libinput \
 	$UI_PACKAGES \
 	adwaita-icon-theme font-dejavu font-noto xdg-utils \
-	bash htop nano e2fsprogs
+	bash htop nano e2fsprogs e2fsprogs-extra
 
 # Basic system configuration.
 echo b8000h > "$ROOT/etc/hostname"
