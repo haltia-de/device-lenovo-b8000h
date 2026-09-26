@@ -25,23 +25,37 @@ $sp.DtrEnable = $true
 try {
     Start-Sleep -Milliseconds 300
     [void]$sp.ReadExisting()
-    $command = ('BB=/bin/busybox; T=/dev/mmcblk1p20; S=$($BB cat /sys/class/block/mmcblk1p20/size 2>/dev/null); ' +
-        '[ "$S" = {0} ] || {{ echo __BAD_TARGET__:$S; exit; }}; ' +
-        '[ -x "$BB" ] || {{ echo __NO_BUSYBOX__; exit; }}; ' +
-        'echo __WRITE_READY__; $BB head -c {1} | $BB gzip -dc | ' +
+    $commandTemplate = 'BB=/bin/busybox; T=/dev/mmcblk1p20; S=$($BB cat /sys/class/block/mmcblk1p20/size 2>/dev/null); ' +
+        'if [ "$S" != {0} ]; then echo __BAD_TARGET__:$S; exit; fi; ' +
+        'if [ ! -x "$BB" ]; then echo __NO_BUSYBOX__; exit; fi; ' +
+        # A one-byte sacrificial read is intentional. MUSB PIO sometimes keeps
+        # the READY text pending until the host sends another OUT packet.
+        'echo __WRITE_READY__; $BB head -c 1 >/dev/null; $BB head -c {1} | $BB gzip -dc | ' +
         '$BB dd of=$T bs=65536 count=16384 iflag=fullblock conv=fsync; ' +
         'echo __WRITE_DONE__; $BB dd if=$T bs=1048576 count=1024 iflag=fullblock 2>/dev/null | ' +
         '$BB sha256sum; ' +
-        'echo __VERIFY_DONE__' -f $expectedSectors, $expectedBytes) + "`n"
+        'echo __VERIFY_DONE__'
+    $command = ($commandTemplate -f $expectedSectors, $expectedBytes) + "`n"
     $sp.Write($command)
 
     $reply = ''
-    $readyDeadline = (Get-Date).AddSeconds(20)
+    $readyDeadline = (Get-Date).AddSeconds(30)
+    $nudgeAt = (Get-Date).AddSeconds(1)
+    $nudged = $false
     while ((Get-Date) -lt $readyDeadline -and $reply -notmatch '__WRITE_READY__') {
         Start-Sleep -Milliseconds 100
         $reply += $sp.ReadExisting()
+        if (-not $nudged -and (Get-Date) -ge $nudgeAt) {
+            # Consumed by the explicit one-byte head above, never by gzip.
+            $sp.Write('X')
+            $nudged = $true
+        }
         if ($reply -match '__BAD_TARGET__') { throw "Tablet rejected target: $reply" }
         if ($reply -match '__NO_BUSYBOX__') { throw "Tablet initramfs lacks BusyBox: $reply" }
+    }
+    if (-not $nudged) {
+        $sp.Write('X')
+        $nudged = $true
     }
     if ($reply -notmatch '__WRITE_READY__') { throw "Tablet did not become ready: $reply" }
 
