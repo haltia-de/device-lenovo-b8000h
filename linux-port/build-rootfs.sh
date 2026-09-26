@@ -29,8 +29,8 @@ cp /usr/share/apk/keys/armv7/* "$ROOT/etc/apk/keys/"
 apk --root "$ROOT" --arch armv7 --initdb --update-cache add \
 	alpine-base openrc busybox-openrc eudev udev-init-scripts \
 	seatd seatd-openrc libinput \
-	weston weston-backend-drm weston-shell-desktop weston-terminal \
-	weston-clients wvkbd font-dejavu \
+	labwc waybar fuzzel foot wvkbd swaybg pcmanfm \
+	adwaita-icon-theme font-dejavu font-noto xdg-utils \
 	bash htop nano e2fsprogs
 
 # Basic system configuration.
@@ -68,33 +68,109 @@ chmod +x "$ROOT/usr/local/bin/acm-shell"
 grep -q acm-shell "$ROOT/etc/inittab" ||
 	echo 'ttyGS0::respawn:/usr/local/bin/acm-shell' >> "$ROOT/etc/inittab"
 
-# The GUI starts from OpenRC local.d.
-mkdir -p "$ROOT/etc/xdg/weston"
-cat > "$ROOT/etc/xdg/weston/weston.ini" <<'EOF'
-[core]
-renderer=pixman
-idle-time=0
+# Desktop: labwc (stacking compositor, wlroots pixman renderer: no GPU yet)
+# + waybar panel (Start menu, windows, keyboard, battery, clock, power).
+H="$ROOT/root/.config"
+mkdir -p "$H/labwc" "$H/waybar" "$H/fuzzel"
 
-[shell]
-panel-position=top
-locking=false
-
-[launcher]
-icon=/usr/share/weston/terminal.png
-path=/usr/bin/weston-terminal
-
-[launcher]
-icon=/usr/share/weston/icon_flower.png
-path=/usr/bin/wvkbd-mobintl -L 300
+cat > "$H/labwc/autostart" <<'EOF'
+swaybg -c '#1e3a5f' >/dev/null 2>&1 &
+waybar >/var/log/waybar.log 2>&1 &
 EOF
-cat > "$ROOT/etc/local.d/weston.start" <<'EOF'
+cat > "$H/labwc/rc.xml" <<'EOF'
+<?xml version="1.0"?>
+<labwc_config>
+  <theme><name></name><cornerRadius>6</cornerRadius>
+    <font place=""><name>DejaVu Sans</name><size>13</size></font></theme>
+  <placement><policy>center</policy></placement>
+  <touch deviceName="Synaptics Blade10" mapToOutput="" mouseEmulation="yes"/>
+</labwc_config>
+EOF
+cat > "$H/labwc/menu.xml" <<'EOF'
+<?xml version="1.0"?>
+<openbox_menu>
+  <menu id="root-menu" label="">
+    <item label="Terminal"><action name="Execute" command="foot"/></item>
+    <item label="Files"><action name="Execute" command="pcmanfm"/></item>
+    <item label="Keyboard"><action name="Execute" command="b8k-kbd"/></item>
+    <separator/>
+    <item label="Reboot"><action name="Execute" command="reboot"/></item>
+    <item label="Power off"><action name="Execute" command="poweroff"/></item>
+  </menu>
+</openbox_menu>
+EOF
+
+cat > "$H/waybar/config" <<'EOF'
+{
+  "layer": "top",
+  "position": "top",
+  "height": 44,
+  "modules-left": ["custom/start", "custom/kbd", "wlr/taskbar"],
+  "modules-right": ["battery", "clock", "custom/power"],
+  "custom/start": { "format": "  Пуск  ", "on-click": "fuzzel", "tooltip": false },
+  "custom/kbd": { "format": " ⌨ ", "on-click": "b8k-kbd", "tooltip": false },
+  "wlr/taskbar": { "on-click": "activate", "icon-size": 28, "format": "{title:.20}" },
+  "battery": {
+    "bat": "bq27541-0",
+    "interval": 30,
+    "format": "🔋 {capacity}%",
+    "format-charging": "⚡ {capacity}%",
+    "states": { "warning": 25, "critical": 10 }
+  },
+  "clock": { "format": "{:%H:%M  %d.%m}", "tooltip": false },
+  "custom/power": { "format": " ⏻ ", "on-click": "b8k-power", "tooltip": false }
+}
+EOF
+cat > "$H/waybar/style.css" <<'EOF'
+* { font-family: "DejaVu Sans", "Noto Color Emoji", sans-serif; font-size: 18px; }
+window#waybar { background: rgba(20, 24, 32, 0.92); color: #eeeeee; }
+#custom-start { background: #2d6cdf; color: white; border-radius: 6px; margin: 4px; }
+#custom-kbd, #custom-power, #battery, #clock { padding: 0 12px; }
+#battery.warning { color: #ffb347; }
+#battery.critical { color: #ff5555; }
+#taskbar button { color: #eeeeee; padding: 0 8px; }
+#taskbar button.active { background: rgba(255, 255, 255, 0.15); }
+EOF
+cat > "$H/fuzzel/fuzzel.ini" <<'EOF'
+[main]
+font=DejaVu Sans:size=16
+lines=12
+width=40
+terminal=foot
+[colors]
+background=1e2430f0
+text=eeeeeeff
+selection=2d6cdfff
+selection-text=ffffffff
+EOF
+
+cat > "$ROOT/usr/local/bin/b8k-kbd" <<'EOF'
 #!/bin/sh
-export XDG_RUNTIME_DIR=/run/user/0
+# Toggle the on-screen keyboard.
+pkill -x wvkbd-mobintl || exec wvkbd-mobintl -L 280
+EOF
+cat > "$ROOT/usr/local/bin/b8k-power" <<'EOF'
+#!/bin/sh
+choice=$(printf 'Перезагрузка\nВыключение\nОтмена\n' | fuzzel --dmenu --lines 3 --prompt 'Питание: ')
+case "$choice" in
+	Перезагрузка) reboot ;;
+	Выключение) poweroff ;;
+esac
+EOF
+chmod +x "$ROOT/usr/local/bin/b8k-kbd" "$ROOT/usr/local/bin/b8k-power"
+
+# Start the desktop from OpenRC local.d as root on seat0.
+rm -f "$ROOT/etc/local.d/weston.start"
+cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
+#!/bin/sh
+export HOME=/root XDG_RUNTIME_DIR=/run/user/0
+export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
+export XDG_CURRENT_DESKTOP=labwc LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-( weston --backend=drm --renderer=pixman --log=/var/log/weston.log & ) >/dev/null 2>&1
+( labwc >/var/log/labwc.log 2>&1 & ) >/dev/null 2>&1
 EOF
-chmod +x "$ROOT/etc/local.d/weston.start"
+chmod +x "$ROOT/etc/local.d/desktop.start"
 
 # Make the SD image: one MBR partition, ext4, label B8000ROOT.
 rm -f "$IMG"

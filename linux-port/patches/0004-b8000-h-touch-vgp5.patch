@@ -1,9 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 new file mode 100644
-index 000000000..6e17b7134
+index 000000000..c692b373a
 --- /dev/null
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,206 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Lenovo YOGA Tablet 10 B8000-H (60047 / 3G data)
@@ -198,5 +198,15 @@ index 000000000..6e17b7134
 + */
 +&mt6320_ldo_vusb {
 +	regulator-always-on;
++};
++
++/*
++ * The fuel gauge IRQ line (EINT16/GPIO16, marked "?" in the shared blade
++ * description) is configured as an output on B8000-H and the IRQ request
++ * fails, taking the whole gauge down. Poll it instead.
++ */
++&bq27541 {
++	/delete-property/ interrupts;
++	/delete-property/ interrupt-parent;
 +};
 +
