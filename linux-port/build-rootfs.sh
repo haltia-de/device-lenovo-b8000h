@@ -207,11 +207,10 @@ chmod +x "$ROOT/etc/local.d/desktop.start"
 # 13.16 GiB USRDATA partition. Grow ext4 online once after the eMMC boot.
 cat > "$ROOT/etc/local.d/resize-emmc-root.start" <<'EOF'
 #!/bin/sh
-rootdev=$(awk '$2 == "/" { print $1; exit }' /proc/mounts)
-if [ "$rootdev" = /dev/mmcblk0p20 ]; then
-	if resize2fs "$rootdev" >/var/log/resize-emmc-root.log 2>&1; then
-		mv /etc/local.d/resize-emmc-root.start /etc/local.d/resize-emmc-root.done
-	fi
+# initramfs mounts root as /dev/root; USRDATA is mmcblk1p20 when the SD is on.
+grep -q root=PARTNAME=USRDATA /proc/cmdline || exit 0
+if resize2fs "$(readlink -f /dev/root)" >/var/log/resize-emmc-root.log 2>&1; then
+	mv /etc/local.d/resize-emmc-root.start /etc/local.d/resize-emmc-root.done
 fi
 EOF
 chmod +x "$ROOT/etc/local.d/resize-emmc-root.start"

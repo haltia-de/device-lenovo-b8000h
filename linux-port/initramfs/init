@@ -83,6 +83,88 @@ done
 # verified it and left /b8k-installed; a half-written USRDATA never boots.
 MARK=
 [ -n "$ROOTPART" ] && MARK=/newroot/b8k-installed
+
+# CWM-style installer: a microSD written with tools/mk-sd-installer.py starts
+# with a "B8KINST1" header. If USRDATA has no /b8k-installed, unpack the gzip
+# root image from the card into USRDATA, verify its md5, then boot it.
+# Only the partition named by root=PARTNAME= is written, never BOOT.
+installer_card() {
+	for d in /dev/mmcblk[0-9]; do
+		[ -b "$d" ] && [ "$($BB head -c 8 "$d" 2>/dev/null)" = B8KINST1 ] &&
+			{ echo "$d"; return; }
+	done
+}
+installer_hdr() {
+	$BB head -c 4096 "$1" | $BB tr -d '\000' | $BB sed -n "s/^$2=//p"
+}
+auto_install() {
+	SD=$(installer_card)
+	[ -n "$SD" ] || { echo "No B8KINST1 microSD found"; return 1; }
+	GZ_OFF=$(installer_hdr "$SD" gz_off)
+	GZ_LEN=$(installer_hdr "$SD" gz_len)
+	RAW_LEN=$(installer_hdr "$SD" raw_len)
+	RAW_MD5=$(installer_hdr "$SD" raw_md5)
+	if [ -z "$GZ_OFF" ] || [ -z "$GZ_LEN" ] || [ -z "$RAW_LEN" ] || [ -z "$RAW_MD5" ]; then
+		echo "Installer header on $SD is incomplete"
+		return 1
+	fi
+	PART=${ROOTDEV#/dev/}
+	PART_BYTES=$(($($BB cat /sys/class/block/$PART/size) * 512))
+	if [ "$RAW_LEN" -gt "$PART_BYTES" ]; then
+		echo "Root image ($RAW_LEN) does not fit $ROOTDEV ($PART_BYTES)"
+		return 1
+	fi
+	M=1048576
+	echo "=== INSTALL: $SD -> $ROOTDEV ($ROOTPART), $((RAW_LEN / M)) MiB, do not power off ==="
+	(
+		$BB dd if="$SD" bs=$M skip=$((GZ_OFF / M)) count=$(((GZ_LEN + M - 1) / M)) 2>/dev/null |
+			$BB head -c "$GZ_LEN" | $BB gunzip -c |
+			$BB dd of="$ROOTDEV" bs=$M conv=fsync 2>/dev/null
+		echo $? > /tmp/install.rc
+	) &
+	W0=$($BB awk '{ print $7 }' /sys/class/block/$PART/stat)
+	while [ ! -e /tmp/install.rc ]; do
+		$BB sleep 10
+		W=$($BB awk '{ print $7 }' /sys/class/block/$PART/stat)
+		echo "INSTALL $(((W - W0) * 512 * 100 / RAW_LEN))% uptime $($BB cut -d' ' -f1 /proc/uptime)s"
+	done
+	[ "$($BB cat /tmp/install.rc)" = 0 ] || { echo "INSTALL: write failed"; return 1; }
+	$BB sync
+	echo 3 > /proc/sys/vm/drop_caches
+	echo "INSTALL: verifying md5"
+	GOT=$($BB head -c "$RAW_LEN" "$ROOTDEV" | $BB md5sum | $BB cut -d' ' -f1)
+	if [ "$GOT" != "$RAW_MD5" ]; then
+		echo "INSTALL: md5 mismatch ($GOT != $RAW_MD5)"
+		return 1
+	fi
+	$BB mount -t ext4 -o rw,noatime "$ROOTDEV" /newroot || return 1
+	# Grow ext4 over the whole USRDATA on first boot (root is /dev/root here).
+	R=/newroot/etc/local.d/resize-emmc-root.start
+	if [ -e "$R" ]; then
+		cat > "$R" <<-'EOF'
+		#!/bin/sh
+		grep -q root=PARTNAME=USRDATA /proc/cmdline || exit 0
+		if resize2fs "$(readlink -f /dev/root)" >/var/log/resize-emmc-root.log 2>&1; then
+			mv /etc/local.d/resize-emmc-root.start /etc/local.d/resize-emmc-root.done
+		fi
+		EOF
+		$BB chmod 755 "$R"
+	fi
+	echo "installed from $SD md5 $RAW_MD5 at uptime $($BB cut -d' ' -f1 /proc/uptime)" \
+		> /newroot/b8k-installed
+	$BB sync
+	$BB umount /newroot
+	echo "=== INSTALL: done, booting the installed system ==="
+}
+
+if [ -n "$ROOTPART" ] && [ -b "$ROOTDEV" ]; then
+	$BB mkdir -p /newroot
+	INSTALLED=
+	$BB mount -t ext4 -o ro "$ROOTDEV" /newroot 2>/dev/null &&
+		[ -e "$MARK" ] && INSTALLED=1
+	$BB umount /newroot 2>/dev/null
+	[ -n "$INSTALLED" ] || auto_install
+fi
 if [ -b "$ROOTDEV" ]; then
 	$BB ln -sf "${ROOTDEV#/dev/}" /dev/root
 	$BB mkdir -p /newroot
