@@ -49,6 +49,20 @@ frank-w BPI-R2 5.x). Критерий: `wlan0`, скан, WPA2 через Networ
 G1. (на железе) Включить домен MFG + клоки, прочитать `EUR_CR_CORE_REVISION`
 (base+0x14) и `EUR_CR_CORE_ID`. Критерий: ревизия 115, регистры читаются.
 
+**G1 ход (2026-09-26, `linux-port/drivers/sgx-probe`):**
+- SPM на MT6589 заперт: без `SPM_POWERON_CONFIG_SET (0x10006000) = 0x0b160001`
+  (`SPM_PROJECT_CODE 0xb16`) записи в `*_PWR_CON` игнорируются → genpd тихо не может
+  включить MFG → `-EPROBE_DEFER` без сообщения. **Надо в mtk-pm-domains для mt6589.**
+- mainline MFG `sram_pdn_bits = BIT(8)`, вендор снимает `0xf << 8` → после включения
+  `MFG_PWR_CON=0x0e0d` (SRAM 9–11 выключены). Исправить на `GENMASK(11,8)`.
+- Питание ядра GPU = MT6320 **VRF18_2** (после загрузки выключен) → нужен `*-supply` в узле gpu.
+- Вендор (`pvr/services4/system/mt6589/sysutils_linux.c`): 4 клока (HYD тоже!),
+  сброс SGX `mfgsys+0xC` 1→0 с CG_SET/CLR, `way_en` infracfg `0x10001200 |= 0x400`.
+- С ключом SPM, SRAM 0xf, VRF18_2, клоками, сбросом, PROT_EN=0 — **чтение
+  `0x13000000+0x20` всё ещё вешает шину** (watchdog-ребут, pstore сохраняет лог).
+  Дальше проверить: родительский PLL `mfg_sel`/`smi_mfg_as_sel` (CLK_CFG_8, вендорский
+  `mtk_sysfreq.c` пишет `0x30000`), порядок rail→MTCMOS, HYD-клок в DTS, SYSRAM bank.
+
 G2. Ядро: openpvrsgx `pvrsrvkm` 1.17.4948957 (Letux, есть A83T sgx544-115
 binding, доведён до 6.3) → 7.1 + MT6589 glue (домен MFG, клоки, IRQ, DVFS нет).
 
