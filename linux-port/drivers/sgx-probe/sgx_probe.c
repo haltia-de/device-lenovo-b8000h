@@ -22,6 +22,7 @@ static int sgx_probe_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct clk_bulk_data *clks;
+	struct clk *hyd = NULL;
 	void __iomem *base;
 	int nclks, ret;
 
@@ -51,6 +52,48 @@ static int sgx_probe_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 		mdelay(200);
+	}
+	/*
+	 * Test: feed mfg_sel from univpll1_d4 (known running) instead of
+	 * mmpll_d5, to rule out a dead MMPLL.
+	 */
+	{
+		struct device_node *tn = of_find_compatible_node(NULL, NULL,
+								 "mediatek,mt6589-topckgen");
+		struct of_phandle_args a = { .np = tn, .args_count = 1 };
+		struct clk *mux, *par;
+
+		a.args[0] = 36;		/* CLK_TOP_MUX_MFG */
+		mux = of_clk_get_from_provider(&a);
+		a.args[0] = 19;		/* CLK_TOP_UNIVPLL1_D4 */
+		par = of_clk_get_from_provider(&a);
+		if (!IS_ERR(mux) && !IS_ERR(par)) {
+			ret = clk_set_parent(mux, par);
+			dev_info(dev, "step1c mfg_sel -> univpll1_d4: %d, %lu Hz\n",
+				 ret, clk_get_rate(mux));
+		} else {
+			dev_info(dev, "step1c clk lookup failed %ld/%ld\n",
+				 PTR_ERR(mux), PTR_ERR(par));
+		}
+		of_node_put(tn);
+
+		/* CPU path to the MFG AXI (infracfg CG) and the 4th MFG gate HYD. */
+		tn = of_find_compatible_node(NULL, NULL, "mediatek,mt6589-infracfg");
+		a.np = tn;
+		a.args[0] = 6;		/* CLK_INFRA_MFGAXI */
+		par = of_clk_get_from_provider(&a);
+		ret = IS_ERR(par) ? PTR_ERR(par) : clk_prepare_enable(par);
+		dev_info(dev, "step1d infra_mfgaxi on: %d\n", ret);
+		of_node_put(tn);
+		tn = of_find_compatible_node(NULL, NULL, "mediatek,mt6589-mfgsys");
+		a.np = tn;
+		a.args[0] = 3;		/* CLK_MFG_HYD */
+		par = of_clk_get_from_provider(&a);
+		ret = IS_ERR(par) ? PTR_ERR(par) : 0;
+		dev_info(dev, "step1e mfg_hyd lookup: %d (enabled after domain on)\n", ret);
+		if (!ret)
+			hyd = par;
+		of_node_put(tn);
 	}
 	dev_info(dev, "step2 %d clocks, runtime resume\n", nclks);
 	mdelay(200);
@@ -83,6 +126,8 @@ static int sgx_probe_probe(struct platform_device *pdev)
 	dev_info(dev, "step3 domain on, enabling clocks\n");
 	mdelay(200);
 	ret = clk_bulk_prepare_enable(nclks, clks);
+	if (!ret && hyd)
+		ret = clk_prepare_enable(hyd);
 	if (ret) {
 		pm_runtime_put(dev);
 		return dev_err_probe(dev, ret, "enable clocks\n");
@@ -99,6 +144,23 @@ static int sgx_probe_probe(struct platform_device *pdev)
 
 		dev_info(dev, "step3b mfg cg=%08x rst=%08x way=%08x\n", readl(mfg),
 			 readl(mfg + 0xc), readl(infra));
+		{
+			/* vendor MFGReset: SPM-level reset/ISO pulse with way_en off */
+			void __iomem *spm = ioremap(0x10006000, 0x1000);
+			u32 v;
+
+			writel(readl(infra) & ~0x400, infra);
+			v = (readl(spm + 0x214) & ~0x1) | 0x10;
+			writel(v, spm + 0x214);			/* clk off, assert reset */
+			writel(readl(spm + 0x214) | 0x2, spm + 0x214);	/* ISO on */
+			udelay(1);
+			writel(readl(spm + 0x214) & ~0x2, spm + 0x214);	/* ISO off */
+			writel(readl(spm + 0x214) & ~0x10, spm + 0x214);	/* clk on */
+			writel(readl(spm + 0x214) | 0x1, spm + 0x214);	/* release reset */
+			udelay(1);
+			dev_info(dev, "step3b2 MFG_PWR_CON=%08x\n", readl(spm + 0x214));
+			iounmap(spm);
+		}
 		writel(0x1, mfg + 0xc);		/* assert SGX544 reset */
 		writel(0xf, mfg + 0x8);		/* MFG clocks on (CG_CLR) */
 		udelay(10);

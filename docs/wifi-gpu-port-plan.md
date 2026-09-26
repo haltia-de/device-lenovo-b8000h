@@ -63,6 +63,13 @@ G1. (на железе) Включить домен MFG + клоки, прочи
   Дальше проверить: родительский PLL `mfg_sel`/`smi_mfg_as_sel` (CLK_CFG_8, вендорский
   `mtk_sysfreq.c` пишет `0x30000`), порядок rail→MTCMOS, HYD-клок в DTS, SYSRAM bank.
 
+- 13:30–13:55 исключено: MMPLL (mfg_sel на univpll1_d4 — висит), шлюз `infra_mfgaxi`
+  и клок HYD (включены — висит), питание (MTCMOS подтверждается без VRF18_2 → источник
+  VCORE, как у вендорского `test_spm_gpu_power_on`), дословный вендорский MFGReset
+  (SPM RST/ISO/CLK_DIS + mfgsys reset + way_en) — висит на первом `readl(0x13000020)`.
+  Следующие гипотезы: DEVAPC (доступ к MFG из non-secure), порядок относительно
+  SMI/larb, чтение другого смещения (0x0, 0x14) и проверка через bus-timeout, если он есть.
+
 G2. Ядро: openpvrsgx `pvrsrvkm` 1.17.4948957 (Letux, есть A83T sgx544-115
 binding, доведён до 6.3) → 7.1 + MT6589 glue (домен MFG, клоки, IRQ, DVFS нет).
 
