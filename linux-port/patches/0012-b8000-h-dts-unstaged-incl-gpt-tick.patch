@@ -1,9 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 new file mode 100644
-index 000000000..917e8e0b0
+index 000000000..62cbbedc5
 --- /dev/null
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,224 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Lenovo YOGA Tablet 10 B8000-H (60047 / 3G data)
@@ -218,4 +218,13 @@ index 000000000..917e8e0b0
 + */
 +&{/timer} {
 +	status = "disabled";
++};
++
++/*
++ * Vendor DCT (lenovo89_tb_x10_jb2 cust_eint.h): CUST_EINT_MT6320_PMIC_NUM 3,
++ * level, active high, on the dedicated EINT3 pad (GPIO37). EINT43 from
++ * mt6320.dtsi is pad 9 = eMMC DAT1 on this SoC.
++ */
++&pmic {
++	interrupts = <3 IRQ_TYPE_LEVEL_HIGH>;
 +};

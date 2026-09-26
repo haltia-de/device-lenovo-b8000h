@@ -183,7 +183,9 @@ if [ "$UI_PROFILE" = phosh ]; then
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
 export HOME=/root XDG_RUNTIME_DIR=/run/user/0
-export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
+# simpledrm names the panel "Unknown-1"; fake-builtin makes phoc map the
+# touchscreen to it so touch follows screen rotation.
+export PHOC_DEBUG=fake-builtin WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
 export XDG_SESSION_DESKTOP=phosh LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
