@@ -1,10 +1,24 @@
-MT6628 DT example for Lenovo B8000-H (documentation only; not applied to DTS)
-===========================================================================
+MT6628 DT example for Lenovo B8000-H
+====================================
 
-The GPIO numbers below are facts from the Lenovo vendor DCT.  Pin-control
-groups and the provider for the MT6320 RTC 32 kHz output still have to match
-the final B8000-H DTS.  GPIO_ACTIVE_HIGH describes the electrical level of
-PMU_EN and RST (RST high means run).
+The GPIO numbers below are facts from the Lenovo vendor DCT. GPIO_ACTIVE_HIGH
+describes the electrical level of PMU_EN and RST (RST high means run). The
+MT6320 RTC 32 kHz output is enabled by the board PMIC setup and has no CCF
+provider yet, so the optional clocks property is intentionally absent.
+
+&pio {
+	mt6628_uart3_pins: mt6628-uart3-pins {
+		pins-rx {
+			pinmux = <MT6589_GPIO219__FUNC_URXD3>;
+			input-enable;
+			bias-pull-up;
+		};
+
+		pins-tx {
+			pinmux = <MT6589_GPIO220__FUNC_UTXD3>;
+		};
+	};
+};
 
 &uart3 {
 	status = "okay";
@@ -13,7 +27,6 @@ PMU_EN and RST (RST high means run).
 
 	mt6628 {
 		compatible = "mediatek,mt6628-wmt";
-		current-speed = <115200>;
 
 		pmu-en-gpios = <&pio 14 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&pio 225 GPIO_ACTIVE_HIGH>;
@@ -22,26 +35,12 @@ PMU_EN and RST (RST high means run).
 		interrupt-parent = <&pio>;
 		interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
 
-		clocks = <&mt6320_rtc_32k>;
-		clock-names = "rtc32k";
-
-		mediatek,patch-firmware = "mt6628_patch_e2_0_hdr.bin";
-		mediatek,ldo-stable-ms = <100>;
+		mediatek,mmc-host = <&mmc3>;
+		mediatek,operational-speed = <2000000>;
 		mediatek,rtc-stable-ms = <100>;
 		mediatek,off-stable-ms = <10>;
 		mediatek,reset-stable-ms = <30>;
-		mediatek,on-stable-ms = <30>;
-	};
-};
-
-/ {
-	mt6628_pwrseq: mt6628-pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		/* A real DTS must not duplicate ownership of GPIO14/GPIO225 between
-		 * pwrseq and wmt.  Prefer WMT ownership; use post-power-on-delay-ms
-		 * here only if the host cannot enumerate after WMT turns power on.
-		 */
-		clocks = <&mt6320_rtc_32k>;
+		mediatek,on-stable-ms = <100>;
 	};
 };
 
@@ -52,7 +51,8 @@ PMU_EN and RST (RST high means run).
 	non-removable;
 	cap-sdio-irq;
 	keep-power-in-suspend;
-	mmc-pwrseq = <&mt6628_pwrseq>;
+	/delete-property/ vmmc-supply;
+	/delete-property/ mmc-pwrseq;
 
 	/* Do not copy the blade.dtsi vemc supplies: they belong to eMMC. */
 	mt6628_wifi: wifi@1 {
@@ -63,4 +63,3 @@ PMU_EN and RST (RST high means run).
 		 */
 	};
 };
-
