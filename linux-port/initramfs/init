@@ -48,7 +48,7 @@ fi
 
 # Boot the root filesystem selected by the DTB command line.  The SD rescue
 # image uses mmcblk0p1; the future internal-storage image uses the existing
-# USRDATA logical partition (mmcblk0p8).  If no root= argument is present,
+# USRDATA logical partition (mmcblk0p20).  If no root= argument is present,
 # retain the proven SD default.  Without a usable root stay in this initramfs
 # with the USB console below.
 ROOTDEV=/dev/mmcblk0p1

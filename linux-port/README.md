@@ -34,11 +34,12 @@ Git. The first-boot image is `b8000h-linux-firstboot-safe.img`.
 
 - `DTB_VARIANT=sd`: proven rescue/development boot; internal eMMC is disabled,
   root is `/dev/mmcblk0p1` on microSD.
-- `DTB_VARIANT=install IMAGE_SUFFIX=-install`: exposes eMMC as `mmcblk0` and
-  boots the SD root as `mmcblk1p1`. Use it only to validate the live geometry
+- `DTB_VARIANT=install IMAGE_SUFFIX=-install`: exposes microSD as `mmcblk0` and
+  eMMC as `mmcblk1`, and boots the SD root as `mmcblk0p1`. Use it only to
+  validate the live geometry
   and run `install-root-to-emmc.sh` after explicit confirmation.
 - `DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc`: final boot profile; root is the
-  existing USRDATA logical partition `/dev/mmcblk0p8`.
+  existing USRDATA logical partition `/dev/mmcblk0p20`.
 - `UI_PROFILE=labwc` builds the known-good lightweight desktop.
 - `UI_PROFILE=phosh` builds the target Phosh/Phoc mobile desktop with
   Squeekboard, NetworkManager and GNOME Settings.
@@ -50,10 +51,13 @@ wsl.exe -d B8000Build -- env UI_PROFILE=phosh sh "/mnt/c/Users/<user>/src/lenovo
 wsl.exe -d B8000Build -- env DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-safe-image.sh"
 ```
 
-The installer formats only `/dev/mmcblk0p8`, after checking the installer DTB,
-the SD root device and a 12–15 GB target size. It never writes BOOT, RECOVERY,
-NVRAM or the partition table. The final BOOT image is written separately only
-after the copied eMMC root has been verified.
+The installer formats only `/dev/mmcblk1p20`, after checking the installer DTB,
+the SD root device and the exact live size (27589888 sectors). Alternatively,
+`../tools/stream-emmc-acm.ps1` streams the verified gzip-compressed ext4 image
+through the recovery ACM shell, applies the same exact target/size guard and
+checks a read-back SHA-256. Neither path writes BOOT, RECOVERY, NVRAM or the
+partition table. The final BOOT image is written separately only after the eMMC
+root has been verified.
 
 ## Verified build
 

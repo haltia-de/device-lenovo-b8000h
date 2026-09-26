@@ -203,6 +203,19 @@ EOF
 fi
 chmod +x "$ROOT/etc/local.d/desktop.start"
 
+# A compact Android-sparse image is written to only the beginning of the
+# 13.16 GiB USRDATA partition. Grow ext4 online once after the eMMC boot.
+cat > "$ROOT/etc/local.d/resize-emmc-root.start" <<'EOF'
+#!/bin/sh
+rootdev=$(awk '$2 == "/" { print $1; exit }' /proc/mounts)
+if [ "$rootdev" = /dev/mmcblk0p20 ]; then
+	if resize2fs "$rootdev" >/var/log/resize-emmc-root.log 2>&1; then
+		mv /etc/local.d/resize-emmc-root.start /etc/local.d/resize-emmc-root.done
+	fi
+fi
+EOF
+chmod +x "$ROOT/etc/local.d/resize-emmc-root.start"
+
 # Make the SD image: one MBR partition, ext4, label B8000ROOT.
 rm -f "$IMG"
 truncate -s ${IMG_MB}M "$IMG"

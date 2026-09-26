@@ -2,12 +2,13 @@
 # Copy the running Phosh SD root to the existing B8000-H USRDATA partition.
 # This intentionally does not touch BOOT, RECOVERY, NVRAM, the partition table,
 # or any other eMMC region.  Run only from the dedicated install DTB, where the
-# eMMC is mmcblk0 and the SD root is mmcblk1p1.
+# Live probing on B8000-H shows microSD as mmcblk0 and eMMC as mmcblk1
+# while both controllers are enabled by the installer DTB.
 set -eu
 
 TOKEN=--erase-userdata-and-install
-TARGET=/dev/mmcblk0p8
-SOURCE=/dev/mmcblk1p1
+TARGET=/dev/mmcblk1p20
+SOURCE=/dev/mmcblk0p1
 MOUNT=/mnt/b8000-emmc-root
 
 if [ "${1:-}" != "$TOKEN" ]; then
@@ -30,10 +31,10 @@ root_source=$(awk '$2 == "/" { print $1; exit }' /proc/mounts)
 
 # The factory USRDATA partition is about 13.1 GiB.  Reject a different layout
 # so a changed device number cannot erase a small identity/boot partition.
-sectors=$(cat /sys/class/block/mmcblk0p8/size)
+sectors=$(cat /sys/class/block/mmcblk1p20/size)
 case "$sectors" in ''|*[!0-9]*) echo "Invalid target size" >&2; exit 6;; esac
 bytes=$((sectors * 512))
-[ "$bytes" -ge 12000000000 ] && [ "$bytes" -le 15000000000 ] || {
+[ "$sectors" = 27589888 ] && [ "$bytes" = 14126022656 ] || {
 	echo "Unexpected $TARGET size: $bytes bytes" >&2
 	exit 7
 }

@@ -25,7 +25,7 @@ index 000000000..05e625432
 +	model = "Lenovo YOGA Tablet 10 B8000-H (SD to eMMC installer)";
 +
 +	chosen {
-+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=/dev/mmcblk1p1";
++		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=/dev/mmcblk0p1";
 +	};
 +};
 +
