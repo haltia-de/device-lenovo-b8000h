@@ -2,7 +2,9 @@
 
 BB=/bin/busybox
 
-$BB mkdir -p /dev /proc /sys /run /tmp
+$BB mkdir -p /dev /proc /sys /run /tmp /sbin /usr/bin /usr/sbin
+$BB --install -s
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 $BB mount -t devtmpfs devtmpfs /dev
 exec >/dev/console 2>&1
 

@@ -1,0 +1,32 @@
+diff --git a/drivers/pinctrl/mediatek/pinctrl-mt6589.c b/drivers/pinctrl/mediatek/pinctrl-mt6589.c
+index 3f318dcd4..98ad8c5b6 100644
+--- a/drivers/pinctrl/mediatek/pinctrl-mt6589.c
++++ b/drivers/pinctrl/mediatek/pinctrl-mt6589.c
+@@ -61,10 +61,11 @@
+ 	PIN_FIELD_CALC(_pin_s, _pin_e, _base, _offset, 0x0, _bit, 3, 32, 1)
+ 
+ static const struct mtk_pin_field_calc mt6589_pin_mode_range[] = {
+-	PIN_FIELD_CALC(0, 43, 0, 0x0c00, 0x10, 0, 3, 16, 0),
++	/* 5 pins of 3 bits per 16-bit GPIO_MODE register, bit 15 unused */
++	PIN_FIELD_CALC(0, 43, 0, 0x0c00, 0x10, 0, 3, 15, 0),
+ 	PIN_FIELD_CALC(44, 46, 0, 0x0980, 0x10, 0, 4, 16, 0),
+ 	PIN_FIELD_CALC(47, 49, 0, 0x09a0, 0x10, 0, 4, 16, 0),
+-	PIN_FIELD_CALC(50, 231, 0, 0x0ca0, 0x10, 0, 3, 16, 0),
++	PIN_FIELD_CALC(50, 231, 0, 0x0ca0, 0x10, 0, 3, 15, 0),
+ };
+ 
+ static const struct mtk_pin_field_calc mt6589_pin_dir_range[] = {
+@@ -72,11 +73,11 @@ static const struct mtk_pin_field_calc mt6589_pin_dir_range[] = {
+ };
+ 
+ static const struct mtk_pin_field_calc mt6589_pin_di_range[] = {
+-	PIN_FIELD_CALC(0, 231, 0, 0x0800, 0x10, 0, 1, 16, 0),
++	PIN_FIELD_CALC(0, 231, 0, 0x0a00, 0x10, 0, 1, 16, 0),	/* GPIO_DIN */
+ };
+ 
+ static const struct mtk_pin_field_calc mt6589_pin_do_range[] = {
+-	PIN_FIELD_CALC(0, 231, 0, 0x0a00, 0x10, 0, 1, 16, 0),
++	PIN_FIELD_CALC(0, 231, 0, 0x0800, 0x10, 0, 1, 16, 0),	/* GPIO_DOUT */
+ };
+ 
+ static const struct mtk_pin_field_calc mt6589_pin_sr_range[] = {
