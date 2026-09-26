@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 /*
- * microSD -> eMMC installer profile. Stays in the initramfs (no root), sees
+ * Universal BOOT profile: boots the eMMC USRDATA root once installed
+ * (/b8k-installed), otherwise stays in the initramfs as microSD installer. Sees
  * eMMC and microSD. Only USRDATA and BOOTIMG are writable; the installer
  * finds devices by partition name / on-card signature, not by mmcblkN number.
  */
@@ -11,7 +12,7 @@
 	model = "Lenovo YOGA Tablet 10 B8000-H (microSD installer)";
 
 	chosen {
-		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=/dev/b8k-installer-no-root";
+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=PARTNAME=USRDATA";
 	};
 };
 

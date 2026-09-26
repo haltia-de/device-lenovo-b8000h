@@ -52,24 +52,42 @@ fi
 # retain the proven SD default.  Without a usable root stay in this initramfs
 # with the USB console below.
 ROOTDEV=/dev/mmcblk0p1
+ROOTPART=
 for arg in $($BB cat /proc/cmdline); do
 	case "$arg" in
 		# LK appends its own "root=/dev/ram" after the DTB bootargs; ignore it.
 		root=/dev/ram*) ;;
 		root=/dev/*) ROOTDEV=${arg#root=} ;;
+		# root=PARTNAME=USRDATA: find the partition by name, whatever mmcblkN
+		# the eMMC got when the microSD slot is enabled too.
+		root=PARTNAME=*) ROOTPART=${arg#root=PARTNAME=} ;;
 	esac
 done
-echo "Waiting up to 20 s for root filesystem ($ROOTDEV)..."
+find_part() {
+	for u in /sys/class/block/*/uevent; do
+		if $BB grep -qx "PARTNAME=$1" "$u"; then
+			echo "/dev/$($BB sed -n 's/^DEVNAME=//p' "$u")"
+			return
+		fi
+	done
+}
+echo "Waiting up to 20 s for root filesystem (${ROOTPART:+PARTNAME=}${ROOTPART:-$ROOTDEV})..."
 i=0
-while [ ! -b "$ROOTDEV" ] && [ $i -lt 20 ]; do
+while [ $i -lt 20 ]; do
+	[ -n "$ROOTPART" ] && ROOTDEV=$(find_part "$ROOTPART")
+	[ -b "$ROOTDEV" ] && break
 	$BB sleep 1
 	i=$((i + 1))
 done
+# A partition found by name is only booted once the microSD installer has
+# verified it and left /b8k-installed; a half-written USRDATA never boots.
+MARK=
+[ -n "$ROOTPART" ] && MARK=/newroot/b8k-installed
 if [ -b "$ROOTDEV" ]; then
 	$BB ln -sf "${ROOTDEV#/dev/}" /dev/root
 	$BB mkdir -p /newroot
 	if $BB mount -t ext4 -o rw,noatime "$ROOTDEV" /newroot &&
-	   [ -x /newroot/sbin/init ]; then
+	   [ -x /newroot/sbin/init ] && { [ -z "$MARK" ] || [ -e "$MARK" ]; }; then
 		echo "Switching to root filesystem on $ROOTDEV"
 		for m in /dev /proc /sys; do
 			$BB mkdir -p "/newroot$m"
