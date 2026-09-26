@@ -1,0 +1,27 @@
+diff --git a/drivers/clocksource/arm_arch_timer.c b/drivers/clocksource/arm_arch_timer.c
+index 90aeff44a..0b6259466 100644
+--- a/drivers/clocksource/arm_arch_timer.c
++++ b/drivers/clocksource/arm_arch_timer.c
+@@ -19,6 +19,7 @@
+ #include <linux/clocksource_ids.h>
+ #include <linux/interrupt.h>
+ #include <linux/kstrtox.h>
++#include <linux/of.h>
+ #include <linux/of_irq.h>
+ #include <linux/of_address.h>
+ #include <linux/io.h>
+@@ -83,6 +84,14 @@ static int arch_counter_get_width(void)
+ {
+ 	u64 min_cycles = MIN_ROLLOVER_SECS * arch_timer_rate;
+ 
++	/*
++	 * MT6589/MT8389: only the low 32 bits of the system counter count.
++	 * At 13 MHz it wraps after 2^32 / 13e6 = 330 s; treating it as 56-bit
++	 * freezes timekeeping at that point and the watchdog resets the SoC.
++	 */
++	if (of_machine_is_compatible("mediatek,mt6589"))
++		return 32;
++
+ 	/* guarantee the returned width is within the valid range */
+ 	return clamp_val(ilog2(min_cycles - 1) + 1, 56, 64);
+ }
