@@ -9,7 +9,8 @@ REPO="/mnt/c/Users/<user>/src/lenovo-b8000h-linux"
 K=/opt/b8000h/linux
 OUT=/opt/b8000h/out
 DST="$REPO/artifacts/linux-port"
-DTB=arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h-safe.dtb
+# DTB_VARIANT=safe (no eMMC, no SD) or sd (microSD only, eMMC still off).
+DTB=arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h-${DTB_VARIANT:-safe}.dtb
 
 mkdir -p "$OUT" "$DST"
 cd "$K"

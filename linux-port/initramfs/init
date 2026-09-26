@@ -46,6 +46,32 @@ else
 	echo "USB gadget configfs is unavailable"
 fi
 
+# Boot the microSD root filesystem when present. Without a card (or when it
+# cannot be mounted) stay in this initramfs with the USB console below.
+# Internal eMMC is disabled in the DTB, so mmcblk0 can only be the microSD.
+echo "Waiting up to 20 s for microSD root (mmcblk0p1)..."
+i=0
+while [ ! -b /dev/mmcblk0p1 ] && [ $i -lt 20 ]; do
+	$BB sleep 1
+	i=$((i + 1))
+done
+if [ -b /dev/mmcblk0p1 ]; then
+	$BB mkdir -p /newroot
+	if $BB mount -t ext4 -o rw,noatime /dev/mmcblk0p1 /newroot &&
+	   [ -x /newroot/sbin/init ]; then
+		echo "Switching to microSD root filesystem"
+		for m in /dev /proc /sys; do
+			$BB mkdir -p "/newroot$m"
+			$BB mount --move "$m" "/newroot$m"
+		done
+		exec $BB switch_root /newroot /sbin/init
+	fi
+	echo "microSD root not usable, staying in initramfs"
+	$BB umount /newroot 2>/dev/null
+else
+	echo "No microSD root found, staying in initramfs"
+fi
+
 (
 	while [ ! -e /dev/ttyGS0 ]; do
 		$BB sleep 1
