@@ -51,3 +51,9 @@ if 'mt6628_msdc3_pins' not in s:
     open(d,'w').write(s); print('dts fixed')
 if '#include <dt-bindings/pinctrl/mt65xx.h>' not in s:
     print('NEED mt65xx.h include')
+p='/opt/b8000h/linux-drm/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts'
+s=open(p).read()
+old='\tpinctrl-names = "default";\n\tpinctrl-0 = <&mt6628_msdc3_pins>;\n'
+new='\t/* mtk-sd requires both states */\n\tpinctrl-names = "default", "state_uhs";\n\tpinctrl-0 = <&mt6628_msdc3_pins>;\n\tpinctrl-1 = <&mt6628_msdc3_pins>;\n'
+assert old in s
+s=s.replace(old,new,1); open(p,'w').write(s); print('ok')
