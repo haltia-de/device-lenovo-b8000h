@@ -16,7 +16,10 @@ case "$UI_PROFILE" in
 	phosh) UI_PACKAGES="phosh phoc squeekboard gnome-session gnome-control-center foot pcmanfm dbus elogind polkit upower networkmanager networkmanager-openrc
 		gnome-calculator gnome-text-editor gnome-clocks gnome-console loupe epiphany phosh-wallpapers iio-sensor-proxy iio-sensor-proxy-openrc
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
-		firefox mobile-config-firefox" ;;
+		firefox mobile-config-firefox
+		nautilus gnome-software gnome-software-plugin-apk gnome-weather gnome-maps gnome-calendar
+		gnome-contacts showtime totem decibels gnome-music evince gnome-disk-utility baobab
+		file-roller gnome-font-viewer gnome-characters snapshot" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
