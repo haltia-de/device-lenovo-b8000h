@@ -141,3 +141,19 @@ wlan_mt6628.ko (порт gen2, коммит fe555de + незакоммиченн
 [   36.930121] 0 == u4WlanDevNum
 [   36.930143] wlan_mt6628 mmc2:0001:1: probe with driver wlan_mt6628 failed with error -1
 ```
+
+## Итерация 2026-09-27 ~17:00 (ядро #19, rmmod/insmod без reboot)
+Исключено на железе:
+- WMT_FUNC_CTRL(Wi-Fi): вендор его НЕ шлёт (только BT/FM/GPS). В wmt.ko выключен по умолчанию
+  (параметр wmt_wifi_func_ctrl). Без него карта энумерируется так же, результат тот же.
+- coex ant mode=1 и SDIO drive 0x00077777 (из стокового mt6628_ant_m1.cfg) — выставлены как у вендора.
+- MSDC_CFG.CKPDN (постоянный SDIO CLK) уже =1 во время работы (0x293) — не причина.
+- Буферы kmalloc (pvIoBuffer), не vmalloc — DMA-safe. in_interrupt — статическая 0, claim_host выполняется.
+- wlanAdapterStart/config.h идентичны вендору (кроме выключенных фич). co-clock выключен (нет в WMT.cfg).
+- MT6320 не имеет отдельного VCN33_WIFI — питание Wi-Fi через PMU_EN.
+Новое: после ant/drive изменений ожидание ACK завершается «тихо» через ~60 мс (нет 'response timeout',
+нет 'FWDL resp', нет ошибок MSDC). Кандидаты: kalIsCardRemoved()/fgIsBusAccessFailed в
+wlanImageSectionDownloadStatus или HAL_MCR_RD. fgIsBusAccessFailed — static глобальный, не
+сбрасывается между probe (надо сбрасывать в probe). Следующий шаг: логировать оба флага и каждую
+ветку return в nicRxWaitResponse/wlanImageSectionDownloadStatus; попробовать ant mode 0 + drive 0x77777
+и наоборот, чтобы понять, что из двух изменило поведение.
