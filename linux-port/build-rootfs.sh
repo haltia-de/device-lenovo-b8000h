@@ -226,6 +226,13 @@ picture-uri-dark='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
+
+	# The bma255 is mounted rotated (vendor cust_acc direction=3); iio-sensor-
+	# proxy needs this for Phosh auto-rotation (verified on the tablet).
+	mkdir -p "$ROOT/etc/udev/rules.d"
+	cat > "$ROOT/etc/udev/rules.d/61-b8000h-accel.rules" <<'EOF'
+SUBSYSTEM=="iio", ATTR{name}=="bma255", ENV{ACCEL_MOUNT_MATRIX}="0, -1, 0; 1, 0, 0; 0, 0, 1"
+EOF
 else
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
