@@ -501,6 +501,68 @@ mtk_sdio_probe(MTK_WCN_HIF_SDIO_CLTCTX cltCtx, const MTK_WCN_HIF_SDIO_FUNCINFO *
     return ret;
 }
 #else
+static int
+mtk_sdio_set_card_irq (
+    struct sdio_func *func,
+    bool enable
+    )
+{
+    unsigned int saved_quirks;
+    unsigned char ioex, iorx, ien, intx, new_ien;
+    int ret = 0;
+
+    /*
+     * The MT6589 vendor HIF calls sdio_claim_irq() before invoking the WLAN
+     * client probe.  Besides wiring the host-side EINT9 handler, that helper
+     * enables the function and master interrupt bits in CCCR IENx.  We cannot
+     * claim the upstream DAT1 IRQ until firmware is running, but the card-side
+     * state must still match the vendor sequence during the polling loader.
+     */
+    sdio_claim_host(func);
+
+    ioex = sdio_f0_readb(func, SDIO_CCCR_IOEx, &ret);
+    if (ret)
+        goto out;
+    iorx = sdio_f0_readb(func, SDIO_CCCR_IORx, &ret);
+    if (ret)
+        goto out;
+    ien = sdio_f0_readb(func, SDIO_CCCR_IENx, &ret);
+    if (ret)
+        goto out;
+    intx = sdio_f0_readb(func, SDIO_CCCR_INTx, &ret);
+    if (ret)
+        goto out;
+
+    if (enable)
+        new_ien = ien | BIT(func->num) | BIT(0);
+    else {
+        new_ien = ien & ~BIT(func->num);
+        if (!(new_ien & 0xfe))
+            new_ien = 0;
+    }
+
+    /* sdio_f0_writeb() deliberately needs this quirk for standard CCCR. */
+    saved_quirks = func->card->quirks;
+    func->card->quirks |= MMC_QUIRK_LENIENT_FN0;
+    sdio_f0_writeb(func, new_ien, SDIO_CCCR_IENx, &ret);
+    func->card->quirks = saved_quirks;
+    if (ret)
+        goto out;
+
+    new_ien = sdio_f0_readb(func, SDIO_CCCR_IENx, &ret);
+
+out:
+    sdio_release_host(func);
+    if (ret)
+        dev_err(&func->dev, "CCCR interrupt setup failed: %d\n", ret);
+    else
+        dev_info(&func->dev,
+                "CCCR before FWDL: IOEx=%#x IORx=%#x IENx=%#x INTx=%#x -> IENx=%#x\n",
+                ioex, iorx, ien, intx, new_ien);
+
+    return ret;
+}
+
 static int mtk_sdio_probe (
     struct sdio_func *func,
     const struct sdio_device_id *id
@@ -543,6 +605,10 @@ static int mtk_sdio_probe (
     }
     dev_info(&func->dev, "HIF init: SDIO function enabled\n");
 
+    ret = mtk_sdio_set_card_irq(func, true);
+    if (ret)
+        goto disable_func;
+
     if (pfWlanProbe((PVOID)func) != WLAN_STATUS_SUCCESS) {
         //printk(KERN_WARNING DRV_NAME"pfWlanProbe fail!call pfWlanRemove()\n");
         pfWlanRemove();
@@ -554,6 +620,14 @@ static int mtk_sdio_probe (
     /* Debug pins initialization */
     debug_gpio_init();
 #endif
+    }
+
+    if (ret) {
+        mtk_sdio_set_card_irq(func, false);
+disable_func:
+        sdio_claim_host(func);
+        sdio_disable_func(func);
+        sdio_release_host(func);
     }
 
 out:

@@ -85,6 +85,10 @@ struct mt6628_wmt {
 static DEFINE_MUTEX(mt6628_global_lock);
 static struct mt6628_wmt *mt6628_global;
 
+static bool wmt_wifi_func_ctrl;
+module_param(wmt_wifi_func_ctrl, bool, 0644);
+MODULE_PARM_DESC(wmt_wifi_func_ctrl, "send WMT_FUNC_CTRL(Wi-Fi) (vendor does not)");
+
 static const u8 wmt_query_baud[] = { 0x01, 0x04, 0x01, 0x00, 0x02 };
 static const u8 wmt_query_stp[] = { 0x01, 0x04, 0x01, 0x00, 0x04 };
 static const u8 wmt_reset[] = { 0x01, 0x07, 0x01, 0x00, 0x04 };
@@ -97,11 +101,13 @@ static const u8 wmt_set_stp_evt[] = { 0x02, 0x04, 0x02, 0x00, 0x00, 0x03 };
 static const u8 wmt_query_stp_full_evt[] = {
 	0x02, 0x04, 0x06, 0x00, 0x00, 0x04, 0xdf, 0x0e, 0x68, 0x01
 };
-static const u8 wmt_coex[] = { 0x01, 0x10, 0x02, 0x00, 0x01, 0x00 };
+/* byte 5 = coex_wmt_ant_mode (stock mt6628_ant_m1.cfg: 1) */
+static const u8 wmt_coex[] = { 0x01, 0x10, 0x02, 0x00, 0x01, 0x01 };
 static const u8 wmt_coex_evt[] = { 0x02, 0x10, 0x01, 0x00, 0x00 };
 static const u8 wmt_sdio_drive[] = {
 	0x01, 0x08, 0x10, 0x00, 0x01, 0x01, 0x00, 0x01,
-	0x50, 0x00, 0x05, 0x80, 0x44, 0x44, 0x04, 0x00,
+	/* 0x80050050 = sdio_driving_cfg 0x00077777 (stock mt6628_ant_m1.cfg) */
+	0x50, 0x00, 0x05, 0x80, 0x77, 0x77, 0x07, 0x00,
 	0x77, 0x77, 0x07, 0x00
 };
 static const u8 wmt_sdio_drive_evt[] = {
@@ -591,10 +597,17 @@ static int mt6628_chip_init(struct mt6628_wmt *wmt)
 			  wmt_fm_strap_evt, sizeof(wmt_fm_strap_evt));
 	if (ret)
 		return ret;
-	ret = mt6628_xfer(wmt, wifi_on, sizeof(wifi_on),
-			  func_evt, sizeof(func_evt));
-	if (ret)
-		return ret;
+	/*
+	 * The vendor WMT never sends WMT_FUNC_CTRL for Wi-Fi (only BT, FM,
+	 * GPS): Wi-Fi on = SDIO slot on + WLAN driver FW download over SDIO.
+	 * Sending it seems to leave the Wi-Fi CPU not accepting the host FW.
+	 */
+	if (wmt_wifi_func_ctrl) {
+		ret = mt6628_xfer(wmt, wifi_on, sizeof(wifi_on),
+				  func_evt, sizeof(func_evt));
+		if (ret)
+			return ret;
+	}
 
 	wmt->initialized = true;
 	dev_info(&wmt->serdev->dev,

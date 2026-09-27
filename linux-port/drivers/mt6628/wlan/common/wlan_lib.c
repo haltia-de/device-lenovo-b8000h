@@ -3028,7 +3028,8 @@ wlanImageSectionDownload (
     static BOOLEAN fgFirstScatter = TRUE;
     BOOLEAN fgTraceScatter = FALSE;
     UINT_32 u4Wcir = 0, u4Whlpcr = 0, u4Whier = 0;
-    UINT_32 u4Whisr = 0, u4Wrplr = 0, u4Wtsr0 = 0, u4Wtsr1 = 0;
+    UINT_32 u4Whisr = 0, u4Wasr = 0, u4Wrplr = 0;
+    UINT_32 u4Wtsr0 = 0, u4Wtsr1 = 0;
 
     ASSERT(prAdapter);
     ASSERT(pucImgSecBuf);
@@ -3051,6 +3052,7 @@ wlanImageSectionDownload (
 
     prCmdInfo->u2InfoBufLen =
         sizeof(INIT_HIF_TX_HEADER_T) + sizeof(INIT_CMD_DOWNLOAD_BUF) + (UINT_16)u4ImgSecSize;
+    kalMemZero(prCmdInfo->pucInfoBuffer, prCmdInfo->u2InfoBufLen);
 
     // 2. Use TC0's resource to download image. (only TC0 is allowed)
     ucTC = TC0_INDEX;
@@ -3085,6 +3087,7 @@ wlanImageSectionDownload (
         HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4Whlpcr);
         HAL_MCR_RD(prAdapter, MCR_WHIER, &u4Whier);
         HAL_MCR_RD(prAdapter, MCR_WHISR, &u4Whisr);
+        HAL_MCR_RD(prAdapter, MCR_WASR, &u4Wasr);
         HAL_MCR_RD(prAdapter, MCR_WRPLR, &u4Wrplr);
         HAL_MCR_RD(prAdapter, MCR_WTSR0, &u4Wtsr0);
         HAL_MCR_RD(prAdapter, MCR_WTSR1, &u4Wtsr1);
@@ -3093,8 +3096,8 @@ wlanImageSectionDownload (
                 prInitCmdDownloadBuf->u4CRC32,
                 prInitCmdDownloadBuf->u4DataMode,
                 prCmdInfo->u2InfoBufLen);
-        pr_info("wlan_mt6628: FWDL before TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
-                u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wrplr,
+        pr_info("wlan_mt6628: FWDL before TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WASR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
+                u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wasr, u4Wrplr,
                 u4Wtsr0, u4Wtsr1);
     }
 
@@ -3123,11 +3126,12 @@ wlanImageSectionDownload (
             HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4Whlpcr);
             HAL_MCR_RD(prAdapter, MCR_WHIER, &u4Whier);
             HAL_MCR_RD(prAdapter, MCR_WHISR, &u4Whisr);
+            HAL_MCR_RD(prAdapter, MCR_WASR, &u4Wasr);
             HAL_MCR_RD(prAdapter, MCR_WRPLR, &u4Wrplr);
             HAL_MCR_RD(prAdapter, MCR_WTSR0, &u4Wtsr0);
             HAL_MCR_RD(prAdapter, MCR_WTSR1, &u4Wtsr1);
-            pr_info("wlan_mt6628: FWDL after TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
-                    u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wrplr,
+            pr_info("wlan_mt6628: FWDL after TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WASR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
+                    u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wasr, u4Wrplr,
                     u4Wtsr0, u4Wtsr1);
         }
 
@@ -3368,6 +3372,7 @@ wlanImageSectionDownloadStatus (
                     aucBuffer,
                     sizeof(INIT_HIF_RX_HEADER_T) + sizeof(INIT_EVENT_CMD_RESULT),
                     &u4RxPktLength) != WLAN_STATUS_SUCCESS) {
+            pr_info("wlan_mt6628: FWDL resp: wait failed\n");
             u4Status = WLAN_STATUS_FAILURE;
         }
         else {
