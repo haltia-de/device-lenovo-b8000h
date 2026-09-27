@@ -1,5 +1,62 @@
 ﻿# MT6628 WLAN W3 — первый запуск на железе (2026-09-27)
 
+## W3b: сверка HIF, исправления и тест ядра #18 (2026-09-27)
+
+### Что сверено с вендором
+
+- Direct-SDIO порт повторял логический порядок vendor `mtk_wcn_hif_sdio`:
+  `sdio_enable_func` → block size 512 → claim IRQ → client probe → driver own
+  (`WHLPCR`) → проверка `WCIR` → `WHIER` → FW download в polling mode.
+- Существенное аппаратное отличие: на MT6589 вендорский `sdio_claim_irq()`
+  маршрутизируется через отдельный level-low **EINT9/GPIO128**, а текущий upstream
+  host использует in-band SDIO IRQ/DAT1.
+- Ядро #18 подтвердило исправление DTS: `mmc2` работает в **4-bit**,
+  SD high-speed, 25 МГц (actual 24.375 МГц). Гипотеза о реально однобитной
+  шине для этого BOOT исключена.
+
+### Исправления
+
+- Коммит `5774dbb`: при ошибке probe после `sdio_claim_irq()` вызывается
+  `sdio_release_irq()`. На железе повторный bind дошёл до FW download; ошибки
+  `Set IRQ error` нет, в dmesg есть `probe cleanup: released SDIO IRQ`.
+- `debug` по умолчанию теперь `47` (без TRACE). Явный setter обновляет
+  `aucDebugModule[]`: запись `echo 31 > .../parameters/debug` вернула `rc=0`,
+  чтение вернуло `31` (прежний EPERM устранён).
+- Добавлена однократная диагностика первого scatter: параметры секции,
+  заголовок CMD53, размер/режим, результат `sdio_writesb` и HIF CR.
+- Коммит `c7dd831`: для upstream direct-SDIO claim DAT1 IRQ перенесён после
+  успешного `wlanAdapterStart()`, чтобы FW download оставался polling-only.
+
+### Результат первого теста (модуль из `5774dbb`)
+
+SHA-256: `812fc3533c3fd0207bef09c9199fa9b3aba20fe8aa1a0d7d3460659e93d00caa`.
+
+```text
+FWDL first scatter dst=0x60000 len=2048 seq=1 crc=0xad0947b1 mode=0x80000001 txlen=2072
+FWDL before TX WCIR=0x106628 WHLPCR=0x100 WHIER=0xffffff0f WHISR=0x10 WRPLR=0x0 WTSR0=0x0 WTSR1=0x0
+FWDL first CMD53: port=0x28 requested=2072 transfer=2560 valid=44800 block=512 blocks=5
+FWDL first CMD53 complete: ret=0
+FWDL after TX WCIR=0x106628 WHLPCR=0x100 WHIER=0xffffff0f WHISR=0x0 WRPLR=0x0 WTSR0=0x0 WTSR1=0x0
+response timeout port=0 polls=12035 elapsed=1001 WRPLR=0x0 WCIR=0x106628 WHLPCR=0x100 WHIER=0xffffff0f WHISR=0x0 WTSR0=0x0 WTSR1=0x0
+```
+
+Вывод: SDIO регистры доступны, chip ID верен, driver-own получен, CMD53
+завершён без ошибки, но MT6628 не публикует ACK в `WRPLR`. Native DAT1
+одновременно даёт шторм MSDC3 (20 000 IRQ примерно за 0.2 с).
+
+### Точка остановки
+
+Финальный модуль после `c7dd831` собран против `/opt/b8000h/linux-drm`,
+передан в `/root/wlan_mt6628.ko`; SHA-256
+`9ff0cbad7cf46d4cd921e2597747341baf9719d3875ae9578eb079269892ff92`.
+После разрешённого `sync; reboot` COM10 не появился за 3 минуты. По условию
+аппаратные тесты остановлены; планшету нужна ручная перезагрузка кнопкой.
+Версия с отложенным IRQ ещё **не проверена**.
+
+После возврата COM10: проверить `uname -v` (#18+), загрузить `/root/wmt.ko`,
+затем `/root/wlan_mt6628.ko debug=47`. Сначала сравнить ACK/`WRPLR` и IRQ;
+только при FW ready переходить к `iw dev wlan0 scan` и WPA2.
+
 Состояние: wmt.ko полностью рабочий (патч E2, WIFI ON, SDIO 037a:6628 на 24.4 МГц).
 wlan_mt6628.ko (порт gen2, коммит fe555de + незакоммиченные правки, собирается без ошибок)
 грузится, probe доходит до wlanAdapterStart и падает на первой загрузке прошивки:

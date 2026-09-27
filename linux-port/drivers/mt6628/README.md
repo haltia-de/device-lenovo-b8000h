@@ -38,7 +38,9 @@ empty. Because Kbuild cannot accept the Windows checkout path containing
 spaces as `M=`, the script stages sources in `/opt/b8000h/mt6628-kbuild` and
 copies the two `.ko` files back. Build products are ignored by `.gitignore`.
 
-Verified on 2026-09-26 with clang/LLVM 22: both modules build without warnings.
+Verified again on 2026-09-27 against `/opt/b8000h/linux-drm` with clang/LLVM 22.
+The imported vendor gen2 sources retain pre-existing compiler warnings; the W3b
+HIF/diagnostic changes add none.
 
 After a successful build, inspect metadata with the target tool (or host
 `modinfo` when it understands the ARM module format):
@@ -90,22 +92,28 @@ all UART/MSDC3 messages; do not repeatedly power-cycle or alter fastboot.
 
 ## Current status and hard boundary
 
-W2 is implemented and build-verified but has not yet been run on the tablet.
-The WLAN module is still only a W3 front end: after enumeration it can register
-`wlan0`, but scan/connect return `-EOPNOTSUPP` and TX is dropped because the
-vendor wlan_gen2 firmware loader and NIC command/event engine are not ported.
+W2 is hardware-verified: it loads both E2 patches, enables Wi-Fi and enumerates
+`037a:6628` function 1 at 24.375 MHz on a four-bit SDIO bus. The imported gen2
+WLAN code reaches its first encrypted firmware scatter, but the chip does not
+return its ACK (`WRPLR` remains zero), so `wlan0` is not registered yet.
+
+The direct upstream HIF now releases a claimed SDIO IRQ on probe failure, has a
+writable live `debug` mask, and records the first FW packet and HIF registers.
+Unlike the vendor MT6589 HIF, which routes SDIO IRQ through EINT9/GPIO128, the
+upstream host uses DAT1. The final build therefore defers DAT1 IRQ claim until
+the polling-only firmware download completes; this build is not hardware-tested
+because COM10 did not return within three minutes of its reboot.
 
 Consequently the following remain before hardware acceptance:
 
-1. Hardware-test W2 and confirm that MSDC3 enumerates `037a:6628` after WMT
-   function-on; adjust only from captured UART/dmesg evidence.
-2. Port the GPL wlan_gen2 NIC/mgmt command engine and firmware-section loader,
-   then connect it to the direct `sdio_readsb()`/`sdio_writesb()` transport.
+1. Manually recover the tablet, load the final module from `/root`, and compare
+   first-scatter ACK/IRQ behaviour with `docs/mt6628-wlan-w3-hw-test.md`.
+2. If firmware starts, validate `wlan0`, scan and WPA2 association; otherwise
+   continue from the captured `WCIR/WHLPCR/WHIER/WHISR/WRPLR/WTSR` evidence.
 3. Validate BGF EINT8 polarity/pin mapping and suspend/resume. The MT6320 RTC
    32 kHz output is already enabled but is not represented by a CCF provider.
-4. After W3 is real, verify firmware boot, IRQ polarity, `wlan0`,
-   scan, WPA2 association, suspend/resume and unload/reload.  No such test was
-   performed by this task.
+4. After W3 is real, verify firmware boot, IRQ polarity, `wlan0`, scan, WPA2
+   association and suspend/resume. Module unload is unavailable in this kernel.
 
 The kernel DTS change is exported as patch `0016` and is included in the
 build-verified `install2` BOOT artifact.
