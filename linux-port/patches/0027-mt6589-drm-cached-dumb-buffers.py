@@ -66,3 +66,42 @@ if 'damaged area of non-coherent' not in s:
     assert old in s
     s=s.replace(old,new,1); open(p,'w').write(s)
 print('ok')
+p='/opt/b8000h/linux-drm/drivers/gpu/drm/mediatek/mtk_plane.c'
+s=open(p).read()
+old='''	/* No-op unless the buffer is non-coherent (MT6589). */
+	drm_fb_dma_sync_non_coherent(plane->dev,
+				     drm_atomic_get_old_plane_state(state, plane),
+				     new_state);'''
+new='''	/*
+	 * No-op unless the buffer is non-coherent (MT6589).  FB_DAMAGE_CLIPS
+	 * are relative to the previously shown fb, but a compositor using
+	 * buffer age also repaints older damage into this fb: flush it all
+	 * when the fb changes, only the clips when the same fb is updated.
+	 */
+	old_state = drm_atomic_get_old_plane_state(state, plane);
+	if (!old_state || old_state->fb != new_state->fb)
+		new_state->ignore_damage_clips = true;
+	drm_fb_dma_sync_non_coherent(plane->dev, old_state, new_state);'''
+if 'buffer age also repaints' not in s:
+    assert old in s
+    s=s.replace(old,new,1)
+    s=s.replace('''static void mtk_plane_atomic_update(struct drm_plane *plane,
+				    struct drm_atomic_state *state)
+{
+	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
+									   plane);''','''static void mtk_plane_atomic_update(struct drm_plane *plane,
+				    struct drm_atomic_state *state)
+{
+	struct drm_plane_state *old_state;
+	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
+									   plane);''',1)
+    old2='''	/* Flush the damaged area of non-coherent buffers (MT6589). */
+	drm_fb_dma_sync_non_coherent(plane->dev, plane->state, new_state);'''
+    new2='''	/* Flush non-coherent buffers (MT6589); whole fb if it changed. */
+	if (plane->state->fb != new_state->fb)
+		new_state->ignore_damage_clips = true;
+	drm_fb_dma_sync_non_coherent(plane->dev, plane->state, new_state);'''
+    assert old2 in s
+    s=s.replace(old2,new2,1)
+    open(p,'w').write(s)
+print('ok')
