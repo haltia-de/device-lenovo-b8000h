@@ -145,7 +145,10 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/sdio.h>
-#include <linux/mmc/sdio_func.h> /* sdio_readl(), etc */
+#include <linux/mmc/sdio_func.h>
+#include <linux/sched/task_stack.h>
+#include <linux/slab.h>
+#include <linux/mm.h> /* sdio_readl(), etc */
 #include <linux/mmc/sdio_ids.h>
 #endif
 
@@ -1094,6 +1097,18 @@ kalDevRegWrite (
 * \retval FALSE         operation fail
 */
 /*----------------------------------------------------------------------------*/
+
+/*
+ * Linux 7.x: CONFIG_VMAP_STACK and vmalloc buffers cannot be DMA targets.
+ * The gen2 loader reads INIT responses into on-stack buffers, so the MMC DMA
+ * landed elsewhere and the response looked all-zero.  Bounce such buffers.
+ */
+static bool b8k_dma_unsafe(const void *buf)
+{
+    return object_is_on_stack(buf) || is_vmalloc_addr(buf) ||
+           !virt_addr_valid(buf);
+}
+
 BOOL
 kalDevPortRead (
     IN  P_GLUE_INFO_T   prGlueInfo,
@@ -1143,6 +1158,19 @@ kalDevPortRead (
         bNum++;
     }
 
+    {
+        int xfer = bNum > 0 ? prSdioFunc->cur_blksize * bNum : count;
+
+        if (b8k_dma_unsafe(pucBuf)) {
+            pucDst = kmalloc(xfer, in_interrupt ? GFP_ATOMIC : GFP_KERNEL);
+            if (!pucDst) {
+                if (!in_interrupt)
+                    sdio_release_host(prSdioFunc);
+                return FALSE;
+            }
+        }
+    }
+
     if (bNum > 0) {
         ret = sdio_readsb(prSdioFunc, pucDst, u2Port, prSdioFunc->cur_blksize * bNum);
 
@@ -1157,6 +1185,12 @@ kalDevPortRead (
     }
     else {
         ret = sdio_readsb(prSdioFunc, pucDst, u2Port, count);
+    }
+
+    if (pucDst != pucBuf) {
+        memcpy(pucBuf, pucDst, u2Len);
+        kfree(pucDst);
+        pucDst = pucBuf;
     }
 
     if (!in_interrupt) {

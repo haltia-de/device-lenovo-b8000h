@@ -3297,6 +3297,8 @@ wlanImageQueryStatus(
     do {
         if(kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE
                 || fgIsBusAccessFailed == TRUE) {
+            pr_info("wlan_mt6628: FWDL status: card_removed=%d bus_failed=%d\n",
+                    kalIsCardRemoved(prAdapter->prGlueInfo), fgIsBusAccessFailed);
             u4Status = WLAN_STATUS_FAILURE;
         }
         else if(nicRxWaitResponse(prAdapter,
@@ -3308,6 +3310,7 @@ wlanImageQueryStatus(
         }
         else {
             prInitHifRxHeader = (P_INIT_HIF_RX_HEADER_T) aucBuffer;
+            pr_info("wlan_mt6628: FWDL resp: len=%u %*ph\n", u4RxPktLength, (int)min_t(UINT_32, u4RxPktLength, sizeof(aucBuffer)), aucBuffer);
 
             // EID / SeqNum check
             if(prInitHifRxHeader->rInitWifiEvent.ucEID != INIT_EVENT_ID_PENDING_ERROR) {
@@ -3365,6 +3368,8 @@ wlanImageSectionDownloadStatus (
     do {
         if(kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE
                 || fgIsBusAccessFailed == TRUE) {
+            pr_info("wlan_mt6628: FWDL status: card_removed=%d bus_failed=%d\n",
+                    kalIsCardRemoved(prAdapter->prGlueInfo), fgIsBusAccessFailed);
             u4Status = WLAN_STATUS_FAILURE;
         }
         else if(nicRxWaitResponse(prAdapter,
@@ -3377,6 +3382,7 @@ wlanImageSectionDownloadStatus (
         }
         else {
             prInitHifRxHeader = (P_INIT_HIF_RX_HEADER_T) aucBuffer;
+            pr_info("wlan_mt6628: FWDL resp: len=%u %*ph\n", u4RxPktLength, (int)min_t(UINT_32, u4RxPktLength, sizeof(aucBuffer)), aucBuffer);
 
             // EID / SeqNum check
             if(prInitHifRxHeader->rInitWifiEvent.ucEID != INIT_EVENT_ID_CMD_RESULT) {
