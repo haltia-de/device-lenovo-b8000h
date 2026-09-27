@@ -436,6 +436,8 @@ static int b8k_audio_probe(struct platform_device *pdev)
 	if (!a)
 		return -ENOMEM;
 	a->dev = &pdev->dev;
+	/* Full analog gain; PipeWire/PulseAudio scales in software. */
+	a->volume = ARRAY_SIZE(hp_gain_table) - 1;
 	spin_lock_init(&a->lock);
 	hrtimer_setup(&a->timer, b8k_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 
