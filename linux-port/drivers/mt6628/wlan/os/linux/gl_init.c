@@ -2691,16 +2691,8 @@ wlanProbe(
 
         //prGlueInfo->main_thread = kthread_run(tx_thread, prGlueInfo->prDevHandler, "tx_thread");
 
-        //4 <4> Setup IRQ
+        //4 <4> Remember device slot
         prWlandevInfo = &arWlanDevInfo[i4DevIdx];
-
-        i4Status = glBusSetIrq(prWdev->netdev, NULL, *((P_GLUE_INFO_T *) netdev_priv(prWdev->netdev)));
-
-        if (i4Status != WLAN_STATUS_SUCCESS) {
-            DBGLOG(INIT, ERROR, ("wlanProbe: Set IRQ error\n"));
-            break;
-        }
-        fgIrqSet = TRUE;
 
         prGlueInfo->i4DevIdx = i4DevIdx;
 
@@ -2770,7 +2762,23 @@ bailout:
             break;
         }
 #endif
-	if(TRUE == prAdapter->fgEnable5GBand)
+
+        /*
+         * The vendor MT6589 host routes sdio_claim_irq() through the dedicated
+         * Wi-Fi EINT9 pin.  The upstream host uses in-band DAT1 instead.  Keep
+         * DAT1 disabled while the gen2 loader is explicitly polling for FW
+         * responses; otherwise the level interrupt spins before the service
+         * thread exists.  Claim it after wlanAdapterStart() has completed but
+         * before starting the thread or registering the netdev.
+         */
+        i4Status = glBusSetIrq(prWdev->netdev, NULL, prGlueInfo);
+        if (i4Status != WLAN_STATUS_SUCCESS) {
+            DBGLOG(INIT, ERROR, ("wlanProbe: Set IRQ error\n"));
+            break;
+        }
+        fgIrqSet = TRUE;
+
+        if(TRUE == prAdapter->fgEnable5GBand)
 		prWdev->wiphy->bands[NL80211_BAND_5GHZ] = &mtk_band_5ghz;
 
         prGlueInfo->main_thread = kthread_run(tx_thread, prGlueInfo->prDevHandler, "tx_thread");
