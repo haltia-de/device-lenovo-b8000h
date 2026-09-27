@@ -11,11 +11,11 @@ module_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 case "$module_dir" in
 	*" "*)
 		source_dir=$module_dir
-		module_dir=${MODULE_BUILD_DIR:-/opt/b8000h/mt6628-kbuild}
-		mkdir -p "$module_dir"
-		cp "$source_dir"/Makefile "$source_dir"/*.c \
-			"$source_dir"/*.h "$module_dir"/
-		;;
+	module_dir=${MODULE_BUILD_DIR:-/opt/b8000h/mt6628-kbuild}
+	mkdir -p "$module_dir"
+	find "$module_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+	cp -a "$source_dir"/. "$module_dir"/
+	;;
 esac
 
 test -s "$kernel_dir/Module.symvers" || {
