@@ -200,6 +200,24 @@ EOF
 		> "$ROOT/etc/pam.d/b8k-session"
 	# Built by linux-port/tools-arm/build-b8k-session.sh (armv7 musl, -lpam).
 	install -m 755 /opt/b8000h/tools/b8k-session "$ROOT/usr/local/bin/b8k-session"
+
+	# Russian UI: install the -lang subpackages of everything installed,
+	# then keep only the ru catalogs (the full set is ~50 MB).
+	LANGS=$(for p in $(apk --root "$ROOT" --arch armv7 info 2>/dev/null); do
+		case "$p" in *-lang|*-doc|*-dev) continue ;; esac
+		apk --root "$ROOT" --arch armv7 search -x "$p-lang" 2>/dev/null | grep -q . && echo "$p-lang"
+	done)
+	apk --root "$ROOT" --arch armv7 add $LANGS
+	find "$ROOT/usr/share/locale" -mindepth 1 -maxdepth 1 -type d \
+		! -name 'ru' ! -name 'ru_RU' ! -name 'en*' -exec rm -rf {} +
+	cat > "$ROOT/usr/share/glib-2.0/schemas/90-b8000h.gschema.override" <<'EOF'
+[org.gnome.desktop.input-sources]
+sources=[('xkb', 'us'), ('xkb', 'ru')]
+
+[org.gnome.system.locale]
+region='ru_RU.UTF-8'
+EOF
+	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
 else
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
