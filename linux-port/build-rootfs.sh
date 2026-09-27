@@ -263,6 +263,45 @@ fi
 EOF
 chmod +x "$ROOT/etc/local.d/resize-emmc-root.start"
 
+# BQ24196 input current limit. The bq24190 driver resets the charger to the
+# 500 mA USB default and nothing detects a wall adapter (the vendor kernel did
+# it with MT6320 BC1.2), so with the screen on the battery never charged.
+# VBUS present but no USB host enumerating the gadget for 15 s means a
+# dedicated charger: allow 2 A (VINDPM still backs off on a weak adapter).
+cat > "$ROOT/etc/local.d/b8k-charger.start" <<'EOF'
+#!/bin/sh
+(
+C=/sys/class/power_supply/bq24190-charger
+L=/var/log/b8k-charger.log
+n=0 last=
+while :; do
+	want=
+	if [ "$(cat $C/online 2>/dev/null)" = 1 ]; then
+		host=0 st=
+		for u in /sys/class/udc/*/state; do
+			st="$st$(cat $u 2>/dev/null) "
+			case "$st" in *configured*|*addressed*|*default*|*suspended*) host=1 ;; esac
+		done
+		if [ $host = 1 ]; then
+			n=0 want=500000
+		else
+			n=$((n + 1))
+			[ $n -ge 3 ] && want=2000000
+		fi
+		if [ -n "$want" ] && [ "$(cat $C/input_current_limit)" != $want ]; then
+			echo $want > $C/input_current_limit
+		fi
+		cur="udc=${st% } limit=$(cat $C/input_current_limit)"
+	else
+		n=0 cur=offline
+	fi
+	[ "$cur" != "$last" ] && echo "$(date '+%F %T') $cur" >> $L && last=$cur
+	sleep 5
+done
+) </dev/null >/dev/null 2>&1 &
+EOF
+chmod +x "$ROOT/etc/local.d/b8k-charger.start"
+
 # Make the SD image: one MBR partition, ext4, label B8000ROOT.
 rm -f "$IMG"
 truncate -s ${IMG_MB}M "$IMG"
