@@ -140,6 +140,17 @@ static int ana_update(struct b8k_audio *a, unsigned int reg,
 	return regmap_update_bits(a->pmic, reg, mask, val);
 }
 
+/*
+ * HP output muxes in AUDBUF_CFG0: right [12:9], left [8:5]; 4'b0100 selects
+ * the audio DAC (stock HAL AudioMachineDevice::AnalogSetMux, MUX_AUDIO).
+ * Without it the DAC runs but the HP buffers, which feed the SN2145B, stay
+ * disconnected.
+ */
+#define HP_MUX_MASK		0x1fe0
+static unsigned int hp_mux = 0x0880;
+module_param(hp_mux, uint, 0644);
+MODULE_PARM_DESC(hp_mux, "AUDBUF_CFG0 HP mux bits (0x0880 = audio DAC)");
+
 /* Values used by the stock HAL for the headset DAC path used by speaker. */
 static const u16 hp_gain_table[] = {
 	0x0f9f, 0x0e0e, 0x0d0d, 0x0c0c, 0x0909, 0x0606, 0x0303, 0x0000,
@@ -191,6 +202,7 @@ static int b8k_analog_on(struct b8k_audio *a)
 	ana_write(a, AUDDAC_CON0, 0x000f);
 	usleep_range(1000, 1500);
 	ana_update(a, AUDBUF_CFG0, 0x0006, 0x0007);
+	ana_update(a, AUDBUF_CFG0, hp_mux & HP_MUX_MASK, HP_MUX_MASK);
 	ana_update(a, AFUNC_AUD_CON2, 0x0000, 0x0080);
 
 	gpiod_set_value(a->speaker_enable, 1);
