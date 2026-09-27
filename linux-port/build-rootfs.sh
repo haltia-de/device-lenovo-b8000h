@@ -15,7 +15,8 @@ case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
 	phosh) UI_PACKAGES="phosh phoc squeekboard gnome-session gnome-control-center foot pcmanfm dbus elogind polkit upower networkmanager networkmanager-openrc
 		gnome-calculator gnome-text-editor gnome-clocks gnome-console loupe epiphany phosh-wallpapers iio-sensor-proxy iio-sensor-proxy-openrc
-		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb" ;;
+		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
+		firefox mobile-config-firefox" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
