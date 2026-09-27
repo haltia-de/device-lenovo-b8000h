@@ -1,0 +1,17 @@
+diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-blade_defconfig
+--- a/arch/arm/configs/lenovo-blade_defconfig
++++ b/arch/arm/configs/lenovo-blade_defconfig
+@@ -12,6 +12,13 @@ CONFIG_ARM_THUMBEE=y
+ CONFIG_SCHED_MC=y
+ 
+ CONFIG_MODULES=y
++CONFIG_SOUND=m
++CONFIG_SND=m
++CONFIG_SND_TIMER=m
++CONFIG_SND_PCM=m
++CONFIG_SND_HRTIMER=m
++CONFIG_SND_DUMMY=m
++# CONFIG_SND_SOC is not set
+ 
+ ### Drivers
+ CONFIG_OF=y
