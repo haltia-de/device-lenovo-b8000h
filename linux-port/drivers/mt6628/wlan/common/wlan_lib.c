@@ -5363,7 +5363,11 @@ wlanGetTargetBssDescByNetwork (
         return NULL;
 
     case NETWORK_TYPE_BOW_INDEX:
+#if CFG_ENABLE_BT_OVER_WIFI
         return prAdapter->rWifiVar.rBowFsmInfo.prTargetBssDesc;
+#else
+        return NULL;
+#endif
 
     default:
         return NULL;
@@ -5431,6 +5435,7 @@ wlanCheckSystemConfiguration (
     }
 #endif
 
+#if (CFG_NVRAM_EXISTENCE_CHECK == 1) || (CFG_SW_NVRAM_VERSION_CHECK == 1)
     if(fgGenErrMsg == TRUE) {
         prBeacon = cnmMemAlloc(prAdapter, RAM_TYPE_BUF, sizeof(WLAN_BEACON_FRAME_T) + sizeof(IE_SSID_T));
 
@@ -5543,7 +5548,7 @@ wlanCheckSystemConfiguration (
     if(fgGenErrMsg == TRUE) {
         cnmMemFree(prAdapter, prBeacon);
     }
+#endif
 
     return WLAN_STATUS_SUCCESS;
 }
-

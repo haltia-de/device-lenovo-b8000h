@@ -890,7 +890,7 @@
     #ifdef CONFIG_X86
         #define MTK_WCN_HIF_SDIO        0
     #else
-        #define MTK_WCN_HIF_SDIO        1
+        #define MTK_WCN_HIF_SDIO        0
     #endif
 #else
     #define MTK_WCN_HIF_SDIO            0
@@ -1040,7 +1040,7 @@
 
 #endif
 
-#define CFG_CHIP_RESET_SUPPORT                      1
+#define CFG_CHIP_RESET_SUPPORT                      0
 
 
 /*------------------------------------------------------------------------------
@@ -1480,9 +1480,9 @@
 
 #define CFG_STRICT_CHECK_CAPINFO_PRIVACY    0
 
-#define CFG_SUPPORT_WFD                     1
+#define CFG_SUPPORT_WFD                     0
 
-#define CFG_SUPPORT_WFD_COMPOSE_IE          1
+#define CFG_SUPPORT_WFD_COMPOSE_IE          0
 
 /*------------------------------------------------------------------------------
  * Flags of Packet Lifetime Profiling Mechanism
@@ -1537,4 +1537,3 @@
 ********************************************************************************
 */
 #endif /* _CONFIG_H */
-

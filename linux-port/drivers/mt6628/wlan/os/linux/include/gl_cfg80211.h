@@ -71,6 +71,20 @@
 ********************************************************************************
 */
 /* cfg80211 hooks */
+int mt6628_cfg_change_iface(struct wiphy *, struct net_device *,
+		enum nl80211_iftype, struct vif_params *);
+int mt6628_cfg_add_key(struct wiphy *, struct wireless_dev *, int, u8, bool,
+		const u8 *, struct key_params *);
+int mt6628_cfg_get_key(struct wiphy *, struct wireless_dev *, int, u8, bool,
+		const u8 *, void *, void (*)(void *, struct key_params *));
+int mt6628_cfg_del_key(struct wiphy *, struct wireless_dev *, int, u8, bool,
+		const u8 *);
+int mt6628_cfg_set_default_key(struct wiphy *, struct net_device *, int, u8,
+		bool, bool);
+int mt6628_cfg_get_station(struct wiphy *, struct wireless_dev *, const u8 *,
+		struct station_info *);
+int mt6628_cfg_scan(struct wiphy *, struct cfg80211_scan_request *);
+
 int 
 mtk_cfg80211_change_iface (
     struct wiphy *wiphy,
@@ -247,7 +261,7 @@ mtk_cfg80211_mgmt_tx_cancel_wait (
     u64 cookie
     );
 
-#if CONFIG_NL80211_TESTMODE
+#if defined(CONFIG_NL80211_TESTMODE) && CONFIG_NL80211_TESTMODE
 int
 mtk_cfg80211_testmode_cmd(
     IN struct wiphy *wiphy,
@@ -269,8 +283,6 @@ mtk_cfg80211_testmode_set_key_ext(
     IN int len
     );
 #endif
-#else
-    #error "Please ENABLE kernel config (CONFIG_NL80211_TESTMODE) to support Wi-Fi Direct"
 #endif
 
 
@@ -280,4 +292,3 @@ mtk_cfg80211_testmode_set_key_ext(
 */
 
 #endif /* _GL_CFG80211_H */
-

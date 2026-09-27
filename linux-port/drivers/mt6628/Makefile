@@ -7,6 +7,7 @@ ccflags-y += -DLINUX -DMT6628 -D_HIF_SDIO=1
 ccflags-y += -DCFG_SUPPORT_WAPI=0 -DCFG_SUPPORT_XLOG=0
 ccflags-y += -DCFG_SUPPORT_AEE=0 -DDBG=1
 ccflags-y += -I$(src)/wlan/os -I$(src)/wlan/os/linux/include
+ccflags-y += -I$(src)
 ccflags-y += -I$(src)/wlan/os/linux/hif/sdio/include
 ccflags-y += -I$(src)/wlan/include -I$(src)/wlan/include/nic
 ccflags-y += -I$(src)/wlan/include/mgmt
@@ -27,6 +28,8 @@ wlan_mt6628-y := \
 	wlan/os/linux/gl_kal.o \
 	wlan/os/linux/gl_bow.o \
 	wlan/os/linux/gl_cfg80211.o \
+	wlan/os/linux/cfg80211_compat.o \
+	wlan/os/linux/legacy_stubs.o \
 	wlan/os/linux/gl_rst.o \
 	wlan/os/linux/platform.o \
 	wlan/os/linux/hif/sdio/arm.o \
@@ -55,4 +58,6 @@ wlan_mt6628-y := \
 	wlan/mgmt/swcr.o \
 	wlan/mgmt/roaming_fsm.o
 
-ccflags-y += -Wall
+ccflags-y += -Wall -Wno-format -Wno-unused-but-set-variable
+ccflags-y += -Wno-unused-variable -Wno-missing-prototypes
+ccflags-y += -Wno-sometimes-uninitialized

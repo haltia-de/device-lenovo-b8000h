@@ -255,7 +255,7 @@ static remove_card pfWlanRemove = NULL;
 
 #if (MTK_WCN_HIF_SDIO == 0)
 static struct sdio_driver mtk_sdio_driver = {
-	.name		= "wlan", /* "MTK SDIO WLAN Driver" */
+	.name		= "wlan_mt6628",
 	.id_table	= mtk_sdio_ids,
 	.probe		= NULL,
 	.remove		= NULL,
@@ -509,7 +509,8 @@ static int mtk_sdio_probe (
     int ret = 0;
     int i = 0;
 
-    //printk(KERN_INFO DRV_NAME "mtk_sdio_probe()\n");
+    dev_info(&func->dev, "probe: SDIO %04x:%04x function %u\n",
+            func->vendor, func->device, func->num);
 
     ASSERT(func);
     ASSERT(id);
@@ -537,10 +538,10 @@ static int mtk_sdio_probe (
     sdio_release_host(func);
 
     if (ret) {
-        //printk(KERN_INFO DRV_NAME"sdio_enable_func failed!\n");
+        dev_err(&func->dev, "HIF init: sdio_enable_func failed: %d\n", ret);
         goto out;
     }
-    //printk(KERN_INFO DRV_NAME"sdio_enable_func done!\n");
+    dev_info(&func->dev, "HIF init: SDIO function enabled\n");
 
     if (pfWlanProbe((PVOID)func) != WLAN_STATUS_SUCCESS) {
         //printk(KERN_WARNING DRV_NAME"pfWlanProbe fail!call pfWlanRemove()\n");
@@ -681,8 +682,6 @@ glUnregisterBus(
     )
 {
     ASSERT(pfRemove);
-    pfRemove();
-
 #if MTK_WCN_HIF_SDIO
     /* unregister MTK sdio client */
     mtk_wcn_hif_sdio_client_unreg(&cltInfo);
@@ -787,10 +786,10 @@ glBusInit (
     sdio_release_host(func);
 
     if (ret) {
-        //printk(KERN_INFO DRV_NAME"sdio_set_block_size 512 failed!\n");
+        dev_err(&func->dev, "HIF init: 512-byte block size failed: %d\n", ret);
     }
     else {
-        //printk(KERN_INFO DRV_NAME"sdio_set_block_size 512 done!\n");
+        dev_info(&func->dev, "HIF init: 512-byte block size ready\n");
     }
 
     //printk(KERN_INFO DRV_NAME"param: func->cur_blksize(%d)\n", func->cur_blksize);
@@ -1281,4 +1280,3 @@ glSetPowerState (
 {
     return;
 }
-

@@ -227,7 +227,7 @@ mtk_cfg80211_add_key (
     }
 
     rKey.u4KeyLength = params->key_len;
-    rKey.u4Length =  ((UINT_32)&(((P_P2P_PARAM_KEY_T)0)->aucKeyMaterial)) + rKey.u4KeyLength;
+    rKey.u4Length = offsetof(PARAM_KEY_T, aucKeyMaterial) + rKey.u4KeyLength;
     
     rStatus = kalIoctl(prGlueInfo,
             wlanoidSetAddKey,
@@ -430,7 +430,7 @@ mtk_cfg80211_get_station (
         DBGLOG(REQ, WARN, ("unable to retrieve link speed\n"));
     }
     else {
-        sinfo->filled |= STATION_INFO_TX_BITRATE;
+        sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
         sinfo->txrate.legacy = u4Rate / 1000; /* convert from 100bps to 100kbps */
     }
 
@@ -454,7 +454,7 @@ mtk_cfg80211_get_station (
             DBGLOG(REQ, WARN, ("unable to retrieve link speed\n"));
         }
         else {
-            sinfo->filled |= STATION_INFO_SIGNAL;
+            sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
 	    //in the cfg80211 layer, the signal is a signed char variable.
             if(i4Rssi < -128)
 		sinfo->signal = -128;
@@ -464,9 +464,9 @@ mtk_cfg80211_get_station (
     }
 
     sinfo->rx_packets = prGlueInfo->rNetDevStats.rx_packets;
-    sinfo->filled |= STATION_INFO_TX_PACKETS;
+    sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_PACKETS);
     sinfo->tx_packets = prGlueInfo->rNetDevStats.tx_packets;
-    sinfo->filled |= STATION_INFO_TX_FAILED;
+    sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_FAILED);
 
 #if 1
    {
@@ -855,7 +855,7 @@ mtk_cfg80211_connect (
     if (sme->key_len != 0 && prGlueInfo->rWpaInfo.u4WpaVersion == IW_AUTH_WPA_VERSION_DISABLED) {
         P_PARAM_WEP_T prWepKey = (P_PARAM_WEP_T) wepBuf;
         
-        kalMemSet(prWepKey, 0, sizeof(prWepKey));
+        kalMemSet(prWepKey, 0, sizeof(*prWepKey));
         prWepKey->u4Length = 12 + sme->key_len;
         prWepKey->u4KeyLength = (UINT_32) sme->key_len;
         prWepKey->u4KeyIndex = (UINT_32) sme->key_idx;
@@ -994,8 +994,8 @@ mtk_cfg80211_join_ibss (
     ASSERT(prGlueInfo);
 
     /* set channel */
-    if(params->channel) {
-        u4ChnlFreq = nicChannelNum2Freq(params->channel->hw_value);
+    if(params->chandef.chan) {
+        u4ChnlFreq = nicChannelNum2Freq(params->chandef.chan->hw_value);
 
         rStatus = kalIoctl(prGlueInfo,
                            wlanoidSetFrequency,
@@ -1410,7 +1410,7 @@ mtk_cfg80211_mgmt_tx_cancel_wait (
 }
 
 
-#if CONFIG_NL80211_TESTMODE
+#if defined(CONFIG_NL80211_TESTMODE) && CONFIG_NL80211_TESTMODE
 
 #if CFG_SUPPORT_WAPI
 int
@@ -1597,4 +1597,3 @@ int mtk_cfg80211_testmode_cmd(
     return fgIsValid;
 }
 #endif
-

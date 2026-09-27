@@ -358,7 +358,7 @@ wextSrchDesiredWPAIE (
 #if CFG_SUPPORT_WPS
 BOOLEAN
 wextSrchDesiredWPSIE (
-    IN PUINT_8 pucIEStart,
+    IN const UINT_8 *pucIEStart,
     IN INT_32 i4TotalIeLen,
     IN UINT_8 ucDesiredElemId,
     OUT PUINT_8 *ppucDesiredIE
@@ -373,4 +373,3 @@ wextSrchDesiredWPSIE (
 #endif /* WIRELESS_EXT */
 
 #endif /* _GL_WEXT_H */
-

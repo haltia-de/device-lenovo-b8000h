@@ -266,12 +266,8 @@ typedef enum _ENUM_DBG_MODULE_T {
     extern PINT_16 g_wbuf_p;
     extern PINT_8 g_buf_p;
 
-    /* If __FUNCTION__ is already defined by compiler, we just use it. */
-    #if defined(__FUNCTION__)
-        #define DEBUGFUNC(_Func)
-    #else
-        #define DEBUGFUNC(_Func) static const char __FUNCTION__[] = _Func;
-    #endif
+    /* Modern kernels always provide the standard __func__ identifier. */
+    #define DEBUGFUNC(_Func)
 
     /* The following macros are used for future debug message. */
     /* TODO(Kevin): We should remove INITLOG/ERRORLOG/WARNLOG macro sooner or later */
@@ -541,4 +537,3 @@ dumpMemory8 (
 ********************************************************************************
 */
 #endif /* _DEBUG_H */
-

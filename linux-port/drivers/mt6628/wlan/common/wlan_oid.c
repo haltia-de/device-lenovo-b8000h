@@ -1044,7 +1044,6 @@
 #include "precomp.h"
 #include "mgmt/rsn.h"
 
-#include <stddef.h>
 
 /******************************************************************************
 *                              C O N S T A N T S
@@ -6766,8 +6765,12 @@ wlanoidSetCurrentPacketFilter (
     if(rStatus == WLAN_STATUS_SUCCESS) {
         // Store the packet filter
 
+#if CFG_ENABLE_WIFI_DIRECT_CFG_80211
         prAdapter->u4OsPacketFilter &= PARAM_PACKET_FILTER_P2P_MASK;
         prAdapter->u4OsPacketFilter |= u4NewPacketFilter;
+#else
+        prAdapter->u4OsPacketFilter = u4NewPacketFilter;
+#endif
 
         return wlanSendSetQueryCmd(prAdapter,
                 CMD_ID_SET_RX_FILTER,
@@ -10774,5 +10777,3 @@ wlanoidQueryBSSInfo (
 
     return rStatus;
 }   /* wlanoidSetWiFiWmmPsTest */
-
-

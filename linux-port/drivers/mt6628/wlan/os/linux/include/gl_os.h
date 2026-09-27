@@ -572,10 +572,8 @@
 #include "version.h"
 #include "config.h"
 
-#if CFG_ENABLE_WIFI_DIRECT_CFG_80211
 #include <linux/wireless.h>
 #include <net/cfg80211.h>
-#endif
 
 #include <linux/module.h>
 
@@ -759,7 +757,7 @@ struct _GLUE_INFO_T {
     REG_INFO_T rRegInfo;
 
     /* firmware */
-    struct firmware     *prFw;
+    const struct firmware *prFw;
 
     /* Host interface related information */
     /* defined in related hif header file */
@@ -886,7 +884,7 @@ typedef struct _SUB_MODULE_HANDLER {
 
 #endif
 
-#if CONFIG_NL80211_TESTMODE
+#if defined(CONFIG_NL80211_TESTMODE) && CONFIG_NL80211_TESTMODE
 
 typedef struct _NL80211_DRIVER_TEST_MODE_PARAMS {
 	UINT_32  index;
@@ -1136,4 +1134,3 @@ p2pSetMulticastListWorkQueueWrapper(
 */
 
 #endif /* _GL_OS_H */
-
