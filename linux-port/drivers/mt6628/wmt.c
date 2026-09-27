@@ -361,6 +361,7 @@ static int mt6628_download_patch(struct mt6628_wmt *wmt, const char *name,
 	const struct firmware *fw;
 	u8 *cmd;
 	size_t offset, body_len, frag;
+	u8 hdr_address[4];
 	int ret;
 
 	ret = request_firmware(&fw, name, &wmt->serdev->dev);
@@ -370,6 +371,17 @@ static int mt6628_download_patch(struct mt6628_wmt *wmt, const char *name,
 	if (fw->size <= MT6628_PATCH_HEADER_SIZE) {
 		ret = -EINVAL;
 		goto out_release;
+	}
+	/*
+	 * Like 6620_launcher: header byte 24 = (parts << 4) | index, bytes
+	 * 25..27 = patch address; the first address byte is sent as 0.
+	 */
+	if (!address) {
+		hdr_address[0] = 0;
+		memcpy(hdr_address + 1, fw->data + 25, 3);
+		address = hdr_address;
+		dev_info(&wmt->serdev->dev, "%s: part %u/%u address %*ph\n",
+			 name, fw->data[24] & 0xf, fw->data[24] >> 4, 4, address);
 	}
 	ret = mt6628_patch_address(wmt, address);
 	if (ret)
@@ -416,9 +428,7 @@ static int mt6628_do_reset(struct mt6628_wmt *wmt)
 
 static int mt6628_download_selected_patches(struct mt6628_wmt *wmt)
 {
-	/* Values supplied by the stock 6620_launcher WMT_PATCH_INFO records. */
-	static const u8 e2_part1_address[4] = { 0x21, 0x00, 0x0e, 0xf0 };
-	static const u8 e2_part0_address[4] = { 0x22, 0x00, 0x06, 0x00 };
+	/* E1 single patch: address unverified (no E1 chip seen). */
 	static const u8 e1_address[4] = { 0x21, 0x00, 0x0e, 0xf0 };
 	int ret;
 
@@ -429,15 +439,14 @@ static int mt6628_download_selected_patches(struct mt6628_wmt *wmt)
 			return ret;
 		return mt6628_do_reset(wmt);
 	}
-	ret = mt6628_download_patch(wmt, MT6628_FW_PATCH_E2_1,
-				    e2_part1_address);
+	/* Parts in header index order: _0 is part 1/2, _1 is part 2/2. */
+	ret = mt6628_download_patch(wmt, MT6628_FW_PATCH_E2_0, NULL);
 	if (ret)
 		return ret;
 	ret = mt6628_do_reset(wmt);
 	if (ret)
 		return ret;
-	ret = mt6628_download_patch(wmt, MT6628_FW_PATCH_E2_0,
-				    e2_part0_address);
+	ret = mt6628_download_patch(wmt, MT6628_FW_PATCH_E2_1, NULL);
 	if (ret)
 		return ret;
 	ret = mt6628_do_reset(wmt);
@@ -590,8 +599,14 @@ static int mt6628_chip_init(struct mt6628_wmt *wmt)
 	wmt->initialized = true;
 	dev_info(&wmt->serdev->dev,
 		 "WMT patch loaded and Wi-Fi function enabled\n");
-	if (wmt->mmc)
+	if (wmt->mmc) {
+		/*
+		 * MSDC3 is non-removable and its boot-time scan ran while the
+		 * chip was off; re-arm the one-shot rescan.
+		 */
+		wmt->mmc->rescan_entered = 0;
 		mmc_detect_change(wmt->mmc, msecs_to_jiffies(200));
+	}
 	return 0;
 }
 
