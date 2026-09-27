@@ -15,6 +15,11 @@ case "$module_dir" in
 	mkdir -p "$module_dir"
 	find "$module_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 	cp -a "$source_dir"/. "$module_dir"/
+	# Drop stale build products copied back from the Windows checkout, or a
+	# kernel config change (e.g. vermagic) is silently not picked up.
+	find "$module_dir" \( -name '*.o' -o -name '*.ko' -o -name '*.mod' \
+		-o -name '*.mod.c' -o -name '.*.cmd' -o -name Module.symvers \
+		-o -name modules.order \) -delete
 	;;
 esac
 
