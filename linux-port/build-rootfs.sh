@@ -71,6 +71,34 @@ for s in mount-ro killprocs savecache; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/shutdown/$s"
 done
 
+# Kernel #19 keeps the B8000-H drivers in /root.  Kernel #20 has audio and
+# battery built in, while MT6628 remains modular because it needs firmware
+# from the root filesystem.  modules.builtin makes the choice deterministic
+# and keeps one rootfs bootable with either kernel.
+mkdir -p "$ROOT/etc/local.d" "$ROOT/etc/modprobe.d"
+cat > "$ROOT/etc/modprobe.d/b8000h.conf" <<'EOF'
+options wmt bgf_irq=1 debug_io=0 probe_only=0 wmt_wifi_func_ctrl=0
+options wlan_mt6628 debug=47
+EOF
+cat > "$ROOT/etc/local.d/00-b8k-modules.start" <<'EOF'
+#!/bin/sh
+release=$(uname -r)
+if grep -q '/b8k-battery\.ko$' "/lib/modules/$release/modules.builtin" 2>/dev/null; then
+	# Audio and battery are built in; load firmware-backed Wi-Fi in order.
+	modprobe wmt
+	modprobe wlan_mt6628
+else
+	# Kernel #19 compatibility: its matching out-of-tree modules live here.
+	insmod /root/b8k-battery.ko 2>/dev/null
+	insmod /root/wmt.ko 2>/dev/null
+	insmod /root/wlan_mt6628.ko 2>/dev/null
+	for m in soundcore snd snd-timer snd-pcm mt6589_audio; do
+		insmod "/root/$m.ko" 2>/dev/null
+	done
+fi
+EOF
+chmod +x "$ROOT/etc/local.d/00-b8k-modules.start"
+
 # USB ACM console: the gadget is configured by the recovery initramfs and
 # survives switch_root. Run a non-interactive shell on it (an interactive ash
 # waits for terminal replies that Windows never sends).

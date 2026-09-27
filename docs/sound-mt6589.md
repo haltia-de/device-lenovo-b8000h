@@ -62,7 +62,8 @@ lookup `pinctrl_paris`, hardware offset 73: глобальные legacy GPIO num
 ядре 7.1 динамические, поэтому первоначальный `gpio_request(73)` корректно
 возвращал `-EPROBE_DEFER`.
 
-- `0030-lenovo-blade-enable-alsa-modules.patch` включает базовые ALSA-модули.
+- `0032-lenovo-blade-enable-alsa-modules.patch` включает базовые ALSA-модули
+  для совместимого с BOOT #19 внешнего драйвера.
   `SND_DUMMY=m` нужен, чтобы Kconfig сохранил скрытые `SND_PCM/SND_TIMER`.
 - `0031-alsa-control-avoid-xa-store-range.patch` заменяет новый неэкспортируемый
   для ядра #19 `xa_store_range()` на цикл `xa_store()`. После этого новый
