@@ -14,7 +14,7 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
 	phosh) UI_PACKAGES="phosh phoc squeekboard gnome-session gnome-control-center foot pcmanfm dbus elogind polkit upower networkmanager networkmanager-openrc
-		gnome-calculator gnome-text-editor gnome-clocks gnome-console loupe epiphany" ;;
+		gnome-calculator gnome-text-editor gnome-clocks gnome-console loupe epiphany phosh-wallpapers" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
@@ -217,6 +217,13 @@ sources=[('xkb', 'us'), ('xkb', 'ru')]
 
 [org.gnome.system.locale]
 region='ru_RU.UTF-8'
+
+[org.gnome.desktop.background]
+picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
+picture-uri-dark='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
+
+[org.gnome.desktop.screensaver]
+picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
 else
