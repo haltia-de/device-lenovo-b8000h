@@ -61,7 +61,8 @@ static const struct backlight_ops mt6589_bls_bl_ops = {
 static int mt6589_bls_bl_probe(struct platform_device *pdev)
 {
 	struct backlight_properties props = {
-		.type = BACKLIGHT_RAW,
+		/* GNOME ignores RAW backlights not parented by a DRM connector */
+		.type = BACKLIGHT_PLATFORM,
 		.max_brightness = BLS_MAX_LEVEL,
 		.scale = BACKLIGHT_SCALE_LINEAR,
 	};

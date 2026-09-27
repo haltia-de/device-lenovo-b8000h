@@ -190,8 +190,16 @@ export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
 export XDG_SESSION_DESKTOP=phosh LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-( dbus-run-session -- phosh-session >/var/log/phosh.log 2>&1 & ) >/dev/null 2>&1
+# b8k-session opens a PAM session (pam_elogind) so Phosh has a logind
+# session: brightness goes through login1.Session.SetBrightness.
+# Restart the session if Phosh crashes instead of leaving a dead screen.
+( while :; do /usr/local/bin/b8k-session dbus-run-session -- phosh-session >>/var/log/phosh.log 2>&1; sleep 2; done & ) >/dev/null 2>&1
 EOF
+	mkdir -p "$ROOT/etc/pam.d"
+	printf 'auth     sufficient pam_permit.so\naccount  sufficient pam_permit.so\nsession  include    base-session\n' \
+		> "$ROOT/etc/pam.d/b8k-session"
+	# Built by linux-port/tools-arm/build-b8k-session.sh (armv7 musl, -lpam).
+	install -m 755 /opt/b8000h/tools/b8k-session "$ROOT/usr/local/bin/b8k-session"
 else
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
