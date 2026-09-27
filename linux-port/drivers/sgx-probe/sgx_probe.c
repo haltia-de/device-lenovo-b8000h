@@ -29,11 +29,26 @@ module_param(read_core, bool, 0400);
 MODULE_PARM_DESC(read_core,
 		 "Read SGX core registers after bring-up (may hang the SoC)");
 
+/*
+ * Keep the MFG domain and clocks on after probe (released on unbind), so
+ * single-register experiments can be done from userspace with /dev/mem.
+ */
+static bool hold;
+module_param(hold, bool, 0400);
+MODULE_PARM_DESC(hold, "Keep MFG powered and clocked until the module is removed");
+
+static struct {
+	struct clk_bulk_data *clks;
+	struct clk *hyd, *infra_axi;
+	int nclks;
+	bool held;
+} sgx_hold;
+
 static int sgx_probe_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct clk_bulk_data *clks;
-	struct clk *hyd = NULL;
+	struct clk *hyd = NULL, *infra_axi = NULL;
 	void __iomem *base;
 	int nclks, ret;
 
@@ -70,6 +85,8 @@ static int sgx_probe_probe(struct platform_device *pdev)
 		par = of_clk_get_from_provider(&a);
 		ret = IS_ERR(par) ? PTR_ERR(par) : clk_prepare_enable(par);
 		dev_info(dev, "step1d infra_mfgaxi on: %d\n", ret);
+		if (!ret)
+			infra_axi = par;
 		of_node_put(tn);
 		tn = of_find_compatible_node(NULL, NULL, "mediatek,mt6589-mfgsys");
 		a.np = tn;
@@ -115,6 +132,8 @@ static int sgx_probe_probe(struct platform_device *pdev)
 	if (!ret && hyd)
 		ret = clk_prepare_enable(hyd);
 	if (ret) {
+		if (infra_axi)
+			clk_disable_unprepare(infra_axi);
 		pm_runtime_put(dev);
 		return dev_err_probe(dev, ret, "enable clocks\n");
 	}
@@ -152,7 +171,7 @@ static int sgx_probe_probe(struct platform_device *pdev)
 		udelay(10);
 		writel(0xf, mfg + 0x4);		/* MFG clocks off (CG_SET) */
 		writel(0x0, mfg + 0xc);		/* release reset */
-		writel(0x1f, mfg + 0x8);	/* MFG clocks on, incl. unknown bit 4 */
+		writel(0xf, mfg + 0x8);		/* MFG clocks on, as the vendor */
 		{
 			int i;
 
@@ -172,6 +191,17 @@ static int sgx_probe_probe(struct platform_device *pdev)
 				 readl(ic + 0x228), readl(ic + 0x200));
 			iounmap(ic);
 		}
+		{
+			void __iomem *top = ioremap(0x10000000, 0x200);
+			void __iomem *spm = ioremap(0x10006000, 0x1000);
+
+			dev_info(dev, "step3e CLK_CFG_0=%08x CFG_4=%08x CFG_8=%08x PWR_STA=%08x/%08x MFG_PWR_CON=%08x\n",
+				 readl(top + 0x140), readl(top + 0x150),
+				 readl(top + 0x164), readl(spm + 0x60c),
+				 readl(spm + 0x610), readl(spm + 0x214));
+			iounmap(spm);
+			iounmap(top);
+		}
 		mdelay(200);
 		iounmap(infra);
 		iounmap(mfg);
@@ -190,15 +220,35 @@ static int sgx_probe_probe(struct platform_device *pdev)
 			 "step4 safe bring-up complete; SGX register read skipped\n");
 	}
 
+	if (hold) {
+		sgx_hold.clks = clks;
+		sgx_hold.nclks = nclks;
+		sgx_hold.hyd = hyd;
+		sgx_hold.infra_axi = infra_axi;
+		sgx_hold.held = true;
+		dev_info(dev, "step5 holding MFG on until unbind\n");
+		return 0;
+	}
 	if (hyd)
 		clk_disable_unprepare(hyd);
 	clk_bulk_disable_unprepare(nclks, clks);
+	if (infra_axi)
+		clk_disable_unprepare(infra_axi);
 	pm_runtime_put(dev);
 	return 0;
 }
 
 static void sgx_probe_remove(struct platform_device *pdev)
 {
+	if (sgx_hold.held) {
+		if (sgx_hold.hyd)
+			clk_disable_unprepare(sgx_hold.hyd);
+		clk_bulk_disable_unprepare(sgx_hold.nclks, sgx_hold.clks);
+		if (sgx_hold.infra_axi)
+			clk_disable_unprepare(sgx_hold.infra_axi);
+		pm_runtime_put_sync(&pdev->dev);
+		sgx_hold.held = false;
+	}
 	pm_runtime_disable(&pdev->dev);
 }
 
