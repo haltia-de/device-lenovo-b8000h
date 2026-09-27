@@ -184,12 +184,19 @@ out:
 	mt6628_parser_reset(p);
 }
 
+static bool debug_io;
+module_param(debug_io, bool, 0644);
+MODULE_PARM_DESC(debug_io, "hex-dump UART3 traffic");
+
 static size_t mt6628_receive_buf(struct serdev_device *serdev,
 				 const unsigned char *data, size_t count)
 {
 	struct mt6628_wmt *wmt = serdev_device_get_drvdata(serdev);
 	size_t i;
 
+	if (debug_io)
+		dev_info(&serdev->dev, "rx %zu: %*ph\n", count,
+			 (int)min_t(size_t, count, 32), data);
 	for (i = 0; i < count; i++)
 		mt6628_parse_byte(wmt, data[i]);
 	return count;
@@ -209,6 +216,9 @@ static int mt6628_uart_write(struct mt6628_wmt *wmt, const u8 *buf, size_t len)
 {
 	ssize_t written;
 
+	if (debug_io)
+		dev_info(&wmt->serdev->dev, "tx %zu: %*ph\n", len,
+			 (int)min_t(size_t, len, 32), buf);
 	written = serdev_device_write(wmt->serdev, buf, len,
 				      MT6628_XFER_TIMEOUT);
 	if (written < 0)
@@ -662,6 +672,14 @@ static int mt6628_get_mmc_host(struct mt6628_wmt *wmt)
 	return wmt->mmc ? 0 : -EPROBE_DEFER;
 }
 
+static bool bgf_irq = true;
+module_param(bgf_irq, bool, 0644);
+MODULE_PARM_DESC(bgf_irq, "request the BGF EINT (level low)");
+
+static bool probe_only;
+module_param(probe_only, bool, 0644);
+MODULE_PARM_DESC(probe_only, "open UART3 only, do not power the chip");
+
 static int mt6628_wmt_probe(struct serdev_device *serdev)
 {
 	struct device *dev = &serdev->dev;
@@ -706,8 +724,10 @@ static int mt6628_wmt_probe(struct serdev_device *serdev)
 	if (ret)
 		return dev_err_probe(dev, ret, "cannot open UART3\n");
 
-	irq = of_irq_get(dev->of_node, 0);
+	dev_info(dev, "probe: UART3 open, bgf_irq=%d probe_only=%d\n", bgf_irq, probe_only);
+	irq = bgf_irq ? of_irq_get(dev->of_node, 0) : 0;
 	if (irq > 0) {
+		dev_info(dev, "probe: BGF irq %d\n", irq);
 		ret = devm_request_threaded_irq(dev, irq, NULL,
 					mt6628_bgf_irq_thread,
 					IRQF_ONESHOT | IRQF_TRIGGER_LOW,
@@ -729,6 +749,10 @@ static int mt6628_wmt_probe(struct serdev_device *serdev)
 	mt6628_global = wmt;
 	mutex_unlock(&mt6628_global_lock);
 
+	if (probe_only) {
+		dev_info(dev, "probe_only: chip left off\n");
+		return 0;
+	}
 	ret = mt6628_wmt_wifi_on();
 	if (ret)
 		goto err_global;
