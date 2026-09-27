@@ -1145,6 +1145,9 @@ kalDevPortWrite (
     int count = u2Len;
     int ret = 0;
     int bNum = 0;
+    int transfer_len;
+    static bool first_fw_port_write = true;
+    bool trace_this_write = false;
 
 #if (MTK_WCN_HIF_SDIO == 0)
     struct sdio_func *prSdioFunc = NULL;
@@ -1179,8 +1182,21 @@ kalDevPortWrite (
         bNum++;
     }
 
+    transfer_len = bNum > 0 ? prSdioFunc->cur_blksize * bNum : count;
+    if (first_fw_port_write && u2Port == MCR_WTDR0) {
+        first_fw_port_write = false;
+        trace_this_write = true;
+        dev_info(&prSdioFunc->dev,
+                "FWDL first CMD53: port=%#x requested=%u transfer=%d valid=%u block=%u blocks=%d\n",
+                u2Port, u2Len, transfer_len, u2ValidInBufSize,
+                prSdioFunc->cur_blksize, bNum);
+        print_hex_dump(KERN_INFO, "wlan_mt6628 FWDL TX: ",
+                DUMP_PREFIX_OFFSET, 16, 1, pucSrc,
+                min_t(unsigned int, u2Len, 64), false);
+    }
+
     if (bNum > 0) { // block mode
-        ret = sdio_writesb(prSdioFunc, u2Port, pucSrc, prSdioFunc->cur_blksize * bNum);
+        ret = sdio_writesb(prSdioFunc, u2Port, pucSrc, transfer_len);
 
 #ifdef CONFIG_X86
         /* ENE workaround */
@@ -1193,12 +1209,15 @@ kalDevPortWrite (
     }
     else {  // byte mode
 
-        ret = sdio_writesb(prSdioFunc, u2Port, pucSrc, count);
+        ret = sdio_writesb(prSdioFunc, u2Port, pucSrc, transfer_len);
     }
 
     if (!in_interrupt) {
         sdio_release_host(prSdioFunc);
     }
+    if (trace_this_write)
+        dev_info(&prSdioFunc->dev,
+                "FWDL first CMD53 complete: ret=%d\n", ret);
 #else
     /* Split buffer into multiple single block to workaround hifsys */
     while (count >= ((prGlueInfo->rHifInfo).prFuncInfo->blk_sz)) {

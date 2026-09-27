@@ -693,8 +693,38 @@ MODULE_SOFTDEP("pre: wmt");
 #endif /* DBG */
 
 static uint debug = DBG_CLASS_ERROR | DBG_CLASS_WARN | DBG_CLASS_STATE |
-                    DBG_CLASS_EVENT | DBG_CLASS_TRACE | DBG_CLASS_INFO;
-module_param(debug, uint, 0644);
+                    DBG_CLASS_EVENT | DBG_CLASS_INFO;
+
+static int mt6628_debug_set(const char *val, const struct kernel_param *kp)
+{
+    unsigned int new_debug;
+    int ret;
+#if DBG
+    int i;
+#endif
+
+    ret = kstrtouint(val, 0, &new_debug);
+    if (ret)
+        return ret;
+    if (new_debug & ~DBG_CLASS_MASK)
+        return -ERANGE;
+
+    *(unsigned int *)kp->arg = new_debug;
+#if DBG
+    for (i = 0; i < DBG_MODULE_NUM; i++)
+        aucDebugModule[i] = new_debug;
+#endif
+    pr_info("wlan_mt6628: debug mask changed to %#x\n", new_debug);
+
+    return 0;
+}
+
+static const struct kernel_param_ops mt6628_debug_ops = {
+    .set = mt6628_debug_set,
+    .get = param_get_uint,
+};
+
+module_param_cb(debug, &mt6628_debug_ops, &debug, 0644);
 MODULE_PARM_DESC(debug, "gen2 DBG class mask for every module (0..255)");
 
 static bool wmt_on;
@@ -2593,6 +2623,7 @@ wlanProbe(
     P_ADAPTER_T prAdapter = NULL;
     INT_32 i4Status = 0;
     BOOL bRet = FALSE;
+    BOOL fgIrqSet = FALSE;
 
 
     do {
@@ -2669,6 +2700,7 @@ wlanProbe(
             DBGLOG(INIT, ERROR, ("wlanProbe: Set IRQ error\n"));
             break;
         }
+        fgIrqSet = TRUE;
 
         prGlueInfo->i4DevIdx = i4DevIdx;
 
@@ -2818,6 +2850,8 @@ bailout:
             DBGLOG(INIT, ERROR, ("wlanProbe: Cannot register the net_device context to the kernel\n"));
             break;
         }
+        /* From here the normal wlanRemove() path owns IRQ teardown. */
+        fgIrqSet = FALSE;
         dev_info(&((struct sdio_func *)pvData)->dev,
                 "wiphy register: complete; netdev %s ready\n",
                 prGlueInfo->prDevHandler->name);
@@ -2850,6 +2884,13 @@ bailout:
 #endif
     }
     while (FALSE);
+
+    if (i4Status < 0 && fgIrqSet && prWdev && prGlueInfo) {
+        glBusFreeIrq(prWdev->netdev, prGlueInfo);
+        dev_info(&((struct sdio_func *)pvData)->dev,
+                "probe cleanup: released SDIO IRQ after error %d\n",
+                i4Status);
+    }
 
     return i4Status;
 } /* end of wlanProbe() */

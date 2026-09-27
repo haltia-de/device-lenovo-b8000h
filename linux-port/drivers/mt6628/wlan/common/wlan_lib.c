@@ -3025,6 +3025,10 @@ wlanImageSectionDownload (
     P_INIT_CMD_DOWNLOAD_BUF prInitCmdDownloadBuf;
     UINT_8 ucTC, ucCmdSeqNum;
     WLAN_STATUS u4Status = WLAN_STATUS_SUCCESS;
+    static BOOLEAN fgFirstScatter = TRUE;
+    BOOLEAN fgTraceScatter = FALSE;
+    UINT_32 u4Wcir = 0, u4Whlpcr = 0, u4Whier = 0;
+    UINT_32 u4Whisr = 0, u4Wrplr = 0, u4Wtsr0 = 0, u4Wtsr1 = 0;
 
     ASSERT(prAdapter);
     ASSERT(pucImgSecBuf);
@@ -3074,6 +3078,26 @@ wlanImageSectionDownload (
         ;
     kalMemCopy(prInitCmdDownloadBuf->aucBuffer, pucImgSecBuf, u4ImgSecSize);
 
+    if (fgFirstScatter) {
+        fgFirstScatter = FALSE;
+        fgTraceScatter = TRUE;
+        HAL_MCR_RD(prAdapter, MCR_WCIR, &u4Wcir);
+        HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4Whlpcr);
+        HAL_MCR_RD(prAdapter, MCR_WHIER, &u4Whier);
+        HAL_MCR_RD(prAdapter, MCR_WHISR, &u4Whisr);
+        HAL_MCR_RD(prAdapter, MCR_WRPLR, &u4Wrplr);
+        HAL_MCR_RD(prAdapter, MCR_WTSR0, &u4Wtsr0);
+        HAL_MCR_RD(prAdapter, MCR_WTSR1, &u4Wtsr1);
+        pr_info("wlan_mt6628: FWDL first scatter dst=%#x len=%u seq=%u crc=%#x mode=%#x txlen=%u\n",
+                u4DestAddr, u4ImgSecSize, ucCmdSeqNum,
+                prInitCmdDownloadBuf->u4CRC32,
+                prInitCmdDownloadBuf->u4DataMode,
+                prCmdInfo->u2InfoBufLen);
+        pr_info("wlan_mt6628: FWDL before TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
+                u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wrplr,
+                u4Wtsr0, u4Wtsr1);
+    }
+
     // 6. Send FW_Download command
     while(1) {
         // 6.1 Acquire TX Resource
@@ -3094,12 +3118,28 @@ wlanImageSectionDownload (
             DBGLOG(INIT, ERROR,("Fail to transmit image download command\n"));
         }
 
+        if (fgTraceScatter) {
+            HAL_MCR_RD(prAdapter, MCR_WCIR, &u4Wcir);
+            HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4Whlpcr);
+            HAL_MCR_RD(prAdapter, MCR_WHIER, &u4Whier);
+            HAL_MCR_RD(prAdapter, MCR_WHISR, &u4Whisr);
+            HAL_MCR_RD(prAdapter, MCR_WRPLR, &u4Wrplr);
+            HAL_MCR_RD(prAdapter, MCR_WTSR0, &u4Wtsr0);
+            HAL_MCR_RD(prAdapter, MCR_WTSR1, &u4Wtsr1);
+            pr_info("wlan_mt6628: FWDL after TX WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WRPLR=%#x WTSR0=%#x WTSR1=%#x\n",
+                    u4Wcir, u4Whlpcr, u4Whier, u4Whisr, u4Wrplr,
+                    u4Wtsr0, u4Wtsr1);
+        }
+
         break;
     };
 
         #if CFG_ENABLE_FW_DOWNLOAD_ACK
     // 7. Wait for INIT_EVENT_ID_CMD_RESULT
     u4Status = wlanImageSectionDownloadStatus(prAdapter, ucCmdSeqNum);
+    if (fgTraceScatter)
+        pr_info("wlan_mt6628: FWDL first ACK status=%#lx seq=%u\n",
+                u4Status, ucCmdSeqNum);
         #endif
 
     // 8. Free CMD Info Packet.

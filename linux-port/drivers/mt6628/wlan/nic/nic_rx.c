@@ -3323,9 +3323,24 @@ nicRxWaitResponse (
             u4Current = (UINT_32)kalGetTimeTick();
 
             if((u4Current > u4Time) && ((u4Current - u4Time) > RX_RESPONSE_TIMEOUT)) {
+                UINT_32 u4Wcir = 0, u4Whlpcr = 0, u4Whier = 0;
+                UINT_32 u4Whisr = 0, u4Wtsr0 = 0, u4Wtsr1 = 0;
+
+                HAL_MCR_RD(prAdapter, MCR_WCIR, &u4Wcir);
+                HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4Whlpcr);
+                HAL_MCR_RD(prAdapter, MCR_WHIER, &u4Whier);
+                HAL_MCR_RD(prAdapter, MCR_WHISR, &u4Whisr);
+                HAL_MCR_RD(prAdapter, MCR_WTSR0, &u4Wtsr0);
+                HAL_MCR_RD(prAdapter, MCR_WTSR1, &u4Wtsr1);
+                pr_err("wlan_mt6628: response timeout port=%u polls=%u elapsed=%u WRPLR=%#x WCIR=%#x WHLPCR=%#x WHIER=%#x WHISR=%#x WTSR0=%#x WTSR1=%#x\n",
+                        ucPortIdx, i, u4Current - u4Time, u4Value,
+                        u4Wcir, u4Whlpcr, u4Whier, u4Whisr,
+                        u4Wtsr0, u4Wtsr1);
                 return WLAN_STATUS_FAILURE;
             }
             else if(u4Current < u4Time && ((u4Current + (0xFFFFFFFF - u4Time)) > RX_RESPONSE_TIMEOUT)) {
+                pr_err("wlan_mt6628: response timeout across tick wrap port=%u polls=%u WRPLR=%#x\n",
+                        ucPortIdx, i, u4Value);
                 return WLAN_STATUS_FAILURE;
             }
 
@@ -3528,5 +3543,4 @@ nicRxProcessActionFrame (
 
     return WLAN_STATUS_SUCCESS;
 }
-
 
