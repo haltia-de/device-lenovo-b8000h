@@ -1,0 +1,42 @@
+--- a/services4/srvkm/env/linux/mm.c
++++ b/services4/srvkm/env/linux/mm.c
+@@ -494,12 +494,36 @@
+ 	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
+ 	    gfp_mask, prot, 0, node, caller);
+ #else
+-	/* Linux 7 does not export __vmalloc_node_range_noprof to modules. */
++	/*
++	 * Linux 7 does not export __vmalloc_node_range_noprof to modules, and
++	 * __vmalloc() has no prot argument, which would silently turn the
++	 * uncached/write-combined kernel areas the SGX reads into cached ones.
++	 * Build the same mapping from order-0 pages with vmap(); with
++	 * VM_MAP_PUT_PAGES the existing vfree() releases pages and array.
++	 */
++	unsigned int i, count = PAGE_ALIGN(size) >> PAGE_SHIFT;
++	struct page **pages;
++	void *addr;
++
+ 	(void)align;
+-	(void)prot;
+ 	(void)node;
+ 	(void)caller;
+-	return __vmalloc(size, gfp_mask);
++	pages = kvmalloc_array(count, sizeof(*pages), GFP_KERNEL);
++	if (!pages)
++		return NULL;
++	for (i = 0; i < count; i++) {
++		pages[i] = alloc_page(gfp_mask);
++		if (!pages[i])
++			goto err_free;
++	}
++	addr = vmap(pages, count, VM_MAP | VM_MAP_PUT_PAGES, prot);
++	if (addr)
++		return addr;
++err_free:
++	while (i--)
++		__free_page(pages[i]);
++	kvfree(pages);
++	return NULL;
+ #endif
+ }
+ 

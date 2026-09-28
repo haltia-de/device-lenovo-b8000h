@@ -1,0 +1,13 @@
+--- a/services4/srvkm/env/linux/mm.c
++++ b/services4/srvkm/env/linux/mm.c
+@@ -609,8 +609,8 @@
+ 	return NULL;
+ 	}
+ 
+-	pvRet = vmap(ppsPageList, ui32NumPages, GFP_KERNEL | __GFP_HIGHMEM,
+-	     PGProtFlags);
++	/* The third argument is VM_* flags, not GFP flags. */
++	pvRet = vmap(ppsPageList, ui32NumPages, VM_MAP, PGProtFlags);
+ 
+ #if defined(DEBUG_LINUX_MEMORY_ALLOCATIONS)
+ 	if (pvRet) {

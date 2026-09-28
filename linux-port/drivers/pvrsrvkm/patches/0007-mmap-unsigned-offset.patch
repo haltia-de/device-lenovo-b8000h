@@ -1,0 +1,15 @@
+--- a/services4/srvkm/env/linux/module.c
++++ b/services4/srvkm/env/linux/module.c
+@@ -236,6 +236,12 @@
+ 	.open = PVRSRVOpen,
+ 	.release = PVRSRVRelease,
+ 	.mmap = PVRMMap,
++	/*
++	 * mmap offsets encode handles as special PFNs from 0x80000000
++	 * upwards; without this flag Linux rejects them with EOVERFLOW on
++	 * 32-bit (file_mmap_ok()).
++	 */
++	.fop_flags = FOP_UNSIGNED_OFFSET,
+ };
+ #endif
+ 

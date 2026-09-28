@@ -36,6 +36,7 @@ static struct clk_bulk_data *g_clks;
 static int g_num_clks;
 static struct clk *g_hyd_clk;
 static struct clk *g_infra_axi_clk;
+static struct clk *g_smi_clk;
 static bool g_runtime_prepared;
 
 static PVRSRV_ERROR PowerLockWrap(SYS_SPECIFIC_DATA *data, IMG_BOOL trylock)
@@ -244,27 +245,46 @@ PVRSRV_ERROR SysPMRuntimeRegister(void)
 	g_num_clks = devm_clk_bulk_get_all(dev, &g_clks);
 	if (g_num_clks < 0)
 		return PVRSRV_ERROR_CLOCK_REQUEST_FAILED;
+	/*
+	 * mfg_mem hangs off smi_sel, which also feeds the display SMI
+	 * clocks and infra_smi.  Kernel #20 has no display driver holding
+	 * them (the LK pipeline runs under simpledrm), so our first
+	 * enable/disable cycle gated smi_sel and blanked the screen.  Keep
+	 * a reference for as long as the module is loaded.
+	 */
+	ret = get_extra_clock("mediatek,mt6589-topckgen", CLK_TOP_MUX_SMI,
+			      &g_smi_clk);
+	if (ret)
+		return PVRSRV_ERROR_CLOCK_REQUEST_FAILED;
+	ret = clk_prepare_enable(g_smi_clk);
+	if (ret)
+		goto err_put_smi;
 	ret = get_extra_clock("mediatek,mt6589-mfgsys", CLK_MFG_HYD,
 			      &g_hyd_clk);
 	if (ret)
-		return PVRSRV_ERROR_CLOCK_REQUEST_FAILED;
+		goto err_disable_smi;
 	ret = get_extra_clock("mediatek,mt6589-infracfg", CLK_INFRA_MFGAXI,
 			      &g_infra_axi_clk);
-	if (ret) {
-		clk_put(g_hyd_clk);
-		g_hyd_clk = NULL;
-		return PVRSRV_ERROR_CLOCK_REQUEST_FAILED;
-	}
+	if (ret)
+		goto err_put_hyd;
 	ret = clk_prepare_enable(g_infra_axi_clk);
-	if (ret) {
-		clk_put(g_infra_axi_clk);
-		clk_put(g_hyd_clk);
-		g_infra_axi_clk = NULL;
-		g_hyd_clk = NULL;
-		return PVRSRV_ERROR_UNABLE_TO_ENABLE_CLOCK;
-	}
+	if (ret)
+		goto err_put_axi;
 	pm_runtime_enable(dev);
 	return PVRSRV_OK;
+
+err_put_axi:
+	clk_put(g_infra_axi_clk);
+	g_infra_axi_clk = NULL;
+err_put_hyd:
+	clk_put(g_hyd_clk);
+	g_hyd_clk = NULL;
+err_disable_smi:
+	clk_disable_unprepare(g_smi_clk);
+err_put_smi:
+	clk_put(g_smi_clk);
+	g_smi_clk = NULL;
+	return PVRSRV_ERROR_CLOCK_REQUEST_FAILED;
 }
 
 PVRSRV_ERROR SysPMRuntimeUnregister(void)
@@ -274,6 +294,14 @@ PVRSRV_ERROR SysPMRuntimeUnregister(void)
 		clk_disable_unprepare(g_infra_axi_clk);
 		clk_put(g_infra_axi_clk);
 		g_infra_axi_clk = NULL;
+	}
+	/*
+	 * Deliberately leave smi_sel enabled: dropping the last reference
+	 * would gate it and blank the LK display pipeline again.
+	 */
+	if (g_smi_clk) {
+		clk_put(g_smi_clk);
+		g_smi_clk = NULL;
 	}
 	if (g_hyd_clk) {
 		clk_put(g_hyd_clk);
