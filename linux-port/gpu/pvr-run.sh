@@ -3,15 +3,16 @@
 # Run a stock Android 4.4 PVR binary (pvrsrvctl, G3 render test) on the
 # B8000-H Linux rootfs with the minimum bionic needs:
 #  - /dev/__properties__: empty property area (bionic aborts without it);
-#  - /dev/log/{main,system,radio,events}: plain files, so liblog output lands
-#    in $PVR_LOG_DIR instead of being dropped.  Our /dev/log is the syslogd
-#    socket, so the command runs in a private mount namespace with its own
-#    small /dev; the host /dev and syslog are left alone.
+#  - /dev/log/{main,system,radio,events}: FIFOs drained into $PVR_LOG_DIR,
+#    so liblog output is kept.  FIFOs rather than plain files: every opener
+#    (liblog, the libc abort path) writes from offset 0 without O_APPEND.
+#    Our /dev/log is the syslogd socket, so the command runs in a private
+#    mount namespace with its own small /dev; host /dev and syslog stay as is.
 #
 # Usage: pvr-run.sh [--strace] <command> [args...]
-#   PVR_LOG_DIR (default /root/pvrlog/<timestamp>) receives log-*.bin,
-#   strace.txt (with --strace) and dmesg.txt.  PVR_WITH_FB=1 also exposes
-#   /dev/fb0 as /dev/graphics/fb0.
+#   PVR_LOG_DIR (default /root/pvrlog/<timestamp>) receives log-*.bin (raw),
+#   log-{main,system,radio}.txt (decoded), strace.txt (with --strace) and
+#   dmesg.txt.  PVR_WITH_FB=1 also exposes /dev/fb0 as /dev/graphics/fb0.
 set -eu
 
 use_strace=0
@@ -59,18 +60,50 @@ unshare -m sh -eu -c '
 	if [ "${PVR_WITH_FB:-0}" = 1 ] && [ -e /dev/fb0 ]; then
 		cp -a /dev/fb0 "$d/graphics/fb0"
 	fi
+	readers=
 	for l in main system radio events; do
-		: > "$d/log/$l"
-		mount --bind "$PVR_LOG_DIR/log-$l.bin" "$d/log/$l"
+		mkfifo -m 0666 "$d/log/$l"
+		# Opened read-write, so the reader never sees EOF between writers.
+		( exec 3<>"$d/log/$l"; exec cat <&3 >> "$PVR_LOG_DIR/log-$l.bin" ) &
+		readers="$readers $!"
 	done
 	mount --rbind "$d" /dev
+	set +e
 	if [ "$PVR_USE_STRACE" = 1 ]; then
-		exec strace -f -tt -s 256 -o "$PVR_LOG_DIR/strace.txt" "$@"
+		strace -f -tt -s 256 -o "$PVR_LOG_DIR/strace.txt" "$@"
+	else
+		"$@"
 	fi
-	exec "$@"
+	rc=$?
+	sleep 1
+	kill $readers 2>/dev/null
+	exit $rc
 ' pvr-run "$@"
 rc=$?
 set -e
+
+# liblog entries: priority byte, tag, NUL, message, NUL.
+python3 - "$log_dir" <<'EOF'
+import os, sys
+d = sys.argv[1]
+for name in ('main', 'system', 'radio'):
+    data = open(os.path.join(d, 'log-%s.bin' % name), 'rb').read()
+    out, i = [], 0
+    while i < len(data):
+        prio = data[i]
+        j = data.find(b'\0', i + 1)
+        k = data.find(b'\0', j + 1) if j >= 0 else -1
+        if j < 0 or k < 0:
+            out.append('? %r' % data[i:])
+            break
+        out.append('%s/%s: %s' % ('??VDIWEFS'[prio] if prio < 9 else prio,
+                                  data[i + 1:j].decode(errors='replace'),
+                                  data[j + 1:k].decode(errors='replace').rstrip()))
+        i = k + 1
+    if out:
+        with open(os.path.join(d, 'log-%s.txt' % name), 'w') as f:
+            f.write('\n'.join(out) + '\n')
+EOF
 
 # Kernel messages since the start (approximate if the ring buffer wrapped).
 dmesg | tail -n +"$((dmesg_lines + 1))" > "$log_dir/dmesg.txt" 2>&1 || true
