@@ -1,0 +1,56 @@
+--- a/services4/srvkm/env/linux/module.c
++++ b/services4/srvkm/env/linux/module.c
+@@ -263,7 +263,11 @@
+  * This is the driver interface we support.
+  */
+ #if defined(PVR_LDM_PLATFORM_MODULE)
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0))
++static void PVRSRVDriverRemove(LDM_DEV *device);
++#else
+ static int PVRSRVDriverRemove(LDM_DEV *device);
++#endif
+ static int PVRSRVDriverProbe(LDM_DEV *device);
+ #endif
+ #if defined(PVR_LDM_PCI_MODULE)
+@@ -287,6 +291,7 @@ MODULE_DEVICE_TABLE(pci, powervr_id_table);
+ 
+ #if defined(PVR_USE_DEVICE_TREE)
+ static struct of_device_id powervr_id_table[] = {
++	{ .compatible = "mediatek,mt6589-gpu" },
+ 	{ .compatible = "ti,am654-sgx544" },
+ 	{ .compatible = "ti,dra7-sgx544" },
+ 	{ .compatible = "ti,am4376-sgx530" },
+@@ -424,7 +428,11 @@
+ 
+ *****************************************************************************/
+ #if defined(PVR_LDM_PLATFORM_MODULE)
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0))
++static void PVRSRVDriverRemove(LDM_DEV *pDevice)
++#else
+ static int PVRSRVDriverRemove(LDM_DEV *pDevice)
++#endif
+ #endif
+ #if defined(PVR_LDM_PCI_MODULE)
+ 	static void __devexit PVRSRVDriverRemove(LDM_DEV *pDevice)
+@@ -457,7 +465,9 @@
+ #endif
+ 
+ #if defined(PVR_LDM_PLATFORM_MODULE)
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0))
+ 	return 0;
++#endif
+ #endif
+ #if defined(PVR_LDM_PCI_MODULE)
+ 	return;
+@@ -1077,7 +1087,11 @@
+ 	 * This code (using GPL symbols) facilitates automatic device
+ 	 * node creation on platforms with udev (or similar).
+ 	 */
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
++	psPvrClass = class_create("pvr");
++#else
+ 	psPvrClass = class_create(THIS_MODULE, "pvr");
++#endif
+ 
+ 	if (IS_ERR(psPvrClass)) {
+ 	PVR_DPF((PVR_DBG_ERROR,

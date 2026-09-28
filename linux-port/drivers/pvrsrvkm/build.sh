@@ -28,11 +28,36 @@ mkdir -p "$stage_dir"
 find "$stage_root" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 mkdir -p "$stage_dir"
 cp -a "$vendor_dir"/. "$stage_dir"/
-# Reuse the upstream Linux-7.x port of version-neutral Services code.  The
-# exact DDK 1.12 headers, bridge code and SGX implementation remain from MTK.
-cp "$modern_dir/services4/srvkm/env/linux/osfunc.c" \
-	"$stage_dir/services4/srvkm/env/linux/osfunc.c"
+# Reuse the upstream Linux-7.x port of the version-neutral Linux environment
+# as one coherent unit.  In particular osfunc.c, mm.[ch], mmap.[ch] and
+# module.c share private types and helpers and cannot be mixed individually.
+# The exact DDK 1.12 headers, bridge code, SGX implementation and MT6589
+# system layer remain from the MTK source copied above.
+cp -a "$modern_dir/services4/srvkm/env/linux"/. \
+	"$stage_dir/services4/srvkm/env/linux"/
+# The MTK build predates SUPPORT_ION_HEADER and its bridge only needs the
+# stable ION function declarations.  Keep that exact header; ion.c is supplied
+# by overrides below because the in-kernel ION allocator no longer exists.
+cp "$vendor_dir/services4/srvkm/env/linux/ion.h" \
+	"$stage_dir/services4/srvkm/env/linux/ion.h"
+# This file is part of the userspace ioctl ABI.  The generic port targets a
+# different PVRSRV_BRIDGE_PACKAGE layout, so retain the exact MTK dispatcher.
+cp "$vendor_dir/services4/srvkm/env/linux/pvr_bridge_k.c" \
+	"$stage_dir/services4/srvkm/env/linux/pvr_bridge_k.c"
 cp -a "$module_dir/overrides"/. "$stage_dir"/
+# The imported openpvrsgx sources use CRLF; normalize only files touched by
+# our small source patches so POSIX patch can match their context reliably.
+sed -i 's/\r$//' \
+	"$stage_dir/services4/srvkm/env/linux/module.c" \
+	"$stage_dir/services4/srvkm/env/linux/mm.c"
+# Linux 7 no longer exposes the compiler's freestanding stdarg.h to kernel
+# modules.  The DDK only uses va_list, so use the kernel wrapper everywhere.
+find "$stage_dir" -type f \( -name '*.c' -o -name '*.h' \) \
+	-exec sed -i 's|#include <stdarg.h>|#include <linux/stdarg.h>|' {} +
+for patch_file in "$module_dir"/patches/*.patch; do
+	[ -e "$patch_file" ] || continue
+	patch -d "$stage_dir" -p1 --forward --batch < "$patch_file"
+done
 
 make -C "$kernel_dir" \
 	M="$stage_dir" \
@@ -42,7 +67,7 @@ make -C "$kernel_dir" \
 	TARGET_BUILD_VARIANT=user \
 	SUPPORT_ION=1 \
 	MTK_PATH_PLATFORM="$stage_root" \
-	KCFLAGS="-I$stage_dir/compat -include $stage_dir/compat/pvr_compat.h -Wno-declaration-after-statement" \
+	KCFLAGS="-I$stage_dir/compat -include $stage_dir/compat/pvr_compat.h -DPVR_LDM_DEVICE_TREE -DPVR_LINUX_DYNAMIC_SGX_RESOURCE_INFO -Wno-declaration-after-statement" \
 	modules
 
 cp "$stage_dir/pvrsrvkm.ko" "$module_dir/pvrsrvkm.ko"

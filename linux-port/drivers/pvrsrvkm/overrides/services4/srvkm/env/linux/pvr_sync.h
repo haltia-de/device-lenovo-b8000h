@@ -6,7 +6,7 @@
 #include "servicesint.h"
 
 /* Android's pre-dma_fence sync_timeline API was removed from Linux. */
-struct sync_fence;
+#include <../drivers/staging/android/sw_sync.h>
 
 int PVRSyncDeviceInit(void);
 void PVRSyncDeviceDeInit(void);
@@ -24,4 +24,3 @@ PVRSRV_ERROR PVRSyncFencesToSyncInfos(PVRSRV_KERNEL_SYNC_INFO *apsSyncs[],
 	struct sync_fence *apsFence[SGX_MAX_SRC_SYNCS_TA]);
 
 #endif
-

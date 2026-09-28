@@ -1,0 +1,49 @@
+--- a/services4/srvkm/env/linux/mm.c
++++ b/services4/srvkm/env/linux/mm.c
+@@ -2530,9 +2530,13 @@ static int ShrinkPagePool(struct shrinker *psShrinker,
+ 	       .seeks = DEFAULT_SEEKS };
+ #else
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++static struct shrinker *g_psShrinker;
++#else
+ static struct shrinker g_sShrinker = { .count_objects = CountObjectsInPagePool,
+ 	       .scan_objects = ScanObjectsInPagePool,
+ 	       .seeks = DEFAULT_SEEKS };
+ #endif
++#endif
+ 
+ static IMG_BOOL g_bShrinkerRegistered;
+ #endif
+@@ -2564,7 +2570,11 @@ LinuxMMCleanup(IMG_VOID)
+ 
+ #if defined(PVR_LINUX_MEM_AREA_POOL_ALLOW_SHRINK)
+ 	if (g_bShrinkerRegistered) {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++	shrinker_free(g_psShrinker);
++#else
+ 	unregister_shrinker(&g_sShrinker);
++#endif
+ 	}
+ #endif
+ 
+@@ -2666,7 +2674,20 @@ LinuxMMInit(IMG_VOID)
+ #endif
+ 
+ #if defined(PVR_LINUX_MEM_AREA_POOL_ALLOW_SHRINK)
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++	g_psShrinker = shrinker_alloc(0, "pvr-page-pool");
++	if (!g_psShrinker) {
++		PVR_DPF((PVR_DBG_ERROR, "%s: failed to allocate shrinker",
++			 __FUNCTION__));
++		goto failed;
++	}
++	g_psShrinker->count_objects = CountObjectsInPagePool;
++	g_psShrinker->scan_objects = ScanObjectsInPagePool;
++	g_psShrinker->seeks = DEFAULT_SEEKS;
++	shrinker_register(g_psShrinker);
++#else
+ 	register_shrinker(&g_sShrinker);
++#endif
+ 	g_bShrinkerRegistered = IMG_TRUE;
+ #endif
+ 
