@@ -1,0 +1,45 @@
+#!/bin/busybox sh
+# B8000-H GPU comparison: boot the STOCK Lenovo 3.4 kernel with this tiny
+# initramfs, get a USB ACM shell (android_usb, as stock init.usb.rc does) and
+# poke the SGX with the vendor clock manager. Mounts nothing on the eMMC.
+BB=/bin/busybox
+$BB mkdir -p /proc /sys /dev /tmp /sbin /usr/bin /usr/sbin
+$BB --install -s
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || mount -t tmpfs tmpfs /dev
+mkdir -p /sys/kernel/debug
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+
+# 3.4 may lack devtmpfs: create the nodes we need from sysfs.
+mk() {
+	[ -e "/dev/$1" ] && return
+	d=$(cat "$2/dev" 2>/dev/null) || return
+	mknod "/dev/$1" c "${d%:*}" "${d#*:}"
+}
+for n in console null zero mem kmsg tty; do
+	mk $n /sys/class/*/$n 2>/dev/null
+	for p in /sys/class/*/$n; do mk $n "$p"; done
+done
+
+A=/sys/class/android_usb/android0
+echo 0 > $A/enable
+echo 0e8d > $A/idVendor
+echo 7439 > $A/idProduct
+echo 1 > $A/f_acm/instances
+echo acm > $A/functions
+echo 02 > $A/bDeviceClass
+echo 1 > $A/enable
+
+dmesg > /tmp/boot-dmesg.txt
+while :; do
+	while [ ! -e /dev/ttyGS0 ]; do
+		for p in /sys/class/tty/ttyGS0; do mk ttyGS0 "$p"; done
+		sleep 1
+	done
+	stty -F /dev/ttyGS0 raw -echo
+	echo "B8000-H STOCK-KERNEL probe shell ready" > /dev/ttyGS0
+	sh -c 'cat /dev/ttyGS0 | sh >/dev/ttyGS0 2>&1'
+	sleep 1
+done
