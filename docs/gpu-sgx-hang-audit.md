@@ -391,3 +391,27 @@ loadable-модуль под стоковое 3.4.67 (дерево `external/b80
 и проверить, читается ли `0x13000020` при живом PVR; либо (б) на нашем ядрe 7.1
 портировать openpvrsgx и довести инициализацию до DevInitSGXPart2 — чтение
 регистров в bare-probe до полной init всё равно будет висеть, это ожидаемо.
+
+## Userspace-триггер инициализации SGX (2026-09-28)
+
+Из `stock-system.raw` собран изолированный набор стокового PVR userspace
+(`pvrsrvctl` + `libsrv_init/um`, bionic `linker`+`libc`, зависимости — пакет
+`/tmp/pvrum.tgz`, на планшете распакован в `/system`, `/vendor` -> `/system/vendor`).
+
+`pvrsrvctl --help` **падает с SIGSEGV** ещё до работы с GPU: bionic обращается к
+Android property-сервису и logd — `open("/dev/__properties__") = ENOENT`,
+`connect(@android:debuggerd) = ECONNREFUSED`, затем разыменование NULL
+(`si_addr=0x90`). Вывод: **стоковый `pvrsrvctl` нельзя запустить «голым»** на нашем
+rootfs; ему нужна Android-среда (property area, logd, servicemanager).
+
+Поэтому DevInitSGXPart2KM надо запускать не стоковым бинарём, а одним из двух:
+1. **минимальный native-триггер** (наш musl-toolchain): открыть `/dev/pvrsrvkm`
+   и послать bridge-ioctl DDK 1.12 (`PVRSRV_BRIDGE_CONNECT_SERVICES` →
+   `SGX_BRIDGE_INIT_INFO`/`DevInitSGXPart2`), структуры и номера — из
+   `external/mt6589-pvr-ddk-1.12/.../include4` и `services4/srvkm/bridged`.
+   Плюс: без Android, toolchain-чистый. Это «реальный путь» рендера дальше.
+2. либо поднять минимальный Android property/logd shim и запустить стоковый
+   `pvrsrvctl --start --no-init`. Хрупко, нужен только для проверки KM.
+
+Порядок: сначала KM `pvrsrvkm.ko` (G2), затем native-триггер (G2b) — он и
+даст первый безопасный доступ к регистрам SGX через полную init, а не голым readl.
