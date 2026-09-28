@@ -2,5 +2,6 @@ artifacts/
 backups/
 build/
 external/
+*.ko
 
 __pycache__/

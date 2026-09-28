@@ -1,0 +1,9 @@
+--- a/services4/srvkm/env/linux/module.c
++++ b/services4/srvkm/env/linux/module.c
+@@ -1287,6 +1287,7 @@ void PVRCore_Cleanup(void)
+ */
+ #if !defined(SUPPORT_DRI_DRM)
++MODULE_DESCRIPTION("PowerVR SGX544 Services kernel module for MT6589");
+ module_init(PVRCore_Init);
+ module_exit(PVRCore_Cleanup);
+ #endif

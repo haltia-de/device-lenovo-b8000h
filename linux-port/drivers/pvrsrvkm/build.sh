@@ -40,6 +40,11 @@ cp -a "$modern_dir/services4/srvkm/env/linux"/. \
 # by overrides below because the in-kernel ION allocator no longer exists.
 cp "$vendor_dir/services4/srvkm/env/linux/ion.h" \
 	"$stage_dir/services4/srvkm/env/linux/ion.h"
+# Keep MTK's own optional debug/proc implementation.  The generic tree turns
+# its vendor AEE hook on unconditionally, but Linux 7 has no linux/aee.h and
+# the exact MT6589 source deliberately leaves that hook disabled.
+cp "$vendor_dir/services4/srvkm/env/linux/mtk_pp.c" \
+	"$stage_dir/services4/srvkm/env/linux/mtk_pp.c"
 # This file is part of the userspace ioctl ABI.  The generic port targets a
 # different PVRSRV_BRIDGE_PACKAGE layout, so retain the exact MTK dispatcher.
 cp "$vendor_dir/services4/srvkm/env/linux/pvr_bridge_k.c" \
@@ -48,8 +53,10 @@ cp -a "$module_dir/overrides"/. "$stage_dir"/
 # The imported openpvrsgx sources use CRLF; normalize only files touched by
 # our small source patches so POSIX patch can match their context reliably.
 sed -i 's/\r$//' \
+	"$stage_dir/Makefile" \
 	"$stage_dir/services4/srvkm/env/linux/module.c" \
-	"$stage_dir/services4/srvkm/env/linux/mm.c"
+	"$stage_dir/services4/srvkm/env/linux/mm.c" \
+	"$stage_dir/services4/system/mtk_common/mtk_gpu_hal.c"
 # Linux 7 no longer exposes the compiler's freestanding stdarg.h to kernel
 # modules.  The DDK only uses va_list, so use the kernel wrapper everywhere.
 find "$stage_dir" -type f \( -name '*.c' -o -name '*.h' \) \

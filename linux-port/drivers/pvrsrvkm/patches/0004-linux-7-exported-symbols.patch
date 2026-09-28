@@ -1,0 +1,35 @@
+--- a/services4/srvkm/env/linux/mm.c
++++ b/services4/srvkm/env/linux/mm.c
+@@ -494,10 +494,12 @@ static void *__old_vmalloc_node(unsigned long size, unsigned long align,
+ 	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
+ 	    gfp_mask, prot, 0, node, caller);
+ #else
+-	/* we need to add EXPORT_SYMBOL(__vmalloc_node_range_noprof); to vmalloc.c */
+-	return __vmalloc_node_range_noprof(size, align, VMALLOC_START,
+-	   VMALLOC_END, gfp_mask, prot, 0, node,
+-	   caller);
++	/* Linux 7 does not export __vmalloc_node_range_noprof to modules. */
++	(void)align;
++	(void)prot;
++	(void)node;
++	(void)caller;
++	return __vmalloc(size, gfp_mask);
+ #endif
+ }
+ 
+--- a/services4/system/mtk_common/mtk_gpu_hal.c
++++ b/services4/system/mtk_common/mtk_gpu_hal.c
+@@ -68,8 +68,11 @@ static IMG_UINT32  MTKGetGpuMemoryStatics(IMG_VOID)
+     
+ }
+ 
+-extern unsigned int (*mtk_get_gpu_loading_fp)(void);
+-extern unsigned int (*mtk_get_gpu_memory_usage_fp)(void);
++/* The legacy MTK GPU utility provider is absent from the mainline-style
++ * kernel.  Keep the vendor callback setup local; it is only telemetry and
++ * does not participate in the PVR bridge ABI or SGX initialisation. */
++static unsigned int (*mtk_get_gpu_loading_fp)(void);
++static unsigned int (*mtk_get_gpu_memory_usage_fp)(void);
+ 
+ void MTKGpuHalInit(IMG_VOID)
+ {

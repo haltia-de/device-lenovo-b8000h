@@ -1,0 +1,10 @@
+--- a/Makefile
++++ b/Makefile
+@@ -112,5 +112,7 @@ mtklfb-y := \
+ 	services4/3rdparty/mtklfb/mtklfb_debug.o
+ 
+ obj-$(CONFIG_PVR_SGX_MT6589) += pvrsrvkm.o
++ifeq ($(BUILD_MTKLFB),1)
+ obj-$(CONFIG_PVR_SGX_MT6589) += mtklfb.o
++endif
+ 

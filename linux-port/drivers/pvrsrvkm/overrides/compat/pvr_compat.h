@@ -3,6 +3,8 @@
 #define PVR_LINUX_7_COMPAT_H
 
 #include <linux/interrupt.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/file.h>
 
 /* in_irq() was removed after callers had migrated to the explicit helpers. */
