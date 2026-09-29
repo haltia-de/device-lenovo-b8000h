@@ -52,3 +52,73 @@ glibc оба держат указатель потока в `TPIDRURO`; Android
 - Замеры: `light` (плоский градиент) — 60.0 fps, рендер 10 мс; `heavy` (3×sin на пиксель) —
   12 fps (упор в fill rate SGX544); `scene` (плазма по вершинам сетки 64x40 + 9 вращающихся
   треугольников) — **60.0 fps, рендер GPU 4.3 мс**, остальное — ожидание vblank.
+
+## Шаг 3 (2026-09-29): TLS решён без патча glibc; что умеет драйвер
+
+- `linux-port/hybris/tlspad.c` → `libtlspad.so`: `__thread void *pad[8]` в `.tdata`. Статический
+  TLS glibc раскладывается по порядку загрузки: исполняемый файл, `LD_PRELOAD`, затем
+  `DT_NEEDED`. Если у программы нет своего `PT_TLS`, pad встаёт на `tp+8` и принимает запись
+  GL-слотов bionic. Проверка: `egl_info` без pad — SIGSEGV в `glCompileShader`, с
+  `LD_PRELOAD=libtlspad.so` — `shader compile: OK`, `tlspad: ok, pad at tp+8`. Конструктор
+  предупреждает, если у исполняемого файла свой TLS (тогда pad не спасает).
+  Без переменных окружения (чтобы не наследовали musl-потомки): `ld.so --preload` или
+  `libtlspad.so` первым в `DT_NEEDED`.
+- `linux-port/hybris/egl_info.c` (EGL 1.4 «Android META-EGL», GLES 2.0 build 1.12@2701748):
+  - есть: `EGL_KHR_image_base`, `EGL_ANDROID_image_native_buffer`, `EGL_KHR_fence_sync`,
+    `EGL_KHR_wait_sync`, `EGL_KHR_gl_renderbuffer_image`; `GL_OES_EGL_image`,
+    `GL_OES_EGL_image_external`, `GL_EXT_texture_format_BGRA8888`, `GL_IMG_read_format`,
+    `GL_OES_surfaceless_context`, `GL_OES_vertex_array_object`, `GL_EXT_discard_framebuffer`,
+    `GL_KHR_debug`; `eglMakeCurrent` без поверхности работает (хотя
+    `EGL_KHR_surfaceless_context` не объявлен); текстуры до 4096.
+  - нет: клиентских расширений EGL (`EGL_EXT_platform_base`, GBM/device-платформы),
+    `EGL_EXT_image_dma_buf_import`, `EGL_KHR_no_config_context`,
+    `EGL_ANDROID_native_fence_sync`, `GL_EXT_unpack_subimage`, `GL_EXT_read_format_bgra`.
+
+## План G5: phoc рисует на GPU
+
+Цель — композитор (phoc 0.55.1 + его wlroots) на SGX544, вывод на mediatek-drm тем же путём,
+что в `gles2_kmsdemo`. Клиенты (phosh, приложения — Alpine/musl) пока рисуют сами (wl_shm);
+композиция, анимации и переходы — на GPU. GPU-клиенты — отдельный этап G6.
+
+Устройство: phoc собирается в Debian-chroot (glibc), но работает в корне Alpine как
+«glibc-островок» — обёртка `/usr/local/bin/phoc-gpu`:
+`exec /opt/debian/usr/lib/ld-linux-armhf.so.3 --inhibit-cache --preload <libtlspad.so>
+/opt/debian/usr/local/bin/phoc "$@"`, плюс симлинки в корне Alpine
+`/usr/lib/arm-linux-gnueabihf -> /opt/debian/usr/lib/arm-linux-gnueabihf` и
+`/usr/local/hybris -> /opt/debian/usr/local/hybris` (стандартные пути поиска glibc для armhf
+идут раньше `/usr/lib` с musl-библиотеками; GIO-модуль dconf, gconv и плагины libhybris
+находятся по своим штатным путям). Ни одна переменная окружения не нужна, поэтому потомок
+`-E gnome-session` (musl) запускается как обычно. Подключение без правки пакетов Alpine:
+`phosh-session` читает `$HOME/.phoshdebug` → там `COMPOSITOR=/usr/local/bin/phoc-gpu` и
+`WLR_RENDERER=gles2`.
+
+Шаги:
+1. **Автозапуск GPU**: OpenRC-служба `b8k-gpu` (модули из `/root/kN` + `pvrsrvctl --start` как в
+   `g3-run.sh`, `/dev/__properties__`, `/dev/pvr_sync -> /dev/null`); `desktop.start` ждёт её.
+   Откат: после 3 неудачных стартов phoc-gpu подряд — сеанс на штатном phoc + pixman.
+2. **phoc 0.55.1 из исходников в chroot без изменений** (тот же релиз, что phosh 0.55 в Alpine,
+   — протокол phosh-private совпадёт), запуск через `phoc-gpu` с `WLR_RENDERER=pixman`: должен
+   вести себя как пакетный. Проверить `readelf -l phoc | grep TLS` (своего TLS быть не должно).
+3. **Патч wlroots (подпроект phoc) «hybris»** — опция сборки, по умолчанию выключена:
+   - `render/egl.c`: при hybris `eglGetDisplay(EGL_DEFAULT_DISPLAY)`, без требований
+     client-расширений/платформ/`no_config_context` (контекст с конфигом RGBA8888 ES2),
+     surfaceless make-current; наборы dmabuf-форматов для рендера — фиктивные
+     `ARGB8888`/`XRGB8888` × {`LINEAR`, `INVALID`}; текстурных dmabuf-форматов нет → phoc не
+     объявит linux-dmabuf, клиенты останутся на wl_shm (как сейчас с pixman).
+   - новый аллокатор `render/allocator/gralloc.c`: `hw_get_module(gralloc)` через libhybris,
+     буферы `HAL_PIXEL_FORMAT_BGRA_8888` с usage `HW_RENDER|HW_TEXTURE|HW_COMPOSER` (для XRGB
+     тоже), `get_dmabuf` → fd из IMG-хэндла (как в демо), stride в байтах, modifier `LINEAR`;
+     DRM-бэкенд wlroots импортирует его через PRIME + ADDFB2 (проверено демо).
+   - `render/gles2/renderer.c`: цель рендера из gralloc-буфера →
+     `eglCreateImageKHR(EGL_NATIVE_BUFFER_ANDROID)` из `ANativeWindowBuffer` →
+     `glEGLImageTargetRenderbufferStorageOES` (как в демо).
+   - `render/gles2/texture.c`: без `GL_EXT_unpack_subimage` — загрузка полосы строк при
+     `stride == width*bpp`, иначе перепаковка во временный буфер.
+4. **Замеры и оптимизация**: стоимость `glTex(Sub)Image2D` полноэкранного shm-буфера на SGX
+   (твиддлинг на CPU); если дорого — текстуры клиентов через линейные gralloc-буферы
+   (memcpy повреждённых строк + EGLImage, забор через `EGL_KHR_fence_sync`).
+
+Риски: непрерывные 4 МБ-буферы (`contig_min`) при фрагментации памяти — swapchain выделять один
+раз; стабильность (#22, порча памяти) под постоянной нагрузкой GPU; зависимости phoc 0.55.1
+могут быть новее trixie (тогда собрать недостающие, например wayland-protocols, в
+`/usr/local`, а не обновлять chroot).
