@@ -52,7 +52,10 @@ if [ "$what" != phoc ]; then
 		gsettings-desktop-schemas-dev libinput-dev libudev-dev \
 		libpixman-1-dev libwayland-dev libwayland-bin wayland-protocols \
 		libseat-dev libdisplay-info-dev hwdata libgbm-dev \
-		libjson-glib-dev libexpat1-dev libxml2-dev libffi-dev
+		libjson-glib-dev libexpat1-dev libxml2-dev libffi-dev \
+		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev
+	# (xcb: headers only - phoc's glib-mkenums pass includes
+	# wlr/xwayland/xwayland.h even with Xwayland disabled)
 
 	# wlroots 0.20 wants wayland >= 1.24 (trixie: 1.23.1).  First, so its
 	# wayland-scanner (in /usr/local/bin, ahead in PATH/pkg-config) builds
