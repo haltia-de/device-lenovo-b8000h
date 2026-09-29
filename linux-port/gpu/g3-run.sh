@@ -6,6 +6,11 @@
 # Run detached so a USB console drop cannot cut it:
 #   setsid /root/g3-run.sh g3e > /root/pvrlog/g3e-runner.txt 2>&1 < /dev/null &
 tag=${1:?tag}
+# Modules must match the running kernel: #21 ones live in /root/k21.
+case $(uname -r) in
+	*-b8000h21-*) moddir=/root/k21 ;;
+	*) moddir=/root ;;
+esac
 log=/root/pvrlog/$tag
 echo "b8k: $tag start" > /dev/kmsg
 
@@ -14,12 +19,12 @@ for m in dc_nohw pvrsrvkm; do
 		rmmod "$m" || { echo "rmmod $m failed"; exit 1; }
 	fi
 done
-if [ -e /root/pvrsrvkm.ko.new ]; then
-	mv /root/pvrsrvkm.ko.new /root/pvrsrvkm.ko
+if [ -e $moddir/pvrsrvkm.ko.new ]; then
+	mv $moddir/pvrsrvkm.ko.new $moddir/pvrsrvkm.ko
 fi
-grep -q "^ion_legacy " /proc/modules || insmod /root/ion_legacy.ko || exit 1
-insmod /root/pvrsrvkm.ko || exit 1
-insmod /root/dc_nohw.ko || exit 1
+grep -q "^ion_legacy " /proc/modules || insmod $moddir/ion_legacy.ko || exit 1
+insmod $moddir/pvrsrvkm.ko || exit 1
+insmod $moddir/dc_nohw.ko || exit 1
 cat /proc/pvr/nodes
 
 # /dev/pvr_sync is not implemented; the kick path handles "no fences".

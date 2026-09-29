@@ -1,0 +1,26 @@
+--- a/arch/arm/configs/lenovo-blade_defconfig	2026-09-29 13:09:55.185272879 +0000
++++ b/arch/arm/configs/lenovo-blade_defconfig	2026-09-29 13:10:25.286414492 +0000
+@@ -12,7 +12,7 @@
+ CONFIG_SCHED_MC=y
+ 
+ CONFIG_MODULES=y
+-CONFIG_LOCALVERSION="-b8000h20"
++CONFIG_LOCALVERSION="-b8000h21"
+ CONFIG_SOUND=y
+ CONFIG_SND=y
+ CONFIG_SND_TIMER=y
+@@ -47,7 +47,13 @@
+ 
+ ## Display
+ CONFIG_DRM=y
+-CONFIG_DRM_SIMPLEDRM=y
++# mediatek-drm (OVL/RDMA/DSI, lenovo,b8000-panel) instead of simpledrm:
++# with simpledrm nothing owns the display clocks or the backlight.
++# CONFIG_DRM_SIMPLEDRM is not set
++CONFIG_DRM_MEDIATEK=y
++CONFIG_DRM_PANEL_SIMPLE=y
++CONFIG_PHY_MTK_MIPI_DSI=y
++CONFIG_BACKLIGHT_CLASS_DEVICE=y
+ 
+ ## Framebuffer
+ CONFIG_FB=y
