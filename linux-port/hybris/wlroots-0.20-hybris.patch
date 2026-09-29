@@ -9,6 +9,10 @@ wlroots 0.20: render with the stock Android EGL/GLES through libhybris (B8000-H,
   scan-out (no implicit fences), uploads without GL_EXT_unpack_subimage,
   GL_KHR_debug off (the driver logs every eglMakeCurrent).
 
+- gles2 textures from 32-bit shm buffers live in linear gralloc buffers
+  sampled through EGLImages: updates are memcpy of the damage (5-7 ms per
+  1280x800 frame, 0.3 ms per 100-row band; glTexSubImage2D: 18 / 7 ms).
+
 diff --git a/include/render/allocator/hybris.h b/include/render/allocator/hybris.h
 new file mode 100644
 index 0000000..6c55c4f
@@ -40,22 +44,31 @@ index 0000000..6c55c4f
 +
 +#endif
 diff --git a/include/render/egl.h b/include/render/egl.h
-index 103ab57..56d1d75 100644
+index 103ab57..5631de4 100644
 --- a/include/render/egl.h
 +++ b/include/render/egl.h
-@@ -44,6 +44,10 @@ struct wlr_egl {
+@@ -44,6 +44,19 @@ struct wlr_egl {
  		PFNEGLWAITSYNCKHRPROC eglWaitSyncKHR;
  	} procs;
  
 +	// libhybris (stock Android EGL): no client extensions and no DMA-BUF
 +	// import; render buffers are gralloc buffers from the hybris allocator
 +	bool hybris;
++	// EGL_HYBRIS_native_buffer entry points (libhybris only)
++	struct {
++		EGLBoolean (*create)(EGLint width, EGLint height, EGLint usage,
++			EGLint format, EGLint *stride, EGLClientBuffer *buffer);
++		EGLBoolean (*lock)(EGLClientBuffer buffer, EGLint usage,
++			EGLint l, EGLint t, EGLint w, EGLint h, void **vaddr);
++		EGLBoolean (*unlock)(EGLClientBuffer buffer);
++		EGLBoolean (*release)(EGLClientBuffer buffer);
++	} hybris_nb;
 +
  	bool has_modifiers;
  	struct wlr_drm_format_set dmabuf_texture_formats;
  	struct wlr_drm_format_set dmabuf_render_formats;
 diff --git a/include/render/gles2.h b/include/render/gles2.h
-index 6b852dc..060bb7f 100644
+index 6b852dc..d503bc0 100644
 --- a/include/render/gles2.h
 +++ b/include/render/gles2.h
 @@ -48,6 +48,7 @@ struct wlr_gles2_renderer {
@@ -66,6 +79,19 @@ index 6b852dc..060bb7f 100644
  		bool KHR_debug;
  		bool OES_egl_image_external;
  		bool OES_egl_image;
+@@ -129,6 +130,12 @@ struct wlr_gles2_texture {
+ 
+ 	uint32_t drm_format; // for mutable textures only, used to interpret upload data
+ 	struct wlr_gles2_buffer *buffer; // for DMA-BUF imports only
++
++	// libhybris: shm data lives in a linear gralloc buffer the GPU samples
++	// through an EGLImage; updates are plain memcpy (no driver upload)
++	EGLClientBuffer hybris_nb;
++	EGLImageKHR hybris_image;
++	size_t hybris_stride; // bytes
+ };
+ 
+ struct wlr_gles2_render_pass {
 diff --git a/render/allocator/allocator.c b/render/allocator/allocator.c
 index b7dbf3d..897d520 100644
 --- a/render/allocator/allocator.c
@@ -344,10 +370,10 @@ index 0000000..9d7c5dc
 +	return &alloc->base;
 +}
 diff --git a/render/egl.c b/render/egl.c
-index 8673aca..b9bc9b3 100644
+index 8673aca..7a05a1c 100644
 --- a/render/egl.c
 +++ b/render/egl.c
-@@ -555,10 +555,124 @@ static int open_render_node(int drm_fd) {
+@@ -555,10 +555,128 @@ static int open_render_node(int drm_fd) {
  	return render_fd;
  }
  
@@ -398,6 +424,10 @@ index 8673aca..b9bc9b3 100644
 +	load_egl_proc(&egl->procs.eglDestroyImageKHR, "eglDestroyImageKHR");
 +	egl->exts.IMG_context_priority =
 +		check_egl_ext(exts, "EGL_IMG_context_priority");
++	load_egl_proc(&egl->hybris_nb.create, "eglHybrisCreateNativeBuffer");
++	load_egl_proc(&egl->hybris_nb.lock, "eglHybrisLockNativeBuffer");
++	load_egl_proc(&egl->hybris_nb.unlock, "eglHybrisUnlockNativeBuffer");
++	load_egl_proc(&egl->hybris_nb.release, "eglHybrisReleaseNativeBuffer");
 +
 +	static const EGLint config_attribs[] = {
 +		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
@@ -612,7 +642,7 @@ index e362dae..9a5ca7e 100644
  		load_gl_proc(&renderer->procs.glDebugMessageCallbackKHR,
  			"glDebugMessageCallbackKHR");
 diff --git a/render/gles2/texture.c b/render/gles2/texture.c
-index 9a967eb..0af55da 100644
+index 9a967eb..cf139b3 100644
 --- a/render/gles2/texture.c
 +++ b/render/gles2/texture.c
 @@ -4,6 +4,7 @@
@@ -623,7 +653,116 @@ index 9a967eb..0af55da 100644
  #include <wayland-server-protocol.h>
  #include <wayland-util.h>
  #include <wlr/render/egl.h>
-@@ -76,22 +77,64 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
+@@ -27,6 +28,95 @@ struct wlr_gles2_texture *gles2_get_texture(
+ 	return texture;
+ }
+ 
++// Android HAL values (system/graphics.h, hardware/gralloc.h)
++#define HYBRIS_PIXEL_FORMAT_BGRA_8888 5
++#define HYBRIS_USAGE_SW_WRITE_OFTEN 0x00000030
++#define HYBRIS_USAGE_HW_TEXTURE 0x00000100
++
++/*
++ * libhybris: copy (the damaged part of) a 32-bit shm frame into the
++ * texture's gralloc buffer.  The SGX samples it directly: measured on the
++ * B8000-H, a full 1280x800 frame costs 5-7 ms this way against 18 ms with
++ * glTexSubImage2D, and a 100-row band 0.3 ms against 7 ms.
++ */
++static bool hybris_texture_write(struct wlr_gles2_texture *texture,
++		const void *data, size_t stride, const pixman_region32_t *damage) {
++	struct wlr_egl *egl = texture->renderer->egl;
++	int width = texture->wlr_texture.width;
++	int height = texture->wlr_texture.height;
++
++	pixman_box32_t full = { 0, 0, width, height };
++	const pixman_box32_t *rects = &full;
++	int rects_len = 1;
++	if (damage != NULL) {
++		rects = pixman_region32_rectangles(damage, &rects_len);
++	}
++	if (rects_len == 0) {
++		return true;
++	}
++	const pixman_box32_t *ext = damage != NULL ?
++		pixman_region32_extents(damage) : &full;
++
++	void *vaddr;
++	if (!egl->hybris_nb.lock(texture->hybris_nb, HYBRIS_USAGE_SW_WRITE_OFTEN,
++			ext->x1, ext->y1, ext->x2 - ext->x1, ext->y2 - ext->y1, &vaddr)) {
++		wlr_log(WLR_ERROR, "eglHybrisLockNativeBuffer failed");
++		return false;
++	}
++	for (int i = 0; i < rects_len; i++) {
++		const pixman_box32_t *r = &rects[i];
++		size_t row = (size_t)(r->x2 - r->x1) * 4;
++		for (int y = r->y1; y < r->y2; y++) {
++			memcpy((char *)vaddr + y * texture->hybris_stride + r->x1 * 4,
++				(const char *)data + y * stride + r->x1 * 4, row);
++		}
++	}
++	egl->hybris_nb.unlock(texture->hybris_nb);
++	return true;
++}
++
++// With the context current and texture->tex bound to GL_TEXTURE_2D
++static bool hybris_texture_init(struct wlr_gles2_texture *texture,
++		const void *data, size_t stride) {
++	struct wlr_gles2_renderer *renderer = texture->renderer;
++	struct wlr_egl *egl = renderer->egl;
++	if (!egl->hybris || egl->hybris_nb.create == NULL ||
++			renderer->procs.glEGLImageTargetTexture2DOES == NULL ||
++			(texture->drm_format != DRM_FORMAT_ARGB8888 &&
++			texture->drm_format != DRM_FORMAT_XRGB8888)) {
++		return false;
++	}
++
++	EGLint gralloc_stride;
++	if (!egl->hybris_nb.create(texture->wlr_texture.width,
++			texture->wlr_texture.height,
++			HYBRIS_USAGE_SW_WRITE_OFTEN | HYBRIS_USAGE_HW_TEXTURE,
++			HYBRIS_PIXEL_FORMAT_BGRA_8888, &gralloc_stride,
++			&texture->hybris_nb)) {
++		texture->hybris_nb = NULL;
++		return false;
++	}
++	texture->hybris_stride = (size_t)gralloc_stride * 4;
++	if (!hybris_texture_write(texture, data, stride, NULL)) {
++		goto error_nb;
++	}
++
++	static const EGLint attribs[] = { EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE };
++	texture->hybris_image = egl->procs.eglCreateImageKHR(egl->display,
++		EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, texture->hybris_nb, attribs);
++	if (texture->hybris_image == EGL_NO_IMAGE_KHR) {
++		goto error_nb;
++	}
++	renderer->procs.glEGLImageTargetTexture2DOES(GL_TEXTURE_2D,
++		texture->hybris_image);
++	return true;
++
++error_nb:
++	egl->hybris_nb.release(texture->hybris_nb);
++	texture->hybris_nb = NULL;
++	return false;
++}
++
+ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
+ 		struct wlr_buffer *buffer, const pixman_region32_t *damage) {
+ 	struct wlr_gles2_texture *texture = gles2_get_texture(wlr_texture);
+@@ -66,6 +156,12 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
+ 		return false;
+ 	}
+ 
++	if (texture->hybris_nb != NULL) {
++		bool ok = hybris_texture_write(texture, data, stride, damage);
++		wlr_buffer_end_data_ptr_access(buffer);
++		return ok;
++	}
++
+ 	struct wlr_egl_context prev_ctx;
+ 	wlr_egl_make_current(texture->renderer->egl, &prev_ctx);
+ 
+@@ -76,22 +172,64 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
  	int rects_len = 0;
  	const pixman_box32_t *rects = pixman_region32_rectangles(damage, &rects_len);
  
@@ -701,7 +840,19 @@ index 9a967eb..0af55da 100644
  
  	glBindTexture(GL_TEXTURE_2D, 0);
  
-@@ -342,10 +385,32 @@ static struct wlr_texture *gles2_texture_from_pixels(
+@@ -119,6 +257,11 @@ void gles2_texture_destroy(struct wlr_gles2_texture *texture) {
+ 
+ 		pop_gles2_debug(texture->renderer);
+ 
++		if (texture->hybris_nb != NULL) {
++			wlr_egl_destroy_image(texture->renderer->egl, texture->hybris_image);
++			texture->renderer->egl->hybris_nb.release(texture->hybris_nb);
++		}
++
+ 		wlr_egl_restore_context(&prev_ctx);
+ 	}
+ 
+@@ -342,10 +485,34 @@ static struct wlr_texture *gles2_texture_from_pixels(
  
  	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
  	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -709,7 +860,9 @@ index 9a967eb..0af55da 100644
 -	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
 -		fmt->gl_format, fmt->gl_type, data);
 -	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
-+	if (renderer->exts.EXT_unpack_subimage) {
++	if (hybris_texture_init(texture, data, stride)) {
++		// sampled straight from the gralloc buffer
++	} else if (renderer->exts.EXT_unpack_subimage) {
 +		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
 +		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
 +			fmt->gl_format, fmt->gl_type, data);
