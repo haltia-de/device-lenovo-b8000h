@@ -1,0 +1,16 @@
+--- a/services4/srvkm/env/linux/osfunc.c
++++ b/services4/srvkm/env/linux/osfunc.c
+@@ -4516,7 +4516,12 @@
+ static void per_cpu_cache_flush(void *arg)
+ {
+ 	PVR_UNREFERENCED_PARAMETER(arg);
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
++	/*
++	 * Only arm64 lost the global flush.  32-bit ARM still exports
++	 * __cpuc_flush_kern_all/cpu_cache (arch/arm/mm/proc-syms.c), so
++	 * flush_cache_all() works from a module there.
++	 */
++#if defined(__aarch64__) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
+ 	/*
+ 	NOTE: Regarding arm64 global flush support on >= Linux v4.2:
+ 	- Global cache flush support is deprecated from v4.2 onwards

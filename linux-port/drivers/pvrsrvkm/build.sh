@@ -56,6 +56,7 @@ sed -i 's/\r$//' \
 	"$stage_dir/Makefile" \
 	"$stage_dir/services4/srvkm/env/linux/module.c" \
 	"$stage_dir/services4/srvkm/env/linux/mm.c" \
+	"$stage_dir/services4/srvkm/env/linux/osfunc.c" \
 	"$stage_dir/services4/system/mtk_common/mtk_gpu_hal.c"
 # Linux 7 no longer exposes the compiler's freestanding stdarg.h to kernel
 # modules.  The DDK only uses va_list, so use the kernel wrapper everywhere.
