@@ -2,3 +2,5 @@
 *.patch text eol=lf
 linux-port/initramfs/init text eol=lf
 *.py text eol=lf
+Makefile text eol=lf
+Kbuild text eol=lf
