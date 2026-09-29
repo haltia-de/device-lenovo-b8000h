@@ -227,10 +227,18 @@ chmod 700 "$XDG_RUNTIME_DIR"
 # b8k-session opens a PAM session (pam_elogind) so Phosh has a logind
 # session: brightness goes through login1.Session.SetBrightness.
 # Restart the session if Phosh crashes instead of leaving a dead screen.
-# pipewire-launcher's own cleanup (pkill -u "$USER" -fx) misses under busybox
-# with USER unset: stale audio daemons of the last session would fight the
-# new ones over the sound card, so stop them between sessions.
-( while :; do /usr/local/bin/b8k-session dbus-run-session -- phosh-session >>/var/log/phosh.log 2>&1; killall pipewire pipewire-pulse wireplumber 2>/dev/null; sleep 2; done & ) >/dev/null 2>&1
+# The session user is read from /etc/b8k/session-user on every start (root
+# when the file or the user is missing), so switching needs no reboot.
+# pipewire-launcher's own cleanup (pkill -u "$USER" -fx) misses under
+# busybox: stale audio daemons of the last session would fight the new ones
+# over the sound card, so stop them between sessions.
+( while :; do
+	u=$(cat /etc/b8k/session-user 2>/dev/null)
+	id "$u" >/dev/null 2>&1 || u=root
+	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- phosh-session >>/var/log/phosh.log 2>&1
+	killall pipewire pipewire-pulse wireplumber 2>/dev/null
+	sleep 2
+done & ) >/dev/null 2>&1
 EOF
 	mkdir -p "$ROOT/etc/pam.d"
 	printf 'auth     sufficient pam_permit.so\naccount  sufficient pam_permit.so\nsession  include    base-session\n' \

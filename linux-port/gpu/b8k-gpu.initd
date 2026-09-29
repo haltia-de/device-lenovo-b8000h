@@ -35,6 +35,8 @@ start() {
 	done
 	# The stock gralloc opens /dev/pvr_sync; our KM has no native sync.
 	[ -e /dev/pvr_sync ] || ln -s /dev/null /dev/pvr_sync
+	# The compositor runs as the session user (group video).
+	chgrp video /dev/pvrsrvkm && chmod 0660 /dev/pvrsrvkm
 	if [ -e "$READY" ]; then
 		eend 0
 		return 0

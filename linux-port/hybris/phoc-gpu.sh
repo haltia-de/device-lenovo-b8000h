@@ -11,14 +11,19 @@
 # Falls back to the packaged /usr/bin/phoc (pixman) when the GPU is not ready
 # (b8k-gpu service) or after 3 starts in a row that did not last a minute.
 # Installed as /usr/local/bin/phoc-gpu; phosh-session picks it up through
-# /root/.phoshdebug.
+# ~/.phoshdebug.  Runs as the session user (groups video, seat, input).
 D=/opt/debian
 LDSO=$D/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
 PHOC=$D/usr/local/bin/phoc
-FAILS=/run/phoc-gpu.fails
+FAILS=${XDG_RUNTIME_DIR:-/tmp}/phoc-gpu.fails
+
+log() {
+	echo "phoc-gpu: $1" >&2
+	{ echo "phoc-gpu: $1" > /dev/kmsg; } 2>/dev/null	# root only
+}
 
 fallback() {
-	echo "phoc-gpu: $1, starting the stock phoc" > /dev/kmsg
+	log "$1, starting the stock phoc"
 	shift
 	exec /usr/bin/phoc "$@"
 }
@@ -36,10 +41,10 @@ pid=$$
 ( (sleep 60; kill -0 "$pid" 2>/dev/null && rm -f "$FAILS") & ) \
 	> /dev/null 2>&1 < /dev/null
 
-echo "phoc-gpu: starting glibc phoc (attempt $((n + 1)))" > /dev/kmsg
-# Render with the SGX544 (wlroots-0.20-hybris.patch); /root/.phoc-gpu-pixman
+log "starting glibc phoc (attempt $((n + 1)))"
+# Render with the SGX544 (wlroots-0.20-hybris.patch); ~/.phoc-gpu-pixman
 # keeps the glibc phoc on the CPU renderer.
-if [ -e /root/.phoc-gpu-pixman ]; then
+if [ -e "$HOME/.phoc-gpu-pixman" ]; then
 	export WLR_RENDERER=pixman
 else
 	export WLR_RENDERER=gles2
