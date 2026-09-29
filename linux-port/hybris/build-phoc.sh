@@ -33,9 +33,11 @@ unpack() {
 mbuild() {
 	name=$1 dir=$2
 	shift 2
-	[ -f "$B/$name/build.ninja" ] ||
+	if [ ! -f "$B/$name/build.ninja" ]; then
+		rm -rf "$B/$name"	# left over from a failed setup
 		meson setup "$B/$name" "$S/src/$dir" --prefix=/usr/local \
 			--buildtype=release "$@"
+	fi
 	ninja -C "$B/$name" -j"$J"
 	ninja -C "$B/$name" install
 }
@@ -47,7 +49,8 @@ if [ "$what" != phoc ]; then
 		libglib2.0-dev libglib2.0-dev-bin libgnome-desktop-3-dev \
 		gsettings-desktop-schemas-dev libinput-dev libudev-dev \
 		libpixman-1-dev libwayland-dev libwayland-bin wayland-protocols \
-		libseat-dev libdisplay-info-dev hwdata libgbm-dev
+		libseat-dev libdisplay-info-dev hwdata libgbm-dev \
+		libjson-glib-dev
 
 	unpack libdrm_2.4.134.orig.tar.xz libdrm-2.4.134
 	mbuild libdrm libdrm-2.4.134 -Dauto_features=disabled -Dtests=false \
