@@ -155,3 +155,29 @@ glibc оба держат указатель потока в `TPIDRURO`; Android
 - Мелочи: glibc-libinput 1.28 не читает quirks из `/usr/share/libinput` (файлы от libinput
   Alpine) — предупреждение, на сенсор не влияет; busybox `pkill -x phoc` не находит процессы
   (без `-x` или по PID — работает); phoc на первый SIGTERM иногда не выходит.
+
+## Шаг 5 (2026-09-30): G5 шаг 3 — phoc рисует на SGX544
+
+`linux-port/hybris/wlroots-0.20-hybris.patch` (накладывается `build-phoc.sh` после патча phoc):
+- `render/egl.c`: если `eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS)` пуст, а
+  `eglHybrisCreateNativeBuffer` есть — это libhybris: `eglGetDisplay(EGL_DEFAULT_DISPLAY)`,
+  конфиг RGBA8888/ES2, контекст без поверхности; фиктивные render-форматы XRGB/ARGB8888 ×
+  {INVALID, LINEAR}. Никаких изменений сборки — только EGL API.
+- `render/allocator/hybris.c` (новый): буферы через `EGL_HYBRIS_native_buffer`
+  (`HAL_PIXEL_FORMAT_BGRA_8888`, usage `HW_TEXTURE|HW_RENDER|HW_COMPOSER`), DMA-BUF = тот fd
+  gralloc-хэндла, что указывает на `dmabuf` (`/proc/self/fd`), stride × 4, modifier INVALID;
+  `wlr_allocator_autocreate` выбирает его первым при hybris-EGL.
+- `render/gles2`: цель рендера — `eglCreateImageKHR(EGL_NATIVE_BUFFER_ANDROID)`;
+  **SGX отвечает `GL_INVALID_OPERATION` на `glEGLImageTargetRenderbufferStorageOES`**, поэтому
+  FBO собирается через текстуру (`glEGLImageTargetTexture2DOES`); DMA-BUF-текстур нет (phoc не
+  объявляет linux-dmabuf, клиенты на wl_shm); `glFinish()` перед сдачей кадра (у gralloc-буферов
+  нет неявных fence); загрузка текстур без `GL_EXT_unpack_subimage` — полоса целых строк при
+  плотном stride, иначе перепаковка; `GL_KHR_debug` выключен (драйвер пишет high-severity
+  сообщение на каждый `eglMakeCurrent`, тысячи строк в минуту).
+- `phoc-gpu` ставит `WLR_RENDERER=gles2` (`/root/.phoc-gpu-pixman` — вернуть pixman).
+
+Итог на планшете: `Using libhybris EGL 1.4 (Android gralloc buffers)`, `GL renderer: PowerVR
+SGX 544MP`; сеанс Phosh держится, в покое phoc ~0–3% CPU, RSS ~82–93 МБ (блобы драйвера).
+Клиенты (phosh, приложения) по-прежнему рисуют сами (wl_shm), phoc загружает их кадры в
+текстуры (`glTex(Sub)Image2D`, твиддлинг SGX на CPU) — следующий шаг: замерить и при
+необходимости перейти на линейные gralloc-текстуры (шаг 4 плана G5).
