@@ -60,6 +60,11 @@ if [ "$what" != phoc ]; then
 		-Dxkb-config-root=/usr/share/X11/xkb \
 		-Dx-locale-root=/usr/share/X11/locale
 	unpack wayland-protocols_1.49.orig.tar.xz wayland-protocols-1.49
+	# 1.49 marks interfaces "frozen", which trixie's wayland-scanner 1.23
+	# only knows as a DTD warning; --strict makes that fatal for the
+	# generated enum headers.
+	sed -i "/'--strict',/d" \
+		"$S/src/wayland-protocols-1.49/include/wayland-protocols/meson.build"
 	mbuild wayland-protocols wayland-protocols-1.49 -Dtests=false
 	ldconfig
 fi
