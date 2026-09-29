@@ -1,0 +1,72 @@
+--- a/services4/3rdparty/dc_nohw/dc_nohw_linux.c
++++ b/services4/3rdparty/dc_nohw/dc_nohw_linux.c
+@@ -85,6 +85,7 @@
+ 
+ #if defined(DC_NOHW_DISCONTIG_BUFFERS)
+ #include <linux/vmalloc.h>
++#include <linux/mm.h>
+ #include <asm/page.h>
+ #else
+ #include <asm/dma-mapping.h>
+@@ -238,34 +239,48 @@ DC_ERROR AllocDiscontigMemory(unsigned long ulSize,
+ 	      IMG_CPU_VIRTADDR *pLinAddr,
+ 	      IMG_SYS_PHYADDR **ppPhysAddr)
+ {
+-	unsigned long ulPages = RANGE_TO_PAGES(ulSize);
++	unsigned long ulPages = RANGE_TO_PAGES(ulSize), ulAllocated = 0;
+ 	IMG_SYS_PHYADDR *pPhysAddr;
++	struct page **ppsPages;
+ 	unsigned long ulPage;
+ 	IMG_CPU_VIRTADDR LinAddr;
+ 
+-	LinAddr = __vmalloc(ulSize, GFP_KERNEL | __GFP_HIGHMEM,
+-	    pgprot_noncached(PAGE_KERNEL));
+-	if (!LinAddr) {
+-	return DC_ERROR_OUT_OF_MEMORY;
+-	}
++	ppsPages = kvmalloc_array(ulPages, sizeof(*ppsPages), GFP_KERNEL);
++	if (!ppsPages)
++		return DC_ERROR_OUT_OF_MEMORY;
+ 
+ 	pPhysAddr = kmalloc(ulPages * sizeof(IMG_SYS_PHYADDR), GFP_KERNEL);
+ 	if (!pPhysAddr) {
+-	vfree(LinAddr);
+-	return DC_ERROR_OUT_OF_MEMORY;
++		kvfree(ppsPages);
++		return DC_ERROR_OUT_OF_MEMORY;
+ 	}
+ 
+-	*pLinAddr = LinAddr;
++	for (ulPage = 0; ulPage < ulPages; ulPage++) {
++		ppsPages[ulPage] = alloc_page(GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO);
++		if (!ppsPages[ulPage])
++			goto err_free_pages;
++		ulAllocated++;
++		pPhysAddr[ulPage].uiAddr = page_to_phys(ppsPages[ulPage]);
++	}
+ 
+-	for (ulPage = 0; ulPage < ulPages; ulPage++) {
+-	pPhysAddr[ulPage].uiAddr = VMALLOC_TO_PAGE_PHYS(LinAddr);
++	LinAddr = vmap(ppsPages, ulPages, VM_MAP | VM_MAP_PUT_PAGES,
++			pgprot_noncached(PAGE_KERNEL));
++	if (!LinAddr)
++		goto err_free_pages;
+ 
+-	LinAddr += PAGE_SIZE;
+-	}
++	*phMemHandle = IMG_NULL;
++	*pLinAddr = LinAddr;
+ 
+ 	*ppPhysAddr = pPhysAddr;
+ 
+ 	return DC_OK;
++
++err_free_pages:
++	while (ulAllocated)
++		__free_page(ppsPages[--ulAllocated]);
++	kvfree(ppsPages);
++	kfree(pPhysAddr);
++	return DC_ERROR_OUT_OF_MEMORY;
+ }
+ 
+ void FreeDiscontigMemory(unsigned long ulSize, DC_HANDLE unref__ hMemHandle,

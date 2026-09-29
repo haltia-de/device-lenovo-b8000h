@@ -1,0 +1,13 @@
+--- a/services4/3rdparty/dc_nohw/dc_nohw_linux.c
++++ b/services4/3rdparty/dc_nohw/dc_nohw_linux.c
+@@ -117,10 +117,6 @@
+ 
+ #define DRVNAME "dc_nohw"
+ 
+-#if !defined(SUPPORT_DRI_DRM)
+-MODULE_SUPPORTED_DEVICE(DRVNAME);
+-#endif
+-
+ #define unref__ __attribute__((unused))
+ 
+ #if defined(DC_NOHW_GET_BUFFER_DIMENSIONS)

@@ -1,0 +1,31 @@
+--- a/services4/3rdparty/dc_nohw/dc_nohw_linux.c
++++ b/services4/3rdparty/dc_nohw/dc_nohw_linux.c
+@@ -116,7 +116,7 @@
+ #endif
+ #endif /* defined(DC_NOHW_DISCONTIG_BUFFERS) */
+ 
+-#define DRVNAME "dcnohw"
++#define DRVNAME "dc_nohw"
+ 
+ #if !defined(SUPPORT_DRI_DRM)
+ MODULE_SUPPORTED_DEVICE(DRVNAME);
+@@ -191,6 +191,9 @@ static int __init DC_NOHW_Init(void)
+ 	if (Init() != DC_OK) {
+ 	return -ENODEV;
+ 	}
++	pr_info(DRVNAME ": registered DISPLAY class: %ux%u ARGB8888, stride %u, buffers %u\n",
++		DC_NOHW_BUFFER_WIDTH, DC_NOHW_BUFFER_HEIGHT,
++		DC_NOHW_BUFFER_BYTE_STRIDE, DC_NOHW_MAX_BACKBUFFERS);
+ 
+ 	return 0;
+ } /*DC_NOHW_Init*/
+@@ -366,7 +369,9 @@ DC_ERROR GetLibFuncAddr(DC_HANDLE unref__ hExtDrv, char *szFunctionName,
+  driver.  Although they are prefixed `module_', they apply when compiling
+  statically as well; in both cases they define the function the kernel will
+  run to start/stop the driver.
+ */
++MODULE_DESCRIPTION("PowerVR no-hardware display class for MT6589");
++MODULE_SOFTDEP("pre: pvrsrvkm");
+ module_init(DC_NOHW_Init);
+ module_exit(DC_NOHW_Cleanup);
+ #endif

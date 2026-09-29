@@ -1,0 +1,12 @@
+--- a/services4/3rdparty/dc_nohw/dc_nohw_linux.c
++++ b/services4/3rdparty/dc_nohw/dc_nohw_linux.c
+@@ -116,7 +116,9 @@
+ 
+ #define DRVNAME "dc_nohw"
+ 
++#if !defined(unref__)
+ #define unref__ __attribute__((unused))
++#endif
+ 
+ #if defined(DC_NOHW_GET_BUFFER_DIMENSIONS)
+ static unsigned long width = DC_NOHW_BUFFER_WIDTH;
