@@ -89,6 +89,17 @@ fi
 
 if [ "$what" != deps ]; then
 	unpack phoc-0.55.1.tar.xz phoc-0.55.1
+	# The release tarball ships wlroots-0.20.x unpatched; meson applies the
+	# wrap's diff_files only when it fetches the subproject itself.  Without
+	# the layer-shell revert phoc posts "height 0 requested without setting
+	# top and bottom anchors" to phosh and the shell dies at start.
+	w=$S/src/phoc-0.55.1/subprojects/wlroots-0.20.x
+	if [ ! -e "$w/.b8k-patched" ]; then
+		for p in "$S"/src/phoc-0.55.1/subprojects/packagefiles/wlroots/*.patch; do
+			patch -d "$w" -p1 -N < "$p"
+		done
+		touch "$w/.b8k-patched"
+	fi
 	# gmobile.wrap is a git wrap (gitlab.gnome.org is unreachable from
 	# here); a directory of that name makes meson use it as is.
 	if [ ! -d "$S/src/phoc-0.55.1/subprojects/gmobile" ]; then

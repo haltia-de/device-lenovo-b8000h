@@ -37,6 +37,9 @@ pid=$$
 	> /dev/null 2>&1 < /dev/null
 
 echo "phoc-gpu: starting glibc phoc (attempt $((n + 1)))" > /dev/kmsg
+# Debug knob: log phoc's Wayland traffic (server side only; clients ignore
+# WAYLAND_DEBUG=server) into the session log.
+[ -e /run/phoc-gpu.wldebug ] && export WAYLAND_DEBUG=server
 exec "$LDSO" --inhibit-cache \
 	--library-path "$D/usr/local/hybris/lib:$D/usr/local/lib/arm-linux-gnueabihf:$D/usr/lib/arm-linux-gnueabihf" \
 	--preload "$D/usr/local/hybris/lib/libtlspad.so" \

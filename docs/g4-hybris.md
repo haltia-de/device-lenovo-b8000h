@@ -122,3 +122,36 @@ glibc оба держат указатель потока в `TPIDRURO`; Android
 раз; стабильность (#22, порча памяти) под постоянной нагрузкой GPU; зависимости phoc 0.55.1
 могут быть новее trixie (тогда собрать недостающие, например wayland-protocols, в
 `/usr/local`, а не обновлять chroot).
+
+## Шаг 4 (2026-09-30): G5 шаги 1–2 — GPU при загрузке, glibc-phoc в сеансе
+
+- **Служба `b8k-gpu`** (`linux-port/gpu/b8k-gpu.initd` → `/etc/init.d/b8k-gpu`, runlevel default,
+  `before local`): модули из `/root/kN`, `pvrsrvctl --start` через `pvr-run.sh` (логи
+  `/root/pvrlog/boot-gpu`), флаг `/run/b8k-gpu.ready`. Повторный старт — `PVRSRVInitSrvConnect
+  failed (129)` в log-main, считается «уже запущено». Проверено при реальных загрузках.
+- **phoc 0.55.1 + wlroots 0.20.0** собраны в chroot (`linux-port/hybris/build-phoc.sh`,
+  `-Ddefault_library=static`, renderers=gles2 против EGL/GLESv2 libhybris, backends drm+libinput,
+  без Xwayland). trixie не хватило, собраны в `/usr/local` chroot из пула Debian (sha256 сверены
+  с `.dsc`): wayland 1.26.0 (wlroots ≥ 1.24), pixman 0.46.4 (≥ 0.46), libdrm 2.4.134 (≥ 2.4.129),
+  libxkbcommon 1.13.1 (≥ 1.8, `xkb-config-root=/usr/share/X11/xkb`), wayland-protocols 1.49
+  (≥ 1.47; без `--strict`, т.к. при первой сборке сканер был 1.23); gmobile 0.6.0 и phoc — с
+  sources.phosh.mobi (gitlab.gnome.org с планшета недоступен). Пакеты: см. apt-get в скрипте
+  (json-glib для gmobile, заголовки xcb — их тянет glib-mkenums phoc даже без Xwayland).
+- **Ловушка**: в релизном тарболе phoc подпроект `wlroots-0.20.x` лежит без патча из
+  `subprojects/packagefiles/wlroots/` (meson накладывает его только при скачивании). Без него
+  phoc отвечает phosh протокольной ошибкой `height 0 requested without setting top and bottom
+  anchors` — phosh падает через ~8 с, сеанс перезапускается. Скрипт накладывает патч сам.
+- **Запуск**: `/usr/local/bin/phoc-gpu` (`linux-port/hybris/phoc-gpu.sh`) — ld.so Debian
+  `--inhibit-cache --library-path hybris:/usr/local/lib/…:/usr/lib/… --preload libtlspad.so`;
+  симлинки в корне Alpine `/usr/lib/arm-linux-gnueabihf` и `/usr/local/hybris` → `/opt/debian/…`;
+  `/root/.phoshdebug` (`linux-port/hybris/phoshdebug`) → `COMPOSITOR=/usr/local/bin/phoc-gpu`.
+  Проверено: `LD_DEBUG=libs` — 86 библиотек, все из Debian; EGL/GLES — из libhybris, libdrm/
+  wayland/xkbcommon — из `/usr/local`; в `/proc/PID/maps` нет musl; `PT_TLS` у phoc нет; RSS 29 МБ.
+  Сеанс Phosh работает на glibc-phoc с pixman.
+- **Откат проверен вживую**: три коротких запуска (из-за ошибки выше) → `phoc-gpu: 3 failed
+  starts, starting the stock phoc`. Счётчик `/run/phoc-gpu.fails` сбрасывается через 60 с
+  работы. Отладка: `touch /run/phoc-gpu.wldebug` → `WAYLAND_DEBUG=server` в лог сеанса.
+  Отключить совсем: `touch /root/.phoc-gpu-disabled`.
+- Мелочи: glibc-libinput 1.28 не читает quirks из `/usr/share/libinput` (файлы от libinput
+  Alpine) — предупреждение, на сенсор не влияет; busybox `pkill -x phoc` не находит процессы
+  (без `-x` или по PID — работает); phoc на первый SIGTERM иногда не выходит.
