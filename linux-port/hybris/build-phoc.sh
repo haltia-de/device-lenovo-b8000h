@@ -100,6 +100,11 @@ if [ "$what" != deps ]; then
 		done
 		touch "$w/.b8k-patched"
 	fi
+	# Our libhybris support (wlroots-0.20-hybris.patch, next to this script)
+	if [ ! -e "$w/.b8k-hybris-patched" ]; then
+		patch -d "$w" -p1 -N < "$S/wlroots-0.20-hybris.patch"
+		touch "$w/.b8k-hybris-patched"
+	fi
 	# gmobile.wrap is a git wrap (gitlab.gnome.org is unreachable from
 	# here); a directory of that name makes meson use it as is.
 	if [ ! -d "$S/src/phoc-0.55.1/subprojects/gmobile" ]; then

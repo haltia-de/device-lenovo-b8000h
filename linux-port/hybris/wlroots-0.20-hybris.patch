@@ -1,0 +1,753 @@
+wlroots 0.20: render with the stock Android EGL/GLES through libhybris (B8000-H, G5)
+
+- render/egl.c: libhybris has no EGL client extensions: default display,
+  RGBA8888 config, surfaceless context; fake XRGB/ARGB8888 render formats.
+- render/allocator/hybris.c: gralloc buffers (EGL_HYBRIS_native_buffer),
+  exposed as a single-plane DMA-BUF (the ION fd) for KMS scan-out.
+- gles2: render into EGL_NATIVE_BUFFER_ANDROID images (texture fallback),
+  no DMA-BUF texture formats (clients stay on wl_shm), glFinish before
+  scan-out (no implicit fences), uploads without GL_EXT_unpack_subimage,
+  GL_KHR_debug off (the driver logs every eglMakeCurrent).
+
+diff --git a/include/render/allocator/hybris.h b/include/render/allocator/hybris.h
+new file mode 100644
+index 0000000..6c55c4f
+--- /dev/null
++++ b/include/render/allocator/hybris.h
+@@ -0,0 +1,24 @@
++#ifndef RENDER_ALLOCATOR_HYBRIS_H
++#define RENDER_ALLOCATOR_HYBRIS_H
++
++#include <EGL/egl.h>
++#include <stdbool.h>
++#include <wlr/render/allocator.h>
++#include <wlr/types/wlr_buffer.h>
++
++/**
++ * Allocator for the libhybris EGL (Android EGL/GLES through libhybris):
++ * buffers are Android gralloc buffers from EGL_HYBRIS_native_buffer. The
++ * EGL renders into them through EGL_NATIVE_BUFFER_ANDROID images; KMS
++ * scans them out through the DMA-BUF fd of the gralloc handle.
++ */
++struct wlr_allocator *wlr_hybris_allocator_create(void);
++
++/**
++ * Get the Android native buffer (ANativeWindowBuffer) behind a buffer
++ * allocated by the hybris allocator. Returns false for other buffers.
++ */
++bool wlr_hybris_buffer_get_native(struct wlr_buffer *buffer,
++	EGLClientBuffer *native);
++
++#endif
+diff --git a/include/render/egl.h b/include/render/egl.h
+index 103ab57..56d1d75 100644
+--- a/include/render/egl.h
++++ b/include/render/egl.h
+@@ -44,6 +44,10 @@ struct wlr_egl {
+ 		PFNEGLWAITSYNCKHRPROC eglWaitSyncKHR;
+ 	} procs;
+ 
++	// libhybris (stock Android EGL): no client extensions and no DMA-BUF
++	// import; render buffers are gralloc buffers from the hybris allocator
++	bool hybris;
++
+ 	bool has_modifiers;
+ 	struct wlr_drm_format_set dmabuf_texture_formats;
+ 	struct wlr_drm_format_set dmabuf_render_formats;
+diff --git a/include/render/gles2.h b/include/render/gles2.h
+index 6b852dc..060bb7f 100644
+--- a/include/render/gles2.h
++++ b/include/render/gles2.h
+@@ -48,6 +48,7 @@ struct wlr_gles2_renderer {
+ 	const char *exts_str;
+ 	struct {
+ 		bool EXT_read_format_bgra;
++		bool EXT_unpack_subimage;
+ 		bool KHR_debug;
+ 		bool OES_egl_image_external;
+ 		bool OES_egl_image;
+diff --git a/render/allocator/allocator.c b/render/allocator/allocator.c
+index b7dbf3d..897d520 100644
+--- a/render/allocator/allocator.c
++++ b/render/allocator/allocator.c
+@@ -21,6 +21,12 @@
+ #include "render/allocator/udmabuf.h"
+ #endif
+ 
++#if WLR_HAS_GLES2_RENDERER
++#include <wlr/render/gles2.h>
++#include "render/allocator/hybris.h"
++#include "render/egl.h"
++#endif
++
+ void wlr_allocator_init(struct wlr_allocator *alloc,
+ 		const struct wlr_allocator_interface *impl, uint32_t buffer_caps) {
+ 	assert(impl && impl->destroy && impl->create_buffer);
+@@ -108,6 +114,19 @@ struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
+ 
+ 	struct wlr_allocator *alloc = NULL;
+ 
++#if WLR_HAS_GLES2_RENDERER
++	// libhybris renders only into Android gralloc buffers
++	if (wlr_renderer_is_gles2(renderer) &&
++			wlr_gles2_renderer_get_egl(renderer)->hybris) {
++		wlr_log(WLR_DEBUG, "Trying to create hybris allocator");
++		if ((alloc = wlr_hybris_allocator_create()) != NULL) {
++			return alloc;
++		}
++		wlr_log(WLR_ERROR, "Failed to create hybris allocator");
++		return NULL;
++	}
++#endif
++
+ 	uint32_t gbm_caps = WLR_BUFFER_CAP_DMABUF;
+ 	if ((backend_caps & gbm_caps) && (renderer_caps & gbm_caps)
+ 			&& drm_fd >= 0) {
+diff --git a/render/allocator/hybris.c b/render/allocator/hybris.c
+new file mode 100644
+index 0000000..9d7c5dc
+--- /dev/null
++++ b/render/allocator/hybris.c
+@@ -0,0 +1,234 @@
++#include <assert.h>
++#include <drm_fourcc.h>
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <inttypes.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <wlr/interfaces/wlr_buffer.h>
++#include <wlr/render/allocator.h>
++#include <wlr/render/drm_format_set.h>
++#include <wlr/util/log.h>
++#include "render/allocator/hybris.h"
++#include "render/drm_format_set.h"
++
++// EGL_HYBRIS_native_buffer, see libhybris hybris_nativebufferext.h
++typedef EGLBoolean (EGLAPIENTRYP PFNEGLHYBRISCREATENATIVEBUFFERPROC)(
++	EGLint width, EGLint height, EGLint usage, EGLint format,
++	EGLint *stride, EGLClientBuffer *buffer);
++typedef EGLBoolean (EGLAPIENTRYP PFNEGLHYBRISRELEASENATIVEBUFFERPROC)(
++	EGLClientBuffer buffer);
++// Both return void in libhybris
++typedef void (EGLAPIENTRYP PFNEGLHYBRISGETNATIVEBUFFERINFOPROC)(
++	EGLClientBuffer buffer, int *num_ints, int *num_fds);
++typedef void (EGLAPIENTRYP PFNEGLHYBRISSERIALIZENATIVEBUFFERPROC)(
++	EGLClientBuffer buffer, int *ints, int *fds);
++
++// Android HAL values (system/graphics.h, hardware/gralloc.h)
++#define HAL_PIXEL_FORMAT_BGRA_8888 5
++#define GRALLOC_USAGE_HW_TEXTURE 0x00000100
++#define GRALLOC_USAGE_HW_RENDER 0x00000200
++#define GRALLOC_USAGE_HW_COMPOSER 0x00000800
++
++#define HYBRIS_MAX_FDS 8
++#define HYBRIS_MAX_INTS 256
++
++struct wlr_hybris_buffer {
++	struct wlr_buffer base;
++	EGLClientBuffer native;
++	PFNEGLHYBRISRELEASENATIVEBUFFERPROC release;
++	struct wlr_dmabuf_attributes dmabuf;
++};
++
++struct wlr_hybris_allocator {
++	struct wlr_allocator base;
++	PFNEGLHYBRISCREATENATIVEBUFFERPROC create;
++	PFNEGLHYBRISRELEASENATIVEBUFFERPROC release;
++	PFNEGLHYBRISGETNATIVEBUFFERINFOPROC get_info;
++	PFNEGLHYBRISSERIALIZENATIVEBUFFERPROC serialize;
++};
++
++static const struct wlr_buffer_impl buffer_impl;
++
++static struct wlr_hybris_buffer *get_hybris_buffer_from_buffer(
++		struct wlr_buffer *wlr_buffer) {
++	assert(wlr_buffer->impl == &buffer_impl);
++	struct wlr_hybris_buffer *buffer = wl_container_of(wlr_buffer, buffer, base);
++	return buffer;
++}
++
++bool wlr_hybris_buffer_get_native(struct wlr_buffer *wlr_buffer,
++		EGLClientBuffer *native) {
++	if (wlr_buffer->impl != &buffer_impl) {
++		return false;
++	}
++	struct wlr_hybris_buffer *buffer = get_hybris_buffer_from_buffer(wlr_buffer);
++	*native = buffer->native;
++	return true;
++}
++
++static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
++	struct wlr_hybris_buffer *buffer = get_hybris_buffer_from_buffer(wlr_buffer);
++	// The fds belong to the gralloc handle: released with it
++	buffer->release(buffer->native);
++	free(buffer);
++}
++
++static bool buffer_get_dmabuf(struct wlr_buffer *wlr_buffer,
++		struct wlr_dmabuf_attributes *attribs) {
++	struct wlr_hybris_buffer *buffer = get_hybris_buffer_from_buffer(wlr_buffer);
++	*attribs = buffer->dmabuf;
++	return true;
++}
++
++static const struct wlr_buffer_impl buffer_impl = {
++	.destroy = buffer_destroy,
++	.get_dmabuf = buffer_get_dmabuf,
++};
++
++static const struct wlr_allocator_interface allocator_impl;
++
++static struct wlr_hybris_allocator *get_hybris_alloc_from_alloc(
++		struct wlr_allocator *wlr_alloc) {
++	assert(wlr_alloc->impl == &allocator_impl);
++	struct wlr_hybris_allocator *alloc = wl_container_of(wlr_alloc, alloc, base);
++	return alloc;
++}
++
++static bool fd_is_dmabuf(int fd) {
++	char path[64], target[64];
++	snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
++	ssize_t n = readlink(path, target, sizeof(target) - 1);
++	if (n < 0) {
++		return false;
++	}
++	target[n] = '\0';
++	return strstr(target, "dmabuf") != NULL;
++}
++
++static struct wlr_buffer *allocator_create_buffer(
++		struct wlr_allocator *wlr_alloc, int width, int height,
++		const struct wlr_drm_format *format) {
++	struct wlr_hybris_allocator *alloc = get_hybris_alloc_from_alloc(wlr_alloc);
++
++	// BGRA_8888 is ARGB8888 in DRM terms; XRGB8888 scans out the same
++	// memory with alpha ignored
++	if (format->format != DRM_FORMAT_ARGB8888 &&
++			format->format != DRM_FORMAT_XRGB8888) {
++		wlr_log(WLR_ERROR, "hybris allocator: unsupported format 0x%08"PRIX32,
++			format->format);
++		return NULL;
++	}
++
++	// Plain ADDFB2 (implicit modifier) is what the display is known to take
++	uint64_t modifier;
++	if (wlr_drm_format_has(format, DRM_FORMAT_MOD_INVALID)) {
++		modifier = DRM_FORMAT_MOD_INVALID;
++	} else if (wlr_drm_format_has(format, DRM_FORMAT_MOD_LINEAR)) {
++		modifier = DRM_FORMAT_MOD_LINEAR;
++	} else {
++		wlr_log(WLR_ERROR, "hybris allocator: no linear or implicit modifier");
++		return NULL;
++	}
++
++	struct wlr_hybris_buffer *buffer = calloc(1, sizeof(*buffer));
++	if (buffer == NULL) {
++		return NULL;
++	}
++	buffer->release = alloc->release;
++
++	const EGLint usage = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER |
++		GRALLOC_USAGE_HW_COMPOSER;
++	EGLint stride = 0;
++	if (!alloc->create(width, height, usage, HAL_PIXEL_FORMAT_BGRA_8888,
++			&stride, &buffer->native)) {
++		wlr_log(WLR_ERROR, "eglHybrisCreateNativeBuffer %dx%d failed",
++			width, height);
++		free(buffer);
++		return NULL;
++	}
++
++	int num_ints = 0, num_fds = 0;
++	alloc->get_info(buffer->native, &num_ints, &num_fds);
++	if (num_fds < 1 || num_fds > HYBRIS_MAX_FDS ||
++			num_ints < 0 || num_ints > HYBRIS_MAX_INTS) {
++		wlr_log(WLR_ERROR, "Unexpected gralloc handle (%d fds, %d ints)",
++			num_fds, num_ints);
++		goto error_native;
++	}
++	int fds[HYBRIS_MAX_FDS];
++	int ints[HYBRIS_MAX_INTS];
++	alloc->serialize(buffer->native, ints, fds);
++
++	// The IMG handle carries the ION (DMA-BUF) fd among its fds
++	int fd = -1;
++	for (int i = 0; i < num_fds; i++) {
++		if (fd_is_dmabuf(fds[i])) {
++			fd = fds[i];
++			break;
++		}
++	}
++	if (fd < 0) {
++		wlr_log(WLR_ERROR, "gralloc handle has no DMA-BUF fd");
++		goto error_native;
++	}
++
++	buffer->dmabuf = (struct wlr_dmabuf_attributes){
++		.width = width,
++		.height = height,
++		.format = format->format,
++		.modifier = modifier,
++		.n_planes = 1,
++		.offset[0] = 0,
++		.stride[0] = stride * 4,
++		.fd[0] = fd,
++	};
++
++	wlr_buffer_init(&buffer->base, &buffer_impl, width, height);
++
++	wlr_log(WLR_DEBUG, "Allocated %dx%d gralloc buffer (stride %d px, "
++		"DMA-BUF fd %d)", width, height, (int)stride, fd);
++	return &buffer->base;
++
++error_native:
++	alloc->release(buffer->native);
++	free(buffer);
++	return NULL;
++}
++
++static void allocator_destroy(struct wlr_allocator *wlr_alloc) {
++	free(get_hybris_alloc_from_alloc(wlr_alloc));
++}
++
++static const struct wlr_allocator_interface allocator_impl = {
++	.destroy = allocator_destroy,
++	.create_buffer = allocator_create_buffer,
++};
++
++struct wlr_allocator *wlr_hybris_allocator_create(void) {
++	struct wlr_hybris_allocator *alloc = calloc(1, sizeof(*alloc));
++	if (alloc == NULL) {
++		return NULL;
++	}
++
++	alloc->create = (PFNEGLHYBRISCREATENATIVEBUFFERPROC)
++		eglGetProcAddress("eglHybrisCreateNativeBuffer");
++	alloc->release = (PFNEGLHYBRISRELEASENATIVEBUFFERPROC)
++		eglGetProcAddress("eglHybrisReleaseNativeBuffer");
++	alloc->get_info = (PFNEGLHYBRISGETNATIVEBUFFERINFOPROC)
++		eglGetProcAddress("eglHybrisGetNativeBufferInfo");
++	alloc->serialize = (PFNEGLHYBRISSERIALIZENATIVEBUFFERPROC)
++		eglGetProcAddress("eglHybrisSerializeNativeBuffer");
++	if (!alloc->create || !alloc->release || !alloc->get_info ||
++			!alloc->serialize) {
++		wlr_log(WLR_ERROR, "EGL_HYBRIS_native_buffer entry points missing");
++		free(alloc);
++		return NULL;
++	}
++
++	wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
++	wlr_log(WLR_DEBUG, "Created hybris (gralloc) allocator");
++	return &alloc->base;
++}
+diff --git a/render/egl.c b/render/egl.c
+index 8673aca..b9bc9b3 100644
+--- a/render/egl.c
++++ b/render/egl.c
+@@ -555,10 +555,124 @@ static int open_render_node(int drm_fd) {
+ 	return render_fd;
+ }
+ 
++/*
++ * libhybris: the stock Android EGL 1.4 has no client extensions (so no
++ * platform displays) and no DMA-BUF import, but offers Android native
++ * buffers.  Use the default display with a real config, and advertise
++ * render formats for the gralloc buffers of the hybris allocator.
++ */
++static struct wlr_egl *egl_create_hybris(void) {
++	if (eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS) != NULL) {
++		return NULL;
++	}
++	if (eglBindAPI(EGL_OPENGL_ES_API) == EGL_FALSE) {
++		return NULL;
++	}
++	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++	if (display == EGL_NO_DISPLAY) {
++		return NULL;
++	}
++	EGLint major, minor;
++	if (eglInitialize(display, &major, &minor) == EGL_FALSE) {
++		return NULL;
++	}
++	if (eglGetProcAddress("eglHybrisCreateNativeBuffer") == NULL) {
++		wlr_log(WLR_DEBUG, "No EGL client extensions and no "
++			"EGL_HYBRIS_native_buffer: not libhybris");
++		return NULL;
++	}
++
++	const char *exts = eglQueryString(display, EGL_EXTENSIONS);
++	if (exts == NULL || !check_egl_ext(exts, "EGL_KHR_image_base") ||
++			!check_egl_ext(exts, "EGL_ANDROID_image_native_buffer")) {
++		wlr_log(WLR_ERROR, "libhybris EGL lacks EGL_KHR_image_base or "
++			"EGL_ANDROID_image_native_buffer");
++		return NULL;
++	}
++
++	struct wlr_egl *egl = calloc(1, sizeof(*egl));
++	if (egl == NULL) {
++		wlr_log_errno(WLR_ERROR, "Allocation failed");
++		return NULL;
++	}
++	egl->hybris = true;
++	egl->display = display;
++	egl->exts.KHR_image_base = true;
++	load_egl_proc(&egl->procs.eglCreateImageKHR, "eglCreateImageKHR");
++	load_egl_proc(&egl->procs.eglDestroyImageKHR, "eglDestroyImageKHR");
++	egl->exts.IMG_context_priority =
++		check_egl_ext(exts, "EGL_IMG_context_priority");
++
++	static const EGLint config_attribs[] = {
++		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
++		EGL_RED_SIZE, 8,
++		EGL_GREEN_SIZE, 8,
++		EGL_BLUE_SIZE, 8,
++		EGL_ALPHA_SIZE, 8,
++		EGL_NONE,
++	};
++	EGLConfig config;
++	EGLint n = 0;
++	if (!eglChooseConfig(display, config_attribs, &config, 1, &n) || n < 1) {
++		wlr_log(WLR_ERROR, "No RGBA8888 GLES2 EGL config");
++		goto error;
++	}
++
++	size_t atti = 0;
++	EGLint attribs[5];
++	attribs[atti++] = EGL_CONTEXT_CLIENT_VERSION;
++	attribs[atti++] = 2;
++	if (egl->exts.IMG_context_priority) {
++		attribs[atti++] = EGL_CONTEXT_PRIORITY_LEVEL_IMG;
++		attribs[atti++] = EGL_CONTEXT_PRIORITY_HIGH_IMG;
++	}
++	attribs[atti++] = EGL_NONE;
++	assert(atti <= sizeof(attribs) / sizeof(attribs[0]));
++
++	egl->context = eglCreateContext(display, config, EGL_NO_CONTEXT, attribs);
++	if (egl->context == EGL_NO_CONTEXT) {
++		wlr_log(WLR_ERROR, "Failed to create EGL context");
++		goto error;
++	}
++
++	// Surfaceless contexts work (GL_OES_surfaceless_context) although
++	// EGL_KHR_surfaceless_context is not announced
++	if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE,
++			egl->context)) {
++		wlr_log(WLR_ERROR, "Surfaceless eglMakeCurrent failed");
++		eglDestroyContext(display, egl->context);
++		goto error;
++	}
++	eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++
++	static const uint32_t formats[] = { DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888 };
++	for (size_t i = 0; i < sizeof(formats) / sizeof(formats[0]); i++) {
++		wlr_drm_format_set_add(&egl->dmabuf_render_formats, formats[i],
++			DRM_FORMAT_MOD_INVALID);
++		wlr_drm_format_set_add(&egl->dmabuf_render_formats, formats[i],
++			DRM_FORMAT_MOD_LINEAR);
++	}
++
++	wlr_log(WLR_INFO, "Using libhybris EGL %d.%d (Android gralloc buffers)",
++		(int)major, (int)minor);
++	wlr_log(WLR_INFO, "Supported EGL display extensions: %s", exts);
++	wlr_log(WLR_INFO, "EGL vendor: %s", eglQueryString(display, EGL_VENDOR));
++	return egl;
++
++error:
++	free(egl);
++	return NULL;
++}
++
+ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+ 	bool allow_software = drm_fd < 0;
+ 
+-	struct wlr_egl *egl = egl_create();
++	struct wlr_egl *egl = egl_create_hybris();
++	if (egl != NULL) {
++		return egl;
++	}
++
++	egl = egl_create();
+ 	if (egl == NULL) {
+ 		wlr_log(WLR_ERROR, "Failed to create EGL context");
+ 		return NULL;
+diff --git a/render/gles2/pass.c b/render/gles2/pass.c
+index a70ea13..672b870 100644
+--- a/render/gles2/pass.c
++++ b/render/gles2/pass.c
+@@ -56,6 +56,10 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
+ 		if (!ok) {
+ 			goto out;
+ 		}
++	} else if (renderer->egl->hybris) {
++		// No implicit fences on the gralloc DMA-BUFs: KMS would scan out
++		// a half-drawn frame
++		glFinish();
+ 	} else {
+ 		glFlush();
+ 	}
+diff --git a/render/gles2/renderer.c b/render/gles2/renderer.c
+index e362dae..9a5ca7e 100644
+--- a/render/gles2/renderer.c
++++ b/render/gles2/renderer.c
+@@ -15,6 +15,7 @@
+ #include <wlr/util/box.h>
+ #include <wlr/util/log.h>
+ #include <xf86drm.h>
++#include "render/allocator/hybris.h"
+ #include "render/egl.h"
+ #include "render/gles2.h"
+ #include "render/pixel_format.h"
+@@ -108,6 +109,23 @@ GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
+ 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+ 		GL_RENDERBUFFER, buffer->rbo);
+ 	GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
++
++	// Some drivers only render into EGLImages bound as textures
++	if (fb_status != GL_FRAMEBUFFER_COMPLETE &&
++			buffer->renderer->procs.glEGLImageTargetTexture2DOES != NULL) {
++		if (!buffer->tex) {
++			glGenTextures(1, &buffer->tex);
++			glBindTexture(GL_TEXTURE_2D, buffer->tex);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++			buffer->renderer->procs.glEGLImageTargetTexture2DOES(GL_TEXTURE_2D,
++				buffer->image);
++			glBindTexture(GL_TEXTURE_2D, 0);
++		}
++		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
++			GL_TEXTURE_2D, buffer->tex, 0);
++		fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
++	}
+ 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+ 
+ 	if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+@@ -138,15 +156,33 @@ struct wlr_gles2_buffer *gles2_buffer_get_or_create(struct wlr_gles2_renderer *r
+ 	buffer->buffer = wlr_buffer;
+ 	buffer->renderer = renderer;
+ 
+-	struct wlr_dmabuf_attributes dmabuf = {0};
+-	if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+-		goto error_buffer;
+-	}
++	EGLClientBuffer native;
++	if (renderer->egl->hybris &&
++			wlr_hybris_buffer_get_native(wlr_buffer, &native)) {
++		static const EGLint attribs[] = {
++			EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
++			EGL_NONE,
++		};
++		buffer->image = renderer->egl->procs.eglCreateImageKHR(
++			renderer->egl->display, EGL_NO_CONTEXT,
++			EGL_NATIVE_BUFFER_ANDROID, native, attribs);
++		if (buffer->image == EGL_NO_IMAGE_KHR) {
++			wlr_log(WLR_ERROR, "eglCreateImageKHR(EGL_NATIVE_BUFFER_ANDROID) "
++				"failed: 0x%x", eglGetError());
++			goto error_buffer;
++		}
++		buffer->external_only = false;
++	} else {
++		struct wlr_dmabuf_attributes dmabuf = {0};
++		if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
++			goto error_buffer;
++		}
+ 
+-	buffer->image = wlr_egl_create_image_from_dmabuf(renderer->egl,
+-		&dmabuf, &buffer->external_only);
+-	if (buffer->image == EGL_NO_IMAGE_KHR) {
+-		goto error_buffer;
++		buffer->image = wlr_egl_create_image_from_dmabuf(renderer->egl,
++			&dmabuf, &buffer->external_only);
++		if (buffer->image == EGL_NO_IMAGE_KHR) {
++			goto error_buffer;
++		}
+ 	}
+ 
+ 	wlr_addon_init(&buffer->addon, &wlr_buffer->addons, renderer,
+@@ -168,6 +204,10 @@ static const struct wlr_drm_format_set *gles2_get_texture_formats(
+ 		struct wlr_renderer *wlr_renderer, uint32_t buffer_caps) {
+ 	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+ 	if (buffer_caps & WLR_BUFFER_CAP_DMABUF) {
++		// libhybris cannot import foreign DMA-BUFs: clients stay on wl_shm
++		if (renderer->egl->hybris) {
++			return NULL;
++		}
+ 		return wlr_egl_get_dmabuf_texture_formats(renderer->egl);
+ 	} else if (buffer_caps & WLR_BUFFER_CAP_DATA_PTR) {
+ 		return &renderer->shm_texture_formats;
+@@ -541,7 +581,9 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
+ 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
+ 	wlr_log(WLR_INFO, "Supported GLES2 extensions: %s", exts_str);
+ 
+-	if (!renderer->egl->exts.EXT_image_dma_buf_import) {
++	// libhybris renders into gralloc buffers instead of imported DMA-BUFs
++	if (!renderer->egl->exts.EXT_image_dma_buf_import &&
++			!renderer->egl->hybris) {
+ 		wlr_log(WLR_ERROR, "EGL_EXT_image_dma_buf_import not supported");
+ 		free(renderer);
+ 		return NULL;
+@@ -551,7 +593,10 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
+ 		free(renderer);
+ 		return NULL;
+ 	}
+-	if (!check_gl_ext(exts_str, "GL_EXT_unpack_subimage")) {
++	// Without it (PowerVR SGX) texture uploads repack rows (texture.c)
++	renderer->exts.EXT_unpack_subimage =
++		check_gl_ext(exts_str, "GL_EXT_unpack_subimage");
++	if (!renderer->exts.EXT_unpack_subimage && !renderer->egl->hybris) {
+ 		wlr_log(WLR_ERROR, "GL_EXT_unpack_subimage not supported");
+ 		free(renderer);
+ 		return NULL;
+@@ -569,7 +614,9 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
+ 	renderer->exts.EXT_texture_norm16 =
+ 		check_gl_ext(exts_str, "GL_EXT_texture_norm16");
+ 
+-	if (check_gl_ext(exts_str, "GL_KHR_debug")) {
++	// The PowerVR driver reports every eglMakeCurrent as a high-severity
++	// debug message: several log lines per frame
++	if (check_gl_ext(exts_str, "GL_KHR_debug") && !renderer->egl->hybris) {
+ 		renderer->exts.KHR_debug = true;
+ 		load_gl_proc(&renderer->procs.glDebugMessageCallbackKHR,
+ 			"glDebugMessageCallbackKHR");
+diff --git a/render/gles2/texture.c b/render/gles2/texture.c
+index 9a967eb..0af55da 100644
+--- a/render/gles2/texture.c
++++ b/render/gles2/texture.c
+@@ -4,6 +4,7 @@
+ #include <GLES2/gl2ext.h>
+ #include <stdint.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <wayland-server-protocol.h>
+ #include <wayland-util.h>
+ #include <wlr/render/egl.h>
+@@ -76,22 +77,64 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
+ 	int rects_len = 0;
+ 	const pixman_box32_t *rects = pixman_region32_rectangles(damage, &rects_len);
+ 
+-	for (int i = 0; i < rects_len; i++) {
+-		pixman_box32_t rect = rects[i];
++	if (texture->renderer->exts.EXT_unpack_subimage) {
++		for (int i = 0; i < rects_len; i++) {
++			pixman_box32_t rect = rects[i];
+ 
+-		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
+-		glPixelStorei(GL_UNPACK_SKIP_PIXELS_EXT, rect.x1);
+-		glPixelStorei(GL_UNPACK_SKIP_ROWS_EXT, rect.y1);
++			glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
++			glPixelStorei(GL_UNPACK_SKIP_PIXELS_EXT, rect.x1);
++			glPixelStorei(GL_UNPACK_SKIP_ROWS_EXT, rect.y1);
+ 
+-		int width = rect.x2 - rect.x1;
+-		int height = rect.y2 - rect.y1;
+-		glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x1, rect.y1, width, height,
+-			fmt->gl_format, fmt->gl_type, data);
+-	}
++			int width = rect.x2 - rect.x1;
++			int height = rect.y2 - rect.y1;
++			glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x1, rect.y1, width, height,
++				fmt->gl_format, fmt->gl_type, data);
++		}
+ 
+-	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
+-	glPixelStorei(GL_UNPACK_SKIP_PIXELS_EXT, 0);
+-	glPixelStorei(GL_UNPACK_SKIP_ROWS_EXT, 0);
++		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
++		glPixelStorei(GL_UNPACK_SKIP_PIXELS_EXT, 0);
++		glPixelStorei(GL_UNPACK_SKIP_ROWS_EXT, 0);
++	} else {
++		// No GL_EXT_unpack_subimage: GL reads tightly packed rows
++		size_t bpp = drm_fmt->bytes_per_block;
++		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++		if (stride == (size_t)buffer->width * bpp) {
++			// Rows are contiguous: upload the band of full rows covering
++			// the damage straight from the buffer
++			const pixman_box32_t *ext = pixman_region32_extents(damage);
++			if (ext->y2 > ext->y1) {
++				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, ext->y1,
++					buffer->width, ext->y2 - ext->y1, fmt->gl_format,
++					fmt->gl_type, (const char *)data + ext->y1 * stride);
++			}
++		} else {
++			void *packed = NULL;
++			size_t packed_size = 0;
++			for (int i = 0; i < rects_len; i++) {
++				pixman_box32_t rect = rects[i];
++				int width = rect.x2 - rect.x1;
++				int height = rect.y2 - rect.y1;
++				size_t row = (size_t)width * bpp;
++				if (row * height > packed_size) {
++					free(packed);
++					packed_size = row * height;
++					packed = malloc(packed_size);
++					if (packed == NULL) {
++						packed_size = 0;
++						break;
++					}
++				}
++				for (int y = 0; y < height; y++) {
++					memcpy((char *)packed + y * row, (const char *)data +
++						(rect.y1 + y) * stride + rect.x1 * bpp, row);
++				}
++				glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x1, rect.y1, width,
++					height, fmt->gl_format, fmt->gl_type, packed);
++			}
++			free(packed);
++		}
++		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
++	}
+ 
+ 	glBindTexture(GL_TEXTURE_2D, 0);
+ 
+@@ -342,10 +385,32 @@ static struct wlr_texture *gles2_texture_from_pixels(
+ 
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+-	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
+-	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
+-		fmt->gl_format, fmt->gl_type, data);
+-	glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
++	if (renderer->exts.EXT_unpack_subimage) {
++		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / drm_fmt->bytes_per_block);
++		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
++			fmt->gl_format, fmt->gl_type, data);
++		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
++	} else {
++		// No GL_EXT_unpack_subimage: repack padded rows
++		size_t row = (size_t)width * drm_fmt->bytes_per_block;
++		const void *pixels = data;
++		void *packed = NULL;
++		if (stride != row) {
++			packed = malloc(row * height);
++			if (packed != NULL) {
++				for (uint32_t y = 0; y < height; y++) {
++					memcpy((char *)packed + y * row,
++						(const char *)data + y * stride, row);
++				}
++			}
++			pixels = packed;
++		}
++		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
++			fmt->gl_format, fmt->gl_type, pixels);
++		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
++		free(packed);
++	}
+ 
+ 	glBindTexture(GL_TEXTURE_2D, 0);
+ 
+diff --git a/render/meson.build b/render/meson.build
+index 517d76b..0885fae 100644
+--- a/render/meson.build
++++ b/render/meson.build
+@@ -50,7 +50,7 @@ if 'gles2' in renderers or 'auto' in renderers
+ 	gbm = dependency('gbm', required: 'gles2' in renderers)
+ 	if egl.found() and gbm.found()
+ 		wlr_deps += [egl, gbm]
+-		wlr_files += files('egl.c')
++		wlr_files += files('egl.c', 'allocator/hybris.c')
+ 		internal_features += { 'egl': true }
+ 	endif
+ 	subdir('gles2')

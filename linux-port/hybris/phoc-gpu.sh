@@ -37,6 +37,13 @@ pid=$$
 	> /dev/null 2>&1 < /dev/null
 
 echo "phoc-gpu: starting glibc phoc (attempt $((n + 1)))" > /dev/kmsg
+# Render with the SGX544 (wlroots-0.20-hybris.patch); /root/.phoc-gpu-pixman
+# keeps the glibc phoc on the CPU renderer.
+if [ -e /root/.phoc-gpu-pixman ]; then
+	export WLR_RENDERER=pixman
+else
+	export WLR_RENDERER=gles2
+fi
 # Debug knob: log phoc's Wayland traffic (server side only; clients ignore
 # WAYLAND_DEBUG=server) into the session log.
 [ -e /run/phoc-gpu.wldebug ] && export WAYLAND_DEBUG=server
