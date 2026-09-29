@@ -12,6 +12,8 @@ wlroots 0.20: render with the stock Android EGL/GLES through libhybris (B8000-H,
 - gles2 textures from 32-bit shm buffers live in linear gralloc buffers
   sampled through EGLImages: updates are memcpy of the damage (5-7 ms per
   1280x800 frame, 0.3 ms per 100-row band; glTexSubImage2D: 18 / 7 ms).
+- read_pixels (screencopy, phosh thumbnails) of ARGB/XRGB8888 without
+  GL_EXT_read_format_bgra: read RGBA, swap R/B on the CPU.
 
 diff --git a/include/render/allocator/hybris.h b/include/render/allocator/hybris.h
 new file mode 100644
@@ -642,7 +644,7 @@ index e362dae..9a5ca7e 100644
  		load_gl_proc(&renderer->procs.glDebugMessageCallbackKHR,
  			"glDebugMessageCallbackKHR");
 diff --git a/render/gles2/texture.c b/render/gles2/texture.c
-index 9a967eb..cf139b3 100644
+index 9a967eb..bdbbd3c 100644
 --- a/render/gles2/texture.c
 +++ b/render/gles2/texture.c
 @@ -4,6 +4,7 @@
@@ -852,7 +854,60 @@ index 9a967eb..cf139b3 100644
  		wlr_egl_restore_context(&prev_ctx);
  	}
  
-@@ -342,10 +485,34 @@ static struct wlr_texture *gles2_texture_from_pixels(
+@@ -177,10 +320,18 @@ static bool gles2_texture_read_pixels(struct wlr_texture *wlr_texture,
+ 		return false;
+ 	}
+ 
++	GLenum read_format = fmt->gl_format;
++	bool swap_rb = false;
+ 	if (fmt->gl_format == GL_BGRA_EXT && !texture->renderer->exts.EXT_read_format_bgra) {
+-		wlr_log(WLR_ERROR,
+-			"Cannot read pixels: missing GL_EXT_read_format_bgra extension");
+-		return false;
++		if (fmt->gl_type != GL_UNSIGNED_BYTE) {
++			wlr_log(WLR_ERROR,
++				"Cannot read pixels: missing GL_EXT_read_format_bgra extension");
++			return false;
++		}
++		// PowerVR SGX (GL_IMG_read_format refuses BGRA on RGBA targets):
++		// read RGBA and swap R and B on the CPU
++		read_format = GL_RGBA;
++		swap_rb = true;
+ 	}
+ 
+ 	const struct wlr_pixel_format_info *drm_fmt =
+@@ -214,17 +365,28 @@ static bool gles2_texture_read_pixels(struct wlr_texture *wlr_texture,
+ 		// Under these particular conditions, we can read the pixels with only
+ 		// one glReadPixels call
+ 
+-		glReadPixels(src.x, src.y, src.width, src.height, fmt->gl_format, fmt->gl_type, p);
++		glReadPixels(src.x, src.y, src.width, src.height, read_format, fmt->gl_type, p);
+ 	} else {
+ 		// Unfortunately GLES2 doesn't support GL_PACK_ROW_LENGTH, so we have to read
+ 		// the lines out row by row
+ 		for (int32_t i = 0; i < src.height; ++i) {
+ 			uint32_t y = src.y + i;
+-			glReadPixels(src.x, y, src.width, 1, fmt->gl_format,
++			glReadPixels(src.x, y, src.width, 1, read_format,
+ 				fmt->gl_type, p + i * options->stride);
+ 		}
+ 	}
+ 
++	if (swap_rb) {
++		for (int32_t i = 0; i < src.height; ++i) {
++			unsigned char *px = p + i * options->stride;
++			for (int32_t x = 0; x < src.width; ++x, px += 4) {
++				unsigned char r = px[0];
++				px[0] = px[2];
++				px[2] = r;
++			}
++		}
++	}
++
+ 	wlr_egl_restore_context(&prev_ctx);
+ 	pop_gles2_debug(texture->renderer);
+ 
+@@ -342,10 +504,34 @@ static struct wlr_texture *gles2_texture_from_pixels(
  
  	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
  	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);

@@ -286,5 +286,23 @@ int main(void)
 		draw(tex);
 	}
 	report("rebind", now_ms() - t0);
+
+	/*
+	 * GL_IMG_read_format: glReadPixels in GL_BGRA (0x80E1, same value as
+	 * GL_BGRA_EXT) - what wlroots screencopy of ARGB8888 needs.  The FBO
+	 * holds BGRA memory 40 50 60 ff from the last fill.
+	 */
+	{
+		unsigned char px[4] = { 0 };
+		GLint fmt = 0, type = 0;
+
+		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &fmt);
+		glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &type);
+		while (glGetError() != GL_NO_ERROR)
+			;
+		glReadPixels(128, 80, 1, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
+		printf("bgra-read impl 0x%x/0x%x, error 0x%x -> %02x %02x %02x %02x\n",
+		       fmt, type, glGetError(), px[0], px[1], px[2], px[3]);
+	}
 	return 0;
 }
