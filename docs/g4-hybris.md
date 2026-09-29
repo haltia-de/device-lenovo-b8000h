@@ -38,3 +38,17 @@ glibc оба держат указатель потока в `TPIDRURO`; Android
 2. Вывод на экран: EGL-платформа hybris (`fbdev`/`hwcomposer`, у нас HWC 1.x) или свой путь
    через KMS mediatek-drm + dma-buf; затем композитор (phoc/wlroots хочет GBM/DRM EGL).
 3. Решить: Phosh на glibc-rootfs (Debian) или порт libhybris на musl (Alpine).
+
+## Шаг 2 (2026-09-29): GPU рисует прямо в буфер экрана — 60 fps, без копий
+
+`linux-port/gpu/g3-render/gles2_kmsdemo.c` + `linux-port/gpu/kms-demo.sh`:
+- два буфера 1280x800 BGRA из стокового gralloc (ION → `ion_legacy`), обёрнутые в
+  `ANativeWindowBuffer` → `eglCreateImageKHR(EGL_NATIVE_BUFFER_ANDROID)` → FBO;
+- тот же dma-buf (fd из IMG-хэндла) → `DRM_IOCTL_PRIME_FD_TO_HANDLE` → `ADDFB2
+  ARGB8888` → `SETCRTC`/`PAGE_FLIP` с событием (сырые uapi ioctl, без libdrm);
+- `ion_legacy` теперь выделяет буферы от `contig_min` (256 КБ) одним блоком порядка
+  ≤ 10 (`alloc_pages` + `split_page`): mediatek-drm без IOMMU принимает только непрерывные
+  dma-buf (GEM DMA `drm_prime_get_contiguous_size`).
+- Замеры: `light` (плоский градиент) — 60.0 fps, рендер 10 мс; `heavy` (3×sin на пиксель) —
+  12 fps (упор в fill rate SGX544); `scene` (плазма по вершинам сетки 64x40 + 9 вращающихся
+  треугольников) — **60.0 fps, рендер GPU 4.3 мс**, остальное — ожидание vblank.

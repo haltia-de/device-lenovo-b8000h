@@ -21,6 +21,7 @@
 #include <linux/mutex.h>
 #include <linux/pagemap.h>
 #include <linux/scatterlist.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
@@ -190,6 +191,38 @@ static void ion_legacy_buffer_put(struct ion_legacy_buffer *buffer)
 	kref_put(&buffer->ref, ion_legacy_buffer_release);
 }
 
+/*
+ * The display (mediatek-drm, no IOMMU) can only scan out physically
+ * contiguous buffers, and the GPU renders into gralloc buffers from here.
+ * So try one high-order block for buffers of contig_min bytes and up (a
+ * 1280x800 frame fits order 10) and split it into order-0 pages, keeping
+ * the rest of the driver page based.  Falls back to single pages.
+ */
+static unsigned int contig_min = SZ_256K;
+module_param(contig_min, uint, 0644);
+MODULE_PARM_DESC(contig_min, "Allocate buffers >= this many bytes contiguously (0: never)");
+
+static bool ion_legacy_alloc_contig(struct ion_legacy_buffer *buffer)
+{
+	unsigned int order = get_order(buffer->len), i;
+	struct page *page;
+
+	if (!contig_min || buffer->len < contig_min || order > MAX_PAGE_ORDER)
+		return false;
+	page = alloc_pages(GFP_KERNEL | __GFP_ZERO | __GFP_NOWARN |
+			   __GFP_NORETRY, order);
+	if (!page)
+		return false;
+	split_page(page, order);
+	for (i = 0; i < (1U << order); i++) {
+		if (i < buffer->nr_pages)
+			buffer->pages[i] = page + i;
+		else
+			__free_page(page + i);	/* tail beyond the buffer */
+	}
+	return true;
+}
+
 static struct ion_legacy_buffer *ion_legacy_buffer_alloc(size_t len,
 	unsigned int flags)
 {
@@ -211,6 +244,8 @@ static struct ion_legacy_buffer *ion_legacy_buffer_alloc(size_t len,
 	}
 
 	kref_init(&buffer->ref);
+	if (ion_legacy_alloc_contig(buffer))
+		goto sync;
 	for (i = 0; i < buffer->nr_pages; i++) {
 		buffer->pages[i] = alloc_page(GFP_KERNEL | __GFP_ZERO);
 		if (!buffer->pages[i]) {
@@ -219,6 +254,7 @@ static struct ion_legacy_buffer *ion_legacy_buffer_alloc(size_t len,
 			return ERR_PTR(-ENOMEM);
 		}
 	}
+sync:
 	/*
 	 * __GFP_ZERO wrote through the cached linear map: push the zeroes out
 	 * so stale dirty lines cannot later overwrite non-cached user or GPU
