@@ -12,7 +12,8 @@
 # Usage: pvr-run.sh [--strace] <command> [args...]
 #   PVR_LOG_DIR (default /root/pvrlog/<timestamp>) receives log-*.bin (raw),
 #   log-{main,system,radio}.txt (decoded), strace.txt (with --strace) and
-#   dmesg.txt.  PVR_WITH_FB=1 also exposes /dev/fb0 as /dev/graphics/fb0.
+#   dmesg.txt.  PVR_WITH_FB=1 also exposes /dev/fb0 as /dev/graphics/fb0;
+#   PVR_FAKE_NODES="ion pvr_sync" adds dummy nodes (see below).
 set -eu
 
 use_strace=0
@@ -56,6 +57,12 @@ unshare -m sh -eu -c '
 	mount -t tmpfs -o mode=0755 pvr-dev "$d"
 	for n in null zero full random urandom tty pvrsrvkm __properties__ ion ashmem; do
 		if [ -e "/dev/$n" ]; then cp -a "/dev/$n" "$d/"; fi
+	done
+	# Kernel #20 has no legacy Android ION and our KM stubs the PVR native
+	# sync device; the stock gralloc opens both at init.  PVR_FAKE_NODES
+	# (e.g. "ion pvr_sync") stands /dev/null in for missing ones (probe).
+	for n in ${PVR_FAKE_NODES:-}; do
+		if [ ! -e "$d/$n" ]; then mknod -m 0666 "$d/$n" c 1 3; fi
 	done
 	mkdir -p "$d/log" "$d/graphics"
 	# Stock gralloc may take over the framebuffer; only on request.
