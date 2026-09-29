@@ -6,11 +6,11 @@
 # Run detached so a USB console drop cannot cut it:
 #   setsid /root/g3-run.sh g3e > /root/pvrlog/g3e-runner.txt 2>&1 < /dev/null &
 tag=${1:?tag}
-# Modules must match the running kernel: #21 ones live in /root/k21.
-case $(uname -r) in
-	*-b8000h21-*) moddir=/root/k21 ;;
-	*) moddir=/root ;;
-esac
+# Modules must match the running kernel: build N keeps them in /root/kN
+# (kernel #20 ones are in /root itself).
+n=$(uname -r | sed -n 's/.*-b8000h\([0-9]*\)-.*/\1/p')
+moddir=/root/k$n
+[ -d "$moddir" ] || moddir=/root
 log=/root/pvrlog/$tag
 echo "b8k: $tag start" > /dev/kmsg
 
