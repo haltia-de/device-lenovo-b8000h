@@ -11,6 +11,14 @@ SRC=/root/src/libhybris/hybris
 HDR=/root/src/android-headers-19
 PREFIX=/usr/local/hybris
 
+# Android 4.4 libcutils predates native_handle_clone(); libhybris implements
+# it (common/native_handle.c) and gralloc uses it, so declare it.
+NH="$HDR/cutils/native_handle.h"
+if ! grep -q native_handle_clone "$NH"; then
+	sed -i 's|^int native_handle_close(const native_handle_t\* h);|&\n\n/* libhybris: common/native_handle.c (not in Android 4.4 libcutils) */\nnative_handle_t* native_handle_clone(const native_handle_t* handle);|' "$NH"
+	grep -q native_handle_clone "$NH"
+fi
+
 cd "$SRC"
 if [ ! -f Makefile ]; then
 	NOCONFIGURE=1 ./autogen.sh

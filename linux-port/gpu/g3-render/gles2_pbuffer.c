@@ -25,6 +25,16 @@
 
 #define STAGE(s) fprintf(stderr, "stage: %s\n", s)
 
+#ifdef HYBRIS_TLS_PAD
+/*
+ * libhybris on glibc/ARM: the Android 4.4 EGL/GLES code writes its TLS slots
+ * (TLS_SLOT_OPENGL/_API = tp+12..tp+19) straight through TPIDRURO.  With
+ * glibc the executable's static TLS block starts right after the 8-byte TCB,
+ * so this pad absorbs those writes instead of libc's own thread data.
+ */
+__thread void *bionic_tls_pad[8];
+#endif
+
 /* Print one /proc/self/maps line that contains addr (library + offset). */
 static void print_mapping(const char *what, unsigned long addr)
 {
@@ -126,6 +136,9 @@ int main(int argc, char **argv)
 	int ok;
 
 	setvbuf(stdout, NULL, _IONBF, 0);
+#ifdef HYBRIS_TLS_PAD
+	fprintf(stderr, "tls pad at %p\n", (void *)bionic_tls_pad);
+#endif
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_sigaction = crash_handler;
 	sa.sa_flags = SA_SIGINFO;
