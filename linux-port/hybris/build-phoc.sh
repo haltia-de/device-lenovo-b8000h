@@ -4,12 +4,14 @@
 # armhf chroot (run through debian-enter.sh), against the libhybris
 # EGL/GLESv2 in /usr/local/hybris (G5: phoc on the SGX544).
 #
-# trixie is too old for wlroots 0.20 (libdrm >= 2.4.129, xkbcommon >= 1.8,
-# wayland-protocols >= 1.47): these are built into /usr/local first, so every
-# pkg-config lookup (phoc, wlroots, gmobile) sees one consistent version.
+# trixie is too old for wlroots 0.20 (wayland >= 1.24, pixman >= 0.46,
+# libdrm >= 2.4.129, xkbcommon >= 1.8, wayland-protocols >= 1.47): these are
+# built into /usr/local first, so every pkg-config lookup (phoc, wlroots,
+# gmobile) sees one consistent version.
 #
 # Sources in /root/src/g5, downloaded on the PC and verified there:
 #   phoc-0.55.1.tar.xz, gmobile-0.6.0.tar.xz  (sources.phosh.mobi, .sha256sum)
+#   wayland_1.26.0.orig.tar.xz, pixman_0.46.4.orig.tar.gz,
 #   libdrm_2.4.134.orig.tar.xz, libxkbcommon_1.13.1.orig.tar.gz,
 #   wayland-protocols_1.49.orig.tar.xz        (Debian pool, sha256 from .dsc)
 # Result: /usr/local/bin/phoc; wlroots/gmobile are linked in statically.
@@ -50,8 +52,18 @@ if [ "$what" != phoc ]; then
 		gsettings-desktop-schemas-dev libinput-dev libudev-dev \
 		libpixman-1-dev libwayland-dev libwayland-bin wayland-protocols \
 		libseat-dev libdisplay-info-dev hwdata libgbm-dev \
-		libjson-glib-dev
+		libjson-glib-dev libexpat1-dev libxml2-dev libffi-dev
 
+	# wlroots 0.20 wants wayland >= 1.24 (trixie: 1.23.1).  First, so its
+	# wayland-scanner (in /usr/local/bin, ahead in PATH/pkg-config) builds
+	# the rest.
+	unpack wayland_1.26.0.orig.tar.xz wayland-1.26.0
+	mbuild wayland wayland-1.26.0 -Dtests=false -Ddocumentation=false
+	ldconfig
+	# ... and pixman >= 0.46 for its pixman renderer (trixie: 0.44).
+	unpack pixman_0.46.4.orig.tar.gz pixman-0.46.4
+	mbuild pixman pixman-0.46.4 -Dtests=disabled -Ddemos=disabled \
+		-Dgtk=disabled -Dlibpng=disabled -Dopenmp=disabled
 	unpack libdrm_2.4.134.orig.tar.xz libdrm-2.4.134
 	mbuild libdrm libdrm-2.4.134 -Dauto_features=disabled -Dtests=false \
 		-Dman-pages=disabled -Dvalgrind=disabled
