@@ -1,0 +1,16 @@
+--- a/services4/srvkm/env/linux/module.c
++++ b/services4/srvkm/env/linux/module.c
+@@ -197,8 +197,9 @@ static struct file_operations pvrsrv_fops = {
+ #endif
+ 
+-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0)) && \
+-	defined(SUPPORT_PVRSRV_DEVICE_CLASS)
++#if defined(SUPPORT_PVRSRV_DEVICE_CLASS)
++/* dc_nohw is a separate module and resolves these entry points through
++ * modpost/Module.symvers on modern kernels as well. */
+ /* PRQA S 3207 2 */ /* ignore 'not used' warning */
+ EXPORT_SYMBOL(PVRGetDisplayClassJTable);
+ EXPORT_SYMBOL(PVRGetBufferClassJTable);
+ #endif /* defined(SUPPORT_PVRSRV_DEVICE_CLASS) */
+ 
+ #if defined(PVR_LDM_DEVICE_CLASS) && !defined(SUPPORT_DRI_DRM)
