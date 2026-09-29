@@ -13,11 +13,49 @@
  */
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/ucontext.h>
+#include <unistd.h>
 
 #define W 64
 #define H 64
+
+#define STAGE(s) fprintf(stderr, "stage: %s\n", s)
+
+/* Print one /proc/self/maps line that contains addr (library + offset). */
+static void print_mapping(const char *what, unsigned long addr)
+{
+	FILE *f = fopen("/proc/self/maps", "r");
+	char line[512];
+	unsigned long lo, hi, off;
+
+	if (!f)
+		return;
+	while (fgets(line, sizeof(line), f)) {
+		if (sscanf(line, "%lx-%lx %*s %lx", &lo, &hi, &off) == 3 &&
+		    addr >= lo && addr < hi) {
+			fprintf(stderr, "%s=%08lx (+%lx in) %s", what, addr,
+				addr - lo + off, strchr(line, '/') ?
+				strchr(line, '/') : "anon\n");
+			break;
+		}
+	}
+	fclose(f);
+}
+
+/* No debuggerd here: report where a crash happened, then exit. */
+static void crash_handler(int sig, siginfo_t *info, void *uctx)
+{
+	ucontext_t *uc = uctx;
+
+	fprintf(stderr, "CRASH signal %d at addr %p\n", sig, info->si_addr);
+	print_mapping("pc", uc->uc_mcontext.arm_pc);
+	print_mapping("lr", uc->uc_mcontext.arm_lr);
+	_exit(3);
+}
 
 static const char vs_src[] =
 	"attribute vec2 pos;\n"
@@ -84,8 +122,18 @@ int main(int argc, char **argv)
 	GLuint vs, fs, prog;
 	GLint linked = 0;
 	const unsigned char *inside, *corner;
+	struct sigaction sa;
 	int ok;
 
+	setvbuf(stdout, NULL, _IONBF, 0);
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_sigaction = crash_handler;
+	sa.sa_flags = SA_SIGINFO;
+	sigaction(SIGSEGV, &sa, NULL);
+	sigaction(SIGBUS, &sa, NULL);
+	sigaction(SIGILL, &sa, NULL);
+
+	STAGE("eglInitialize");
 	dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (dpy == EGL_NO_DISPLAY)
 		return egl_fail("eglGetDisplay");
@@ -94,6 +142,7 @@ int main(int argc, char **argv)
 	printf("EGL %d.%d vendor=\"%s\" version=\"%s\"\n", major, minor,
 	       eglQueryString(dpy, EGL_VENDOR), eglQueryString(dpy, EGL_VERSION));
 
+	STAGE("eglChooseConfig");
 	if (!eglChooseConfig(dpy, cfg_8888, &cfg, 1, &n) || n < 1) {
 		if (!eglChooseConfig(dpy, cfg_565, &cfg, 1, &n) || n < 1)
 			return egl_fail("eglChooseConfig");
@@ -104,12 +153,15 @@ int main(int argc, char **argv)
 	eglGetConfigAttrib(dpy, cfg, EGL_ALPHA_SIZE, &a);
 	printf("config RGBA %d%d%d%d\n", r, g, b, a);
 
+	STAGE("eglCreatePbufferSurface");
 	surf = eglCreatePbufferSurface(dpy, cfg, pbuf_attr);
 	if (surf == EGL_NO_SURFACE)
 		return egl_fail("eglCreatePbufferSurface");
+	STAGE("eglCreateContext");
 	ctx = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, ctx_attr);
 	if (ctx == EGL_NO_CONTEXT)
 		return egl_fail("eglCreateContext");
+	STAGE("eglMakeCurrent");
 	if (!eglMakeCurrent(dpy, surf, surf, ctx))
 		return egl_fail("eglMakeCurrent");
 
@@ -117,10 +169,12 @@ int main(int argc, char **argv)
 	       glGetString(GL_VENDOR), glGetString(GL_RENDERER),
 	       glGetString(GL_VERSION));
 
+	STAGE("compile shaders");
 	vs = compile(GL_VERTEX_SHADER, vs_src);
 	fs = compile(GL_FRAGMENT_SHADER, fs_src);
 	if (!vs || !fs)
 		return 1;
+	STAGE("link program");
 	prog = glCreateProgram();
 	glAttachShader(prog, vs);
 	glAttachShader(prog, fs);
@@ -132,6 +186,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	STAGE("draw");
 	glViewport(0, 0, W, H);
 	glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -141,6 +196,7 @@ int main(int argc, char **argv)
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glFinish();
 
+	STAGE("glReadPixels");
 	glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 	if (glGetError() != GL_NO_ERROR) {
 		fprintf(stderr, "FAIL glReadPixels: GL error\n");
@@ -168,6 +224,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	STAGE("teardown");
 	eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	eglDestroyContext(dpy, ctx);
 	eglDestroySurface(dpy, surf);
