@@ -43,7 +43,9 @@ fi
 for l in main system radio events; do
 	: > "$log_dir/log-$l.bin"
 done
-dmesg_lines=$(dmesg | wc -l)
+# Kernel log start mark: the ring buffer is usually full, so a line count
+# does not move; slice by the last timestamp instead.
+dmesg_t0=$(dmesg | tail -n 1 | sed -n 's/^\[ *\([0-9.]*\)\].*/\1/p')
 
 export PVR_LOG_DIR="$log_dir" PVR_USE_STRACE="$use_strace"
 set +e
@@ -105,7 +107,8 @@ for name in ('main', 'system', 'radio'):
             f.write('\n'.join(out) + '\n')
 EOF
 
-# Kernel messages since the start (approximate if the ring buffer wrapped).
-dmesg | tail -n +"$((dmesg_lines + 1))" > "$log_dir/dmesg.txt" 2>&1 || true
+# Kernel messages since the start mark.
+dmesg | awk -v t0="${dmesg_t0:-0}" '{ t = $0; sub(/^\[ */, "", t); sub(/\].*/, "", t) }
+	t + 0 > t0 + 0' > "$log_dir/dmesg.txt" 2>&1 || true
 echo "exit=$rc logs=$log_dir"
 exit "$rc"
