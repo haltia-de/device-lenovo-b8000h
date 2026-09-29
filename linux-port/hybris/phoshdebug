@@ -1,0 +1,7 @@
+# b8k (G5): sourced by /usr/bin/phosh-session as /root/.phoshdebug.
+# Run phoc through /usr/local/bin/phoc-gpu (glibc phoc on the GPU); the
+# wrapper falls back to the stock phoc by itself.
+# Back to the stock phoc for good: touch /root/.phoc-gpu-disabled
+if [ -x /usr/local/bin/phoc-gpu ] && [ ! -e /root/.phoc-gpu-disabled ]; then
+	COMPOSITOR=/usr/local/bin/phoc-gpu
+fi
