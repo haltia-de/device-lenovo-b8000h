@@ -55,7 +55,8 @@ unshare -m sh -eu -c '
 	d=/run/pvr-dev
 	mkdir -p "$d"
 	mount -t tmpfs -o mode=0755 pvr-dev "$d"
-	for n in null zero full random urandom tty pvrsrvkm __properties__ ion ashmem; do
+	# PVR_EXTRA_DEVS: more /dev nodes to expose as they are (e.g. "fb0").
+	for n in null zero full random urandom tty pvrsrvkm __properties__ ion ashmem ${PVR_EXTRA_DEVS:-}; do
 		if [ -e "/dev/$n" ]; then cp -a "/dev/$n" "$d/"; fi
 	done
 	# Kernel #20 has no legacy Android ION and our KM stubs the PVR native
