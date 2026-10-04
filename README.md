@@ -42,19 +42,27 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 Подробности по узлам — в `docs/`.
 
+## Скриншоты
+
+<p>
+<img src="docs/img/phosh-home.png" width="32%" alt="Домашний экран Phosh">
+<img src="docs/img/phosh-about.png" width="32%" alt="Настройки: о системе">
+<img src="docs/img/phosh-console.png" width="32%" alt="Консоль: ядро, GPU, память">
+</p>
+
 ## Установка
 
-Готовые файлы — на странице [Releases](https://github.com/kz-creator/lenovo-b8000h-linux/releases). Пошаговая инструкция —
-[docs/INSTALL.md](docs/INSTALL.md). Кратко:
+**Готовых образов нет** — систему нужно собрать из исходников (см. ниже) и поставить
+установщиком с microSD. Пошагово — [docs/INSTALL.md](docs/INSTALL.md). Кратко:
 
 1. **Сделайте резервную копию уникальных разделов** (NVRAM, PRO_INFO, PROTECT_F/S)
    через SP Flash Tool → Readback. Без неё при неудаче можно потерять IMEI и калибровки.
 2. Скачайте стоковую прошивку `B8000_A442_001_020_140620_WW_3GDATA` — она нужна для
    возврата на Android.
-3. Запишите образ установщика на microSD.
-4. Прошейте `boot.img` из релиза: `fastboot flash boot <файл>`.
+3. Соберите `boot.img` (ядро с установщиком) и образ установщика для microSD.
+4. Прошейте ядро: `fastboot flash boot <файл>`.
 5. Включите планшет с картой: установщик сам скопирует систему в раздел USRDATA
-   (около 7 минут, прогресс на экране) и загрузит Phosh.
+   (прогресс на экране) и загрузит Phosh.
 
 Возврат на Android — [docs/RETURN-TO-ANDROID.md](docs/RETURN-TO-ANDROID.md).
 
