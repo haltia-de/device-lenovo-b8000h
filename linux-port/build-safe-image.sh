@@ -1,11 +1,11 @@
 #!/bin/sh
 # Rebuild the RAM-only first-boot image inside the WSL distro B8000Build.
 # Run from Windows:
-#   wsl.exe -d B8000Build -- sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-safe-image.sh"
+#   wsl.exe -d B8000Build --cd <repo> -- sh linux-port/build-safe-image.sh
 # Output: artifacts/linux-port/b8000h-linux-firstboot-safe.img (+ SHA256 printed)
 set -eu
 
-REPO="/mnt/c/Users/<user>/src/lenovo-b8000h-linux"
+REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 # K overrides the kernel tree, e.g. K=/opt/b8000h/linux-drm (display worktree).
 K=${K:-/opt/b8000h/linux}
 OUT=/opt/b8000h/out

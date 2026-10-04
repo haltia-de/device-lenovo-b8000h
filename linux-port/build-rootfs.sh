@@ -4,7 +4,7 @@
 # Runs inside WSL B8000Build. Output: artifacts/linux-port/b8000h-sd.img
 set -eu
 
-REPO="/mnt/c/Users/<user>/src/lenovo-b8000h-linux"
+REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 ROOT=/opt/b8000h/rootfs
 IMG=/opt/b8000h/out/b8000h-sd.img
 MIRROR=https://dl-cdn.alpinelinux.org/alpine/v3.24

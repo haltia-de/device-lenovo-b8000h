@@ -3,7 +3,7 @@
 # ext4 image for the existing USRDATA partition. Run inside WSL B8000Build.
 set -eu
 
-REPO="/mnt/c/Users/<user>/src/lenovo-b8000h-linux"
+REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 ROOT=/opt/b8000h/rootfs
 OUT=/opt/b8000h/out
 RAW="$OUT/b8000h-phosh-emmc-root.ext4"

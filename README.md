@@ -1,71 +1,104 @@
-# Lenovo Yoga Tablet 10 B8000-H (60047): recovery and Linux port
+# Linux (Alpine + Phosh) для Lenovo YOGA Tablet 10 B8000-H
 
-This workspace is for one confirmed **Lenovo Yoga Tablet 10 B8000-H**, machine
-type **60047 / Z0AJ**, with MediaTek MT8389 and 3G data modem.
+*English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
+kernel + ~37 device patches) with Alpine Linux and the Phosh mobile shell to the
+Lenovo YOGA Tablet 10 **B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi,
+speakers, charging and a GPU-composited Phosh (PowerVR SGX544 via libhybris and
+the stock Android 4.4 blobs) work; the platform still crashes every 10–40 minutes.
+Alpha quality, for enthusiasts. Documentation is in Russian.*
 
-## Evidence collected
+> **Статус: альфа для энтузиастов. Работа над портом приостановлена.**
+> Ядро случайно падает раз в 10–40 минут (порча памяти, причина не найдена).
+> Для повседневного использования не годится. Установка стирает пользовательские
+> данные Android.
 
-- Windows saw the tablet as `MT65xx Preloader`, USB `VID_0E8D&PID_2000`.
-- The device appeared for about eight seconds and disconnected normally for
-  preloader mode, but Windows had no matching driver installed.
-- Last reported behaviour: intermittent boot followed by stripes on screen.
-  This can be corrupted firmware, but it can also be battery/power, display
-  path, RAM, or failing eMMC. Preloader enumeration only proves that the early
-  MediaTek boot path is alive.
-- The matching stock image is
-  `B8000_A442_001_020_140620_WW_3GDATA` (Android 4.4.2). Its published archive
-  contains `MT6589_Android_scatter_emmc.txt` and
-  `preloader_blade10_row_3gdata.bin`.
-- A Microsoft Update Catalog driver CAB for `VID_0E8D&PID_2000` is staged in
-  `artifacts/drivers/`. Its SHA-256 matches the catalog metadata and its
-  `cdc-acm.cat` signature validates. Installing it requires an elevated shell;
-  it has not been installed automatically.
+## Для какого устройства
 
-## Safety gate before writing flash
+Только **B8000-H** (3G): тип 60047 / Z0AJ, SoC MT8389 (семейство MT6589), плата
+`BLADE10_ROW_3GDATA`, стоковая прошивка `B8000_A442_001_020_140620_WW_3GDATA`
+(Android 4.4.2). На B8000-F и других версиях не проверялось — не ставьте.
 
-1. Install/bind a suitable MTK preloader/VCOM driver and confirm stable
-   detection.
-2. Read the device information and eMMC geometry.
-3. Make readbacks of the complete addressable eMMC and, at minimum, all
-   identity/calibration partitions (NVRAM/protect/secro) before any write.
-4. Validate that the readback is repeatable with matching hashes. A changing
-   or unreadable dump points to hardware trouble, not a ROM-selection problem.
-5. Use **Download Only** for the first recovery attempt. Do not use
-   **Format All + Download**. Do not write the package preloader unless the
-   hardware identity and preloader image have both been verified and there is
-   no safer path.
+## Что работает, а что нет
 
-`backups/` is deliberately ignored by Git because it will contain unique device
-data such as radio calibration and identifiers. Do not upload it.
+| Узел | Состояние |
+|---|---|
+| Загрузка с eMMC, ядро 7.1 | работает (BOOT прошивается fastboot'ом, система — в разделе USRDATA) |
+| Экран 1280×800, подсветка, яркость, гашение при блокировке | работает (mediatek-drm, DSI) |
+| GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
+| Оболочка Phosh, Firefox, приложения GNOME | работает; приложения рисуются процессором |
+| Сенсорный экран | одно касание; мультитач не доходит |
+| Wi-Fi (MT6628) | работает |
+| Звук через динамики | работает |
+| Батарея, зарядка до 2 А | работает; процент во время зарядки завышен |
+| SSH, USB | работает |
+| Наушники, микрофон | нет |
+| Bluetooth | нет (не портирован) |
+| 3G-модем, GPS, камеры | нет |
+| Сон (suspend) | нет |
+| Центр приложений (GNOME Software) | падает — ошибка самого GNOME Software на 32-битном ARM |
+| GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
+| Аппаратное декодирование видео | нет |
+| Стабильность | **случайные падения ядра раз в 10–40 минут**; `reboot` иногда зависает — держать Power 15–20 с |
 
-## Recovery stages
+Подробности по узлам — в `docs/`.
 
-- **R0 — electrical/visual check:** known-good cable and charger, inspect USB
-  socket, battery swelling/voltage, display connector, and reaction with the
-  battery disconnected/reconnected according to the service manual.
-- **R1 — read-only MTK session:** establish communication and preserve flash.
-- **R2 — storage diagnosis:** compare repeated reads and inspect the partition
-  table. If writes appear successful but old data remains, suspect read-only or
-  worn eMMC.
-- **R3 — minimal stock recovery:** write only the necessary boot/system images,
-  keeping the original identity partitions and preferably the original
-  preloader.
-- **R4 — full stock verification:** boot, recovery, touch, display, Wi-Fi,
-  charging, audio, and 3G data.
+## Установка
 
-## Full Linux port
+Готовые файлы — на странице [Releases](https://github.com/kz-creator/lenovo-b8000h-linux/releases). Пошаговая инструкция —
+[docs/INSTALL.md](docs/INSTALL.md). Кратко:
 
-The current TeamYogaBlade2 work is a near-mainline Linux 7.1 development tree
-for MT6589/MT8125/MT8389. Its postmarketOS package currently selects the
-`mt6589-lenovo-b8000-f` device tree (the Wi-Fi/MT8125 model). This tablet is the
-**B8000-H/MT8389** variant, so the existing image must not simply be flashed.
+1. **Сделайте резервную копию уникальных разделов** (NVRAM, PRO_INFO, PROTECT_F/S)
+   через SP Flash Tool → Readback. Без неё при неудаче можно потерять IMEI и калибровки.
+2. Скачайте стоковую прошивку `B8000_A442_001_020_140620_WW_3GDATA` — она нужна для
+   возврата на Android.
+3. Запишите образ установщика на microSD.
+4. Прошейте `boot.img` из релиза: `fastboot flash boot <файл>`.
+5. Включите планшет с картой: установщик сам скопирует систему в раздел USRDATA
+   (около 7 минут, прогресс на экране) и загрузит Phosh.
 
-The first Linux milestone is a **non-destructive boot test** with serial/pstore
-logging and the stock bootloader-provided framebuffer. A B8000-H device tree
-must then be derived from the shared `lenovo-blade`/B8000 description using the
-stock `blade10_row_3gdata` configuration. Expected later work includes modem,
-Wi-Fi/Bluetooth, sound, charging/battery, touch, suspend, thermal control, and
-PowerVR SGX544 acceleration.
+Возврат на Android — [docs/RETURN-TO-ANDROID.md](docs/RETURN-TO-ANDROID.md).
 
-Imported reference trees live under `external/`. Firmware archives, extracted
-images, builds, and unique tablet dumps stay outside Git.
+## Сборка из исходников
+
+- Среда — WSL с Alpine (сборка ядра clang/LLVM): `linux-port/build-safe-image.sh`.
+- Ядро — [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1) `blade/v7.1` @ `7dd245445adf`
+  плюс патчи из `linux-port/patches/`.
+- Внешние модули: GPU (`linux-port/drivers/pvrsrvkm`, `dc_nohw`, `ion-legacy`),
+  Wi-Fi (`linux-port/drivers/mt6628`), звук.
+- Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7, `UI_PROFILE=phosh`).
+- GPU-стек: Debian armhf «островок» с libhybris (`linux-port/hybris/build-hybris.sh`) и phoc
+  0.55.1 с патчем wlroots под Android EGL (`linux-port/hybris/build-phoc.sh`,
+  `wlroots-0.20-hybris.patch`); устройство и замеры — [docs/g4-hybris.md](docs/g4-hybris.md).
+
+## Структура
+
+| Путь | Что там |
+|---|---|
+| `linux-port/patches/` | патчи ядра (DTS, драйверы MT6589, таймеры, MSDC, дисплей…) |
+| `linux-port/drivers/` | внешние модули: PowerVR KM (DDK 1.12), ION, MT6628, звук |
+| `linux-port/hybris/` | libhybris, phoc-gpu, патч wlroots, тесты GPU |
+| `linux-port/gpu/` | запуск Services PowerVR, служба `b8k-gpu`, демо |
+| `linux-port/initramfs/` | init с установщиком с microSD |
+| `tools/` | SP Flash Tool readback/download-конфиги, сборка образов |
+| `docs/` | заметки по узлам (GPU, звук, Wi-Fi, батарея…) |
+
+## Ошибки и вопросы
+
+[Issues](https://github.com/kz-creator/lenovo-b8000h-linux/issues) этого репозитория. Приложите `dmesg`, `/sys/fs/pstore/*`
+(после падения) и `/var/log/phosh.log`.
+
+## Благодарности
+
+- [TeamYogaBlade2](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1) — ядро для семейства Yoga Tablet (blade);
+- [lenovo-b8000_postmarketos_files](https://github.com/TeamYogaBlade2/lenovo-b8000_postmarketos_files) — материалы postmarketOS по B8000;
+- [libhybris](https://github.com/libhybris/libhybris), Phosh/phoc, wlroots, Alpine Linux, Debian;
+- исходники PowerVR DDK 1.12 для MT6589 (bq Aquaris 5 HD, GPL/MIT);
+- участники темы B8000 на 4pda — стоковая прошивка.
+
+## Лицензии
+
+Собственный код и патчи ядра — GPL-2.0 ([LICENSE](LICENSE)), если в файле не указано иное
+(SPDX-заголовки). Драйверы из исходников MediaTek/Lenovo — их исходные лицензии (GPL-2.0).
+Патч wlroots — MIT, как сам wlroots (`linux-port/hybris/wlroots-LICENSE.txt`).
+Проприетарные блобы Android (PowerVR, gralloc, прошивки Wi-Fi) в репозитории **не
+распространяются**: система берёт их из раздела `/system` вашего планшета.
