@@ -100,5 +100,6 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 Собственный код и патчи ядра — GPL-2.0 ([LICENSE](LICENSE)), если в файле не указано иное
 (SPDX-заголовки). Драйверы из исходников MediaTek/Lenovo — их исходные лицензии (GPL-2.0).
 Патч wlroots — MIT, как сам wlroots (`linux-port/hybris/wlroots-LICENSE.txt`).
-Проприетарные блобы Android (PowerVR, gralloc, прошивки Wi-Fi) в репозитории **не
-распространяются**: система берёт их из раздела `/system` вашего планшета.
+Проприетарные блобы Android (PowerVR, gralloc, прошивки Wi-Fi) ни в репозитории, ни в
+образах **не распространяются**: система подключает стоковый раздел `system` вашего
+планшета только для чтения и берёт их оттуда (`linux-port/rootfs/b8k-android-system.initd`).
