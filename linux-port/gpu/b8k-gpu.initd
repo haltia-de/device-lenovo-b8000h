@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0
 # B8000-H: load the SGX544 modules and start PowerVR Services at boot, so the
 # GPU compositor (phoc-gpu, G5) finds the GPU ready.  Same steps as g3-run.sh
-# up to the render test: modules from /root/kN (N = kernel build number),
-# then the stock pvrsrvctl in pvr-run.sh's bionic environment.
+# up to the render test: modules from /usr/lib/b8k/kN (N = kernel build
+# number; /root/kN on the development tablet), then the stock pvrsrvctl from
+# the Android system partition (b8k-android-system) in pvr-run.sh's bionic
+# environment.
 # Services are initialised once per module load; a second pvrsrvctl --start
 # logs "PVRSRVInitSrvConnect failed (129)" (PVRSRV_ERROR_SRV_CONNECT_FAILED:
 # init already ran), which counts as ready - Services were started by hand
@@ -12,19 +14,22 @@
 
 description="SGX544 GPU modules and PowerVR Services"
 READY=/run/b8k-gpu.ready
-LOG=/root/pvrlog/boot-gpu
+LOG=/var/log/b8k-gpu
+LIB=/usr/lib/b8k
 
 depend() {
+	need b8k-android-system
 	after modules localmount
 	before local
 }
 
 start() {
-	local n moddir m rc
+	local n moddir m rc run
 
 	ebegin "Starting SGX544 Services"
 	n=$(uname -r | sed -n 's/.*-b8000h\([0-9]*\)-.*/\1/p')
-	moddir=/root/k$n
+	moddir=$LIB/k$n
+	[ -d "$moddir" ] || moddir=/root/k$n
 	[ -d "$moddir" ] || moddir=/root
 	for m in ion_legacy pvrsrvkm dc_nohw; do
 		grep -q "^$m " /proc/modules && continue
@@ -44,7 +49,9 @@ start() {
 
 	rm -rf "$LOG.old"
 	[ -d "$LOG" ] && mv "$LOG" "$LOG.old"
-	PVR_FAKE_NODES=pvr_sync PVR_LOG_DIR=$LOG /root/pvr-run.sh \
+	run=$LIB/pvr-run.sh
+	[ -x "$run" ] || run=/root/pvr-run.sh
+	PVR_FAKE_NODES=pvr_sync PVR_LOG_DIR=$LOG "$run" \
 		/system/vendor/bin/pvrsrvctl --start --no-module \
 		> /dev/null 2>&1
 	rc=$?

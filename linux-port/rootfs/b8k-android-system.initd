@@ -1,0 +1,85 @@
+#!/sbin/openrc-run
+# SPDX-License-Identifier: GPL-2.0
+# B8000-H: mount the tablet's own stock Android system partition (ANDROID,
+# never modified by Linux) read-only at /system.  The GPU stack (PowerVR
+# blobs, gralloc, bionic linker for libhybris) and the MT6628 Wi-Fi firmware
+# (/lib/firmware links to /system/etc/firmware) come from there, so no
+# Android binaries ship with this system.
+#
+# The ext4 file system starts 0x1E0000 bytes into the partition as the
+# kernel's fixed partition table describes it (and runs past its end), so it
+# is attached through a read-only loop device on the whole eMMC at the offset
+# where the superblock is found.
+#
+# Stock hw_get_module() falls back to gralloc.default.so when no board
+# property names the module; the read-only /system/vendor/lib/hw is
+# shadowed by a bind-mounted copy of links that adds it.
+
+description="Stock Android system partition (read-only) at /system"
+RAW=/run/b8k-android	# the partition itself
+MNT=/system		# bind of RAW, with vendor/lib/hw shadowed
+HWDIR=/run/b8k-vendor-hw
+
+depend() {
+	after localmount
+	before b8k-gpu local
+}
+
+find_partition() {
+	local u
+	for u in /sys/class/block/*/uevent; do
+		grep -qx 'PARTNAME=ANDROID' "$u" 2>/dev/null || continue
+		basename "$(dirname "$u")"
+		return 0
+	done
+	return 1
+}
+
+start() {
+	local part disk start off shift magic loop
+
+	if mountpoint -q "$RAW"; then
+		return 0
+	fi
+	ebegin "Mounting the stock Android system read-only"
+	part=$(find_partition) || { eend 1 "no ANDROID partition"; return 1; }
+	disk=$(basename "$(readlink -f "/sys/class/block/$part/..")")
+	start=$(cat "/sys/class/block/$part/start")
+	off=
+	for shift in 0 1966080; do
+		magic=$(dd if="/dev/$disk" bs=1 count=2 \
+			skip=$((start * 512 + shift + 1080)) 2>/dev/null | od -An -tx1 | tr -d ' \n')
+		if [ "$magic" = 53ef ]; then
+			off=$((start * 512 + shift))
+			break
+		fi
+	done
+	[ -n "$off" ] || { eend 1 "no ext4 superblock on $part"; return 1; }
+
+	loop=$(losetup -f) &&
+	losetup -r -o "$off" "$loop" "/dev/$disk" &&
+	mkdir -p "$RAW" "$MNT" &&
+	mount -t ext4 -o ro "$loop" "$RAW" &&
+	mount --make-private "$RAW" &&
+	mount --bind "$RAW" "$MNT" || {
+		eend 1 "mount failed"
+		return 1
+	}
+
+	# vendor/lib/hw with gralloc.default.so added: links into RAW, which
+	# the bind below does not shadow.
+	rm -rf "$HWDIR"
+	mkdir -p "$HWDIR"
+	for f in "$RAW"/vendor/lib/hw/*; do
+		ln -s "$f" "$HWDIR/$(basename "$f")"
+	done
+	[ -e "$HWDIR/gralloc.default.so" ] ||
+		ln -s "$RAW/vendor/lib/hw/gralloc.mt6589.so" "$HWDIR/gralloc.default.so"
+	mount --bind "$HWDIR" "$MNT/vendor/lib/hw"
+	eend $?
+}
+
+stop() {
+	# Running GPU clients keep the blobs open; unmount at shutdown only.
+	return 0
+}
