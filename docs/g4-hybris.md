@@ -212,6 +212,33 @@ commit, а каждый кадр вывода заканчивается `glFini
 12 октября 2026; после загрузки прокрутка корректна.
 Разбор — [scroll-tear.md](scroll-tear.md).
 
+## Что стоит в установленной системе
+
+GLES 2.0 использует только композитор. Firefox, GTK и сам Phosh рисуют
+в `wl_shm` на процессоре; phoc загружает эти кадры в текстуры SGX.
+
+- `b8k-android-system` монтирует стоковый раздел Android только для чтения
+  в `/system`. Оттуда берутся блобы PowerVR и прошивки Wi-Fi.
+- `b8k-gpu` загружает `ion_legacy`, `pvrsrvkm`, `dc_nohw` из
+  `/usr/lib/b8k/k22` и запускает стоковый `pvrsrvctl`. Готовность —
+  файл `/run/b8k-gpu.ready`.
+- `~/.phoshdebug` ставит `COMPOSITOR=/usr/local/bin/phoc-gpu`. Обёртка
+  запускает glibc phoc из `/opt/debian` через динамический линкер Debian
+  и `libtlspad.so`. Для этого процесса она задаёт `WLR_RENDERER=gles2`.
+  На штатный musl `/usr/bin/phoc` эту переменную ставить не нужно: у него
+  нет hybris EGL, и сеанс остаётся на pixman.
+- Связи путей, которые glibc-сторона открывает по имени:
+  `/usr/lib/arm-linux-gnueabihf` → `/opt/debian/usr/lib/arm-linux-gnueabihf`,
+  `/usr/local/hybris` → `/opt/debian/usr/local/hybris`.
+- Кадр заканчивается `glFinish()`. linux-dmabuf клиентам не объявляется.
+  Если GPU не готов или glibc phoc три раза подряд не прожил минуту,
+  обёртка переходит на `/usr/bin/phoc`. Отключить GPU насовсем:
+  `touch ~/.phoc-gpu-disabled`. Вернуть glibc phoc на процессор:
+  `touch ~/.phoc-gpu-pixman`.
+
+Остров Debian собирается на планшете (`linux-port/hybris/`). Сборка
+корневой системы только раскладывает службы, модули и обёртку.
+
 Звук: цикл в `/etc/local.d/desktop.start` (`linux-port/build-rootfs.sh`) теперь делает
 `killall pipewire pipewire-pulse wireplumber` между сеансами (бэкап старого —
 `/root/desktop.start.bak-20260930`).

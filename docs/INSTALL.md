@@ -22,15 +22,22 @@
    результат — `artifacts/linux-port/b8000h-linux-firstboot-my-safe.img` (ядро, DTB
    `install2` и initramfs из `linux-port/initramfs/init`).
 4. **Внешние модули** — `build.sh` в `linux-port/drivers/` (PowerVR `pvrsrvkm`,
-   `dc_nohw`, `ion-legacy`, Wi-Fi `mt6628`, звук).
-5. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
-   armv7 с Phosh (рисование процессором).
-6. **GPU-стек** собирается на самом планшете: Debian armhf в `/opt/debian`
-   (debootstrap), `linux-port/hybris/build-hybris.sh` (libhybris), `build-phoc.sh` (phoc
-   0.55.1 с `wlroots-0.20-hybris.patch`), службы `b8k-android-system` и `b8k-gpu`,
-   обёртка `phoc-gpu`, `b8k-session`, `desktop.start`. Как всё устроено —
+   `dc_nohw`, `ion-legacy`, Wi-Fi `mt6628`, звук). Модуль `wlan_mt6628` не
+   объявляет шифр AES-CMAC: иначе NetworkManager выбирает WPA-PSK-SHA256,
+   а чип его отвергает. Подробности — [wifi-mt6628.md](wifi-mt6628.md).
+5. **wpa_supplicant для этой сети** — `sh linux-port/wifi/build-wpa-nm.sh`
+   (официальный архив 2.11). Сборка выключает PMF/SAE/FILS/OWE и не
+   объявляет capability `pmf`. Без этого Phosh не подключается.
+6. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
+   armv7 с Phosh. Скрипт ставит собранный wpa_supplicant, конфиг NetworkManager,
+   повторную загрузку MT6628 после появления прошивки, службы
+   `b8k-android-system` и `b8k-gpu`, модули GPU и обёртку `phoc-gpu`.
+7. **Остров Debian** собирается на самом планшете: armhf в `/opt/debian`
+   (debootstrap), `linux-port/hybris/build-hybris.sh` (libhybris), `build-phoc.sh`
+   (phoc 0.55.1 с `wlroots-0.20-hybris.patch`). GLES 2.0 использует только этот
+   композитор; приложения остаются на процессоре. Как всё устроено —
    [g4-hybris.md](g4-hybris.md).
-7. **Образ установщика для microSD** из ext4-образа системы и `boot.img`:
+8. **Образ установщика для microSD** из ext4-образа системы и `boot.img`:
    ```
    python3 tools/mk-sd-installer.py root.ext4 boot.img b8000h-sd-installer.img
    ```
@@ -90,7 +97,8 @@ SP Flash Tool → Readback: загрузите scatter стоковой прош
 
 - Пользователь `user`, пароль пустой: экран блокировки снимается свайпом и «ОК».
   Задайте PIN в Консоли: `passwd`.
-- Wi-Fi — в верхней шторке или в «Настройках».
+- Wi-Fi — в верхней шторке или в «Настройках». Сеть — обычный WPA2-PSK.
+  PMF и SAE этот чип в Linux не использует. Пароль в образ не зашивается.
 - Права администратора — `doas <команда>`: спросит пароль пользователя `user`, поэтому
   сначала задайте его (`passwd`). Вход под root закрыт. В «Настройках»
   административные действия спрашивают тот же пароль.

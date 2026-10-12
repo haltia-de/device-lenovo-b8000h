@@ -45,7 +45,35 @@ install -m 755 "$REPO/linux-port/gpu/pvr-run.sh" "$R/usr/lib/b8k/pvr-run.sh"
 install -m 755 "$REPO/linux-port/gpu/b8k-gpu.initd" "$R/etc/init.d/b8k-gpu"
 install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
 	"$R/etc/init.d/b8k-android-system"
+install -d -m 755 "$R/usr/local/bin"
+install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$R/usr/local/bin/phoc-gpu"
 ln -sf /etc/init.d/b8k-android-system "$R/etc/runlevels/default/b8k-android-system"
+ln -sf /etc/init.d/b8k-gpu "$R/etc/runlevels/default/b8k-gpu"
+install -d -m 755 "$R/etc/NetworkManager/conf.d"
+install -m 644 "$REPO/linux-port/wifi/wifi-mt6628.conf" \
+	"$R/etc/NetworkManager/conf.d/wifi-mt6628.conf"
+rm -f "$R/etc/NetworkManager/conf.d/unmanage-wlan0.conf" \
+	"$R/etc/local.d/10-wifi-glider.start" \
+	"$R/etc/runlevels/default/wpa_supplicant" \
+	"$R/etc/runlevels/boot/wpa_supplicant"
+if [ -x "$R/sbin/wpa_supplicant" ] &&
+   strings "$R/sbin/wpa_supplicant" | grep -qx pmf; then
+	echo "wpa_supplicant still advertises pmf; rebuild linux-port/wifi/build-wpa-nm.sh" >&2
+	exit 1
+fi
+cat > "$R/etc/local.d/00-b8k-modules.start" <<'EOF'
+#!/bin/sh
+i=0
+while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+rmmod wlan_mt6628 2>/dev/null || true
+rmmod wmt 2>/dev/null || true
+modprobe wmt
+modprobe wlan_mt6628
+EOF
+chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 
 # --- personal data -------------------------------------------------------
 find "$R/root" -mindepth 1 -delete

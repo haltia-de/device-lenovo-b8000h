@@ -9,7 +9,9 @@ points with Linux APIs:
   multi-part E1/E2 patch download, WMT Wi-Fi function-on and MSDC3 rescan;
 - `wlan_mt6628.ko`: direct SDIO binding for `037a:6628` function 1, 512-byte
   blocks, firmware_class loading, native SDIO IRQ and a cfg80211/nl80211
-  station interface named `wlan%d`;
+  station interface named `wlan%d`. The station cipher list omits
+  AES-CMAC. `mtk_cfg80211_connect` accepts only PSK and 802.1X, so a
+  WPA-PSK-SHA256 offer from NetworkManager fails. See `docs/wifi-mt6628.md`;
 - no WEXT private ioctls, procfs HAL ABI, Android wakelocks, early-suspend,
   BT, FM or GPS drivers.
 

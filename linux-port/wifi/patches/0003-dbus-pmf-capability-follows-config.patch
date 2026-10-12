@@ -1,0 +1,16 @@
+NetworkManager 1.52 treats the global D-Bus capability "pmf" as
+permission to append WPA-PSK-SHA256. wpa_supplicant 2.11 advertises
+that string even when CONFIG_IEEE80211W is off, and the MT6628 driver
+rejects the SHA256 AKM.
+--- a/wpa_supplicant/dbus/dbus_new_handlers.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers.c
+@@ -1301,7 +1301,9 @@ dbus_bool_t wpas_dbus_getter_global_capabilities(
+ #ifdef CONFIG_INTERWORKING
+ 	capabilities[num_items++] = "interworking";
+ #endif /* CONFIG_INTERWORKING */
++#ifdef CONFIG_IEEE80211W
+ 	capabilities[num_items++] = "pmf";
++#endif /* CONFIG_IEEE80211W */
+ #ifdef CONFIG_MESH
+ 	capabilities[num_items++] = "mesh";
+ #endif /* CONFIG_MESH */

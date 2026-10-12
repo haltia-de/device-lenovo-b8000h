@@ -869,9 +869,10 @@ static const UINT_32 mtk_cipher_suites[] = {
     WLAN_CIPHER_SUITE_WEP104,
     WLAN_CIPHER_SUITE_TKIP,
     WLAN_CIPHER_SUITE_CCMP,
-
-    /* keep last -- depends on hw flags! */
-    WLAN_CIPHER_SUITE_AES_CMAC
+    /* AES-CMAC is not advertised. CFG_SUPPORT_802_11W is 0, but a BIP
+     * cipher makes wpa_supplicant offer WPA-PSK-SHA256 and NetworkManager
+     * then picks that AKM. mtk_cfg80211_connect() only accepts PSK.
+     */
 };
 
 static struct cfg80211_ops mtk_wlan_ops = {
