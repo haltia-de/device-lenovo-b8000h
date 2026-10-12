@@ -26,8 +26,15 @@ ed('mtk_disp_ovl.c',
 ed('mtk_disp_rdma.c',
 '''	mtk_ddp_write(cmdq_pkt, reg, &rdma->cmdq_reg, rdma->regs, DISP_REG_RDMA_FIFO_CON);
 }''',
-'''	/* MT6589: FIFO pseudo size / threshold as programmed by the bootloader */
+'''	/*
+	 * MT6589 FIFO is the 3840-byte line buffer LK programmed
+	 * (pseudo-size 0xF0). A threshold of 256 bytes starts the line
+	 * almost empty, so a scroll underruns and the panel shows a
+	 * translucent horizontally shifted copy. 0x80f000e0 keeps that
+	 * size, enables the underflow status bit, and waits until 3584
+	 * bytes are queued.
+	 */
 	if (of_device_is_compatible(dev->of_node, "mediatek,mt6589-disp-rdma"))
-		reg = 0x00f00010;
+		reg = 0x80f000e0;
 	mtk_ddp_write(cmdq_pkt, reg, &rdma->cmdq_reg, rdma->regs, DISP_REG_RDMA_FIFO_CON);
 }''', 'mediatek,mt6589-disp-rdma')

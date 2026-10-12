@@ -8,10 +8,17 @@ wlroots 0.20: render with the stock Android EGL/GLES through libhybris (B8000-H,
   no DMA-BUF texture formats (clients stay on wl_shm), glFinish before
   scan-out (no implicit fences), uploads without GL_EXT_unpack_subimage,
   GL_KHR_debug off (the driver logs every eglMakeCurrent).
+- gles2 pass, hybris only: clip-quad vertices stay in a heap block until
+  that glFinish. SGX can read the client array after glDrawArrays returns,
+  and the next damage batch used to overwrite the same stack slot.
+  That did not remove the scroll copies. A large surface (>=1000x600) is
+  then drawn with tex_rgbx and blend off, so framebuffer alpha is 1.
 
 - gles2 textures from 32-bit shm buffers live in linear gralloc buffers
   sampled through EGLImages: updates are memcpy of the damage (5-7 ms per
   1280x800 frame, 0.3 ms per 100-row band; glTexSubImage2D: 18 / 7 ms).
+  The gralloc lock is always the whole buffer: vaddr is the base, and a
+  damage-sized lock lets vendor gralloc return a pointer at the rectangle.
 - read_pixels (screencopy, phosh thumbnails) of ARGB/XRGB8888 without
   GL_EXT_read_format_bgra: read RGBA, swap R/B on the CPU.
 
@@ -70,10 +77,9 @@ index 103ab57..5631de4 100644
  	struct wlr_drm_format_set dmabuf_texture_formats;
  	struct wlr_drm_format_set dmabuf_render_formats;
 diff --git a/include/render/gles2.h b/include/render/gles2.h
-index 6b852dc..d503bc0 100644
 --- a/include/render/gles2.h
 +++ b/include/render/gles2.h
-@@ -48,6 +48,7 @@ struct wlr_gles2_renderer {
+@@ -48,6 +48,7 @@
  	const char *exts_str;
  	struct {
  		bool EXT_read_format_bgra;
@@ -81,7 +87,7 @@ index 6b852dc..d503bc0 100644
  		bool KHR_debug;
  		bool OES_egl_image_external;
  		bool OES_egl_image;
-@@ -129,6 +130,12 @@ struct wlr_gles2_texture {
+@@ -129,8 +130,16 @@
  
  	uint32_t drm_format; // for mutable textures only, used to interpret upload data
  	struct wlr_gles2_buffer *buffer; // for DMA-BUF imports only
@@ -93,7 +99,21 @@ index 6b852dc..d503bc0 100644
 +	size_t hybris_stride; // bytes
  };
  
++struct wlr_gles2_hybris_verts;
++
  struct wlr_gles2_render_pass {
+ 	struct wlr_render_pass base;
+ 	struct wlr_gles2_buffer *buffer;
+@@ -139,6 +148,9 @@
+ 	struct wlr_gles2_render_timer *timer;
+ 	struct wlr_drm_syncobj_timeline *signal_timeline;
+ 	uint64_t signal_point;
++	// Client vertex blocks kept alive until glFinish. SGX may still read
++	// them after glDrawArrays returns.
++	struct wlr_gles2_hybris_verts *hybris_verts;
+ };
+ 
+ bool is_gles2_pixel_format_supported(const struct wlr_gles2_renderer *renderer,
 diff --git a/render/allocator/allocator.c b/render/allocator/allocator.c
 index b7dbf3d..897d520 100644
 --- a/render/allocator/allocator.c
@@ -506,20 +526,187 @@ index 8673aca..7a05a1c 100644
  		wlr_log(WLR_ERROR, "Failed to create EGL context");
  		return NULL;
 diff --git a/render/gles2/pass.c b/render/gles2/pass.c
-index a70ea13..672b870 100644
 --- a/render/gles2/pass.c
 +++ b/render/gles2/pass.c
-@@ -56,6 +56,10 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
+@@ -11,8 +11,24 @@
+ 
+ #define MAX_QUADS 86 // 4kb
+ 
++struct wlr_gles2_hybris_verts {
++	struct wlr_gles2_hybris_verts *next;
++	GLfloat data[];
++};
++
+ static const struct wlr_render_pass_impl render_pass_impl;
+ 
++static void hybris_verts_free(struct wlr_gles2_render_pass *pass) {
++	struct wlr_gles2_hybris_verts *block = pass->hybris_verts;
++
++	while (block != NULL) {
++		struct wlr_gles2_hybris_verts *next = block->next;
++		free(block);
++		block = next;
++	}
++	pass->hybris_verts = NULL;
++}
++
+ static struct wlr_gles2_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+ 	assert(wlr_pass->impl == &render_pass_impl);
+ 	struct wlr_gles2_render_pass *pass = wl_container_of(wlr_pass, pass, base);
+@@ -56,6 +72,11 @@
  		if (!ok) {
  			goto out;
  		}
 +	} else if (renderer->egl->hybris) {
 +		// No implicit fences on the gralloc DMA-BUFs: KMS would scan out
-+		// a half-drawn frame
++		// a half-drawn frame. Also the point until which the client vertex
++		// blocks below must stay allocated.
 +		glFinish();
  	} else {
  		glFlush();
  	}
+@@ -63,6 +84,11 @@
+ 	ok = true;
+ 
+ out:
++	if (renderer->egl->hybris && pass->hybris_verts != NULL &&
++			pass->signal_timeline != NULL) {
++		glFinish();
++	}
++	hybris_verts_free(pass);
+ 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+ 
+ 	pop_gles2_debug(renderer);
+@@ -75,7 +101,8 @@
+ 	return ok;
+ }
+ 
+-static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib) {
++static void render(const struct wlr_box *box, const pixman_region32_t *clip,
++		GLint attrib, struct wlr_gles2_render_pass *pass) {
+ 	pixman_region32_t region;
+ 	pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
+ 
+@@ -90,14 +117,37 @@
+ 		return;
+ 	}
+ 
++	bool hybris = pass->buffer->renderer->egl->hybris;
++	GLfloat *hybris_data = NULL;
++	if (hybris) {
++		// One block for every quad of this draw. Batches must not reuse
++		// one stack array: SGX can read the client pointer after
++		// glDrawArrays returns, and the next batch would overwrite it.
++		// The block stays until glFinish in render_pass_submit.
++		size_t nfloat = (size_t)rects_len * 6 * 2;
++		struct wlr_gles2_hybris_verts *block = malloc(
++			sizeof(*block) + nfloat * sizeof(GLfloat));
++		if (block == NULL) {
++			wlr_log(WLR_ERROR, "hybris vertex allocation failed");
++			pixman_region32_fini(&region);
++			return;
++		}
++		block->next = pass->hybris_verts;
++		pass->hybris_verts = block;
++		hybris_data = block->data;
++		glBindBuffer(GL_ARRAY_BUFFER, 0);
++	}
++
+ 	glEnableVertexAttribArray(attrib);
+ 
++	size_t hybris_used = 0;
+ 	for (int i = 0; i < rects_len;) {
+ 		int batch = rects_len - i < MAX_QUADS ? rects_len - i : MAX_QUADS;
+ 		int batch_end = batch + i;
+ 
+ 		size_t vert_index = 0;
+-		GLfloat verts[MAX_QUADS * 6 * 2];
++		GLfloat stack_verts[MAX_QUADS * 6 * 2];
++		GLfloat *verts = hybris ? hybris_data + hybris_used : stack_verts;
+ 		for (; i < batch_end; i++) {
+ 			const pixman_box32_t *rect = &rects[i];
+ 
+@@ -115,6 +165,9 @@
+ 			verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
+ 		}
+ 
++		if (hybris) {
++			hybris_used += vert_index;
++		}
+ 		glVertexAttribPointer(attrib, 2, GL_FLOAT, GL_FALSE, 0, verts);
+ 		glDrawArrays(GL_TRIANGLES, 0, batch * 6);
+ 	}
+@@ -195,12 +248,25 @@
+ 	wlr_render_texture_options_get_src_box(options, &src_fbox);
+ 	wlr_render_texture_options_get_dst_box(options, &dst_box);
+ 	float alpha = wlr_render_texture_options_get_alpha(options);
++	struct wlr_fbox src_raw = src_fbox;
+ 
+ 	src_fbox.x /= options->texture->width;
+ 	src_fbox.y /= options->texture->height;
+ 	src_fbox.width /= options->texture->width;
+ 	src_fbox.height /= options->texture->height;
+ 
++	// Scroll copies survived the vertex-lifetime test. For a large surface,
++	// drop texture alpha and blend: tex_rgbx writes alpha 1, so both GLES
++	// and OVL (which blends when the scanout alpha is not 1) replace pixels.
++	// Small surfaces (panel) stay blended. Temporary, to see if the ghost is
++	// alpha at all.
++	bool hybris_opaque = renderer->egl->hybris && texture->target == GL_TEXTURE_2D &&
++		texture->wlr_texture.width >= 1000 && texture->wlr_texture.height >= 600;
++	if (hybris_opaque) {
++		shader = &renderer->shaders.tex_rgbx;
++		alpha = 1.0f;
++	}
++
+ 	push_gles2_debug(renderer);
+ 
+ 	if (options->wait_timeline != NULL) {
+@@ -223,8 +289,24 @@
+ 		}
+ 	}
+ 
+-	setup_blending(!texture->has_alpha && alpha == 1.0 ?
+-		WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
++	enum wlr_render_blend_mode blend = !texture->has_alpha && alpha == 1.0 ?
++		WLR_RENDER_BLEND_MODE_NONE : options->blend_mode;
++	if (hybris_opaque) {
++		blend = WLR_RENDER_BLEND_MODE_NONE;
++		static time_t hybris_blit_log;
++		time_t now = time(NULL);
++		if (now != hybris_blit_log) {
++			hybris_blit_log = now;
++			wlr_log(WLR_INFO, "hybris opaque blit %dx%d tex_alpha=%d "
++				"req_blend=%d src=%.1f,%.1f %.1fx%.1f dst=%d,%d %dx%d a=%.3f",
++				texture->wlr_texture.width, texture->wlr_texture.height,
++				texture->has_alpha, options->blend_mode,
++				src_raw.x, src_raw.y, src_raw.width, src_raw.height,
++				dst_box.x, dst_box.y, dst_box.width, dst_box.height,
++				wlr_render_texture_options_get_alpha(options));
++		}
++	}
++	setup_blending(blend);
+ 
+ 	glUseProgram(shader->program);
+ 
+@@ -247,7 +329,7 @@
+ 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
+ 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
+ 
+-	render(&dst_box, options->clip, shader->pos_attrib);
++	render(&dst_box, options->clip, shader->pos_attrib, pass);
+ 
+ 	glBindTexture(texture->target, 0);
+ 	pop_gles2_debug(renderer);
+@@ -278,7 +360,7 @@
+ 		glUseProgram(renderer->shaders.quad.program);
+ 		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
+ 		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
+-		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
++		render(&box, options->clip, renderer->shaders.quad.pos_attrib, pass);
+ 	}
+ 
+ 	pop_gles2_debug(renderer);
 diff --git a/render/gles2/renderer.c b/render/gles2/renderer.c
 index e362dae..9a5ca7e 100644
 --- a/render/gles2/renderer.c
@@ -685,12 +872,19 @@ index 9a967eb..bdbbd3c 100644
 +	if (rects_len == 0) {
 +		return true;
 +	}
-+	const pixman_box32_t *ext = damage != NULL ?
-+		pixman_region32_extents(damage) : &full;
 +
++	/*
++	 * Lock the whole allocation. AOSP gralloc returns vaddr at the base
++	 * of the buffer, and the copies below use absolute x/y. A lock of only
++	 * the damage rectangle makes some grallocs return a pointer to that
++	 * rectangle; the absolute write then runs off the end into the next
++	 * ion buffer (often the scanout) and the whole screen breaks up.
++	 * Firefox sends partial damage constantly. The memcpy is still only
++	 * the damaged rows.
++	 */
 +	void *vaddr;
 +	if (!egl->hybris_nb.lock(texture->hybris_nb, HYBRIS_USAGE_SW_WRITE_OFTEN,
-+			ext->x1, ext->y1, ext->x2 - ext->x1, ext->y2 - ext->y1, &vaddr)) {
++			0, 0, width, height, &vaddr)) {
 +		wlr_log(WLR_ERROR, "eglHybrisLockNativeBuffer failed");
 +		return false;
 +	}

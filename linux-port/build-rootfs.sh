@@ -99,6 +99,17 @@ fi
 EOF
 chmod +x "$ROOT/etc/local.d/00-b8k-modules.start"
 
+# Safety net for an older BOOT image. The FIFO kernel already writes
+# 0x80f000e0. This script rewrites the register only if it still holds
+# the bootloader value 0x00f00010 (256-byte threshold, scroll copies).
+install -m 755 "$REPO/linux-port/rootfs/b8k-rdma-fifo.py" \
+	"$ROOT/usr/local/sbin/b8k-rdma-fifo.py"
+cat > "$ROOT/etc/local.d/zz-rdma-fifo.start" <<'EOF'
+#!/bin/sh
+python3 /usr/local/sbin/b8k-rdma-fifo.py >/var/log/b8k-rdma-fifo.log 2>&1 &
+EOF
+chmod +x "$ROOT/etc/local.d/zz-rdma-fifo.start"
+
 # USB ACM console: the gadget is configured by the recovery initramfs and
 # survives switch_root. Run a non-interactive shell on it (an interactive ash
 # waits for terminal replies that Windows never sends).
