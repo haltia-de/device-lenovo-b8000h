@@ -6,8 +6,6 @@ $BB mkdir -p /dev /proc /sys /run /tmp /sbin /usr/bin /usr/sbin
 $BB --install -s
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 $BB mount -t devtmpfs devtmpfs /dev
-exec >/dev/console 2>&1
-
 $BB mount -t proc proc /proc
 $BB mount -t sysfs sysfs /sys
 $BB mkdir -p /dev/pts /sys/kernel/config /sys/kernel/debug /sys/fs/pstore
@@ -15,6 +13,55 @@ $BB mount -t devpts devpts /dev/pts
 $BB mount -t configfs configfs /sys/kernel/config
 $BB mount -t debugfs debugfs /sys/kernel/debug
 $BB mount -t pstore pstore /sys/fs/pstore
+
+# splash=1 (install2 boot picture): kernel text stays off the panel and the
+# initramfs draws /splash.raw.gz. Installer progress and a failed boot bind
+# the frame-buffer console again.
+SPLASH=
+for arg in $($BB cat /proc/cmdline); do
+	[ "$arg" = splash=1 ] && SPLASH=1
+done
+fbcon_bind() {
+	for c in /sys/class/vtconsole/vtcon*; do
+		name=$($BB cat "$c/name" 2>/dev/null) || continue
+		case "$name" in
+			*frame\ buffer*|*fbcon*) echo "$1" > "$c/bind" 2>/dev/null || true ;;
+		esac
+	done
+}
+show_splash() {
+	[ -n "$SPLASH" ] || return 0
+	i=0
+	while [ ! -e /dev/fb0 ] && [ "$i" -lt 8 ]; do
+		$BB sleep 1
+		i=$((i + 1))
+	done
+	[ -e /dev/fb0 ] && [ -e /splash.raw.gz ] || return 0
+	bpp=$($BB cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null)
+	stride=$($BB cat /sys/class/graphics/fb0/stride 2>/dev/null)
+	[ "$bpp" = 32 ] && [ "$stride" = 5120 ] || {
+		echo "b8k-splash: skip bpp=$bpp stride=$stride" > /dev/kmsg
+		return 0
+	}
+	fbcon_bind 0
+	$BB gunzip -c /splash.raw.gz | $BB dd of=/dev/fb0 bs=5120 2>/dev/null
+	echo "b8k-splash: drawn" > /dev/kmsg
+}
+screen_text() {
+	[ -n "$SPLASH" ] || return 0
+	fbcon_bind 1
+	if [ -c /dev/tty0 ]; then
+		exec >/dev/tty0 2>&1
+	else
+		exec >/dev/console 2>&1
+	fi
+}
+show_splash
+if [ -n "$SPLASH" ]; then
+	exec >/dev/kmsg 2>&1
+else
+	exec >/dev/console 2>&1
+fi
 
 echo
 echo "B8000-H safe Linux bring-up initramfs"
@@ -115,6 +162,7 @@ auto_install() {
 		return 1
 	fi
 	M=1048576
+	screen_text
 	echo "=== INSTALL: $SD -> $ROOTDEV ($ROOTPART), $((RAW_LEN / M)) MiB, do not power off ==="
 	(
 		$BB dd if="$SD" bs=$M skip=$((GZ_OFF / M)) count=$(((GZ_LEN + M - 1) / M)) 2>/dev/null |
@@ -206,6 +254,7 @@ if [ -b "$ROOTDEV" ]; then
 else
 	echo "No root device $ROOTDEV found, staying in initramfs"
 fi
+[ -n "$SPLASH" ] && screen_text
 
 (
 	while [ ! -e /dev/ttyGS0 ]; do

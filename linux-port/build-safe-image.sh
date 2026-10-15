@@ -28,6 +28,8 @@ grep -q '^CONFIG_ARM_APPENDED_DTB=y' .config || {
 make -j4 ARCH=arm LLVM=1 zImage dtbs >/tmp/build-safe.log
 
 # initramfs: busybox-static + linux-port/initramfs/init
+# splash.raw.gz is the 1280x800 boot picture (install2, cmdline splash=1).
+python3 "$REPO/linux-port/initramfs/splash.py" /opt/b8000h/initramfs/splash.raw.gz
 cp "$REPO/linux-port/initramfs/init" /opt/b8000h/initramfs/init
 chmod 755 /opt/b8000h/initramfs/init
 (cd /opt/b8000h/initramfs && find . -print0 | sort -z |
