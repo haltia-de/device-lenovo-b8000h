@@ -1,0 +1,698 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""MAX messenger in large type, without a web browser.
+
+PyMax (MIT, vendored in /usr/local/lib/b8k-max) speaks MAX's web protocol
+over a WebSocket, as web.max.ru does, so no web engine is loaded: about
+55 MB in all instead of a second browser. The first start shows a QR code
+to scan in MAX on a phone; the session is then kept in
+~/.local/share/b8k-max/web.db (mode 600). PyMax's simulated telemetry is
+off: a person is typing here.
+
+Pages: the chat list (initials, name, last message, time, unread count)
+and a chat (bubbles, photos, a large entry and a send button). New
+messages arrive live and buzz. PyMax runs in its own thread with an
+asyncio loop; every call from the window goes through run(), every answer
+comes back with GLib.idle_add.
+"""
+import asyncio
+import fcntl
+import os
+import struct
+import sys
+import threading
+import time
+import urllib.request
+from datetime import date, datetime
+
+sys.path.insert(0, "/usr/local/lib/b8k-max")
+
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Pango", "1.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
+
+DATA = os.path.expanduser("~/.local/share/b8k-max")
+PHOTOS = os.path.expanduser("~/.cache/b8k-max")
+HISTORY = 60  # messages loaded when a chat opens
+MONTHS = "янв фев мар апр мая июн июл авг сен окт ноя дек".split()
+COLOURS = ((0.21, 0.52, 0.89), (0.15, 0.64, 0.41), (0.90, 0.38, 0.0), (0.57, 0.25, 0.67),
+           (0.75, 0.11, 0.16), (0.10, 0.58, 0.62), (0.53, 0.36, 0.24))
+
+CSS = b"""
+window { background-color: #e6e6e4; }
+headerbar {
+  background-color: #dcdcda;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 16px;
+}
+headerbar label.title { font-size: 32px; font-weight: bold; color: #2e3436; }
+headerbar label.sub { font-size: 20px; color: #77767b; }
+button.back {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 96px;
+  font-size: 30px;
+  color: #2e3436;
+}
+label { color: #2e3436; }
+label.big { font-size: 30px; }
+label.hint { font-size: 22px; color: #77767b; }
+list, row { background-color: #f2f2f0; }
+row { border-bottom: 1px solid #dcdcda; }
+row:active, row:selected { background-color: #c4dcf7; }
+label.chat-name { font-size: 26px; font-weight: bold; }
+label.chat-last { font-size: 21px; color: #5e5c64; }
+label.chat-time { font-size: 18px; color: #77767b; }
+label.badge {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffffff;
+  background-color: #3584e4;
+  border-radius: 18px;
+  padding: 2px 12px;
+}
+.bubble { border-radius: 18px; padding: 10px 16px; }
+.bubble.theirs { background-color: #ffffff; }
+.bubble.mine { background-color: #c4dcf7; }
+label.msg { font-size: 25px; }
+label.who { font-size: 19px; font-weight: bold; color: #1c71d8; }
+label.when { font-size: 16px; color: #77767b; }
+label.day { font-size: 19px; color: #5e5c64; background-color: #dcdcda;
+            border-radius: 14px; padding: 4px 16px; }
+.inputbar { background-color: #dcdcda; padding: 10px; }
+entry.input { font-size: 26px; min-height: 64px; border-radius: 14px; }
+button.send {
+  background-image: none;
+  background-color: #3584e4;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 170px;
+  font-size: 26px;
+  color: #ffffff;
+}
+button.send label { color: #ffffff; }
+button.send:disabled { background-color: #99c1f1; }
+"""
+
+
+# --- haptics, as in the other b8k programs --------------------------------
+class Buzz:
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self, *_args):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+        return True
+
+
+# --- small helpers ----------------------------------------------------------
+def kind(value):
+    """An enum or a string, as a plain upper-case string."""
+    value = getattr(value, "value", value)
+    return str(value or "").upper()
+
+
+def when(ms, full=False):
+    if not ms:
+        return ""
+    t = datetime.fromtimestamp(ms / 1000)
+    if t.date() == date.today() and not full:
+        return t.strftime("%-H:%M")
+    if full:
+        return t.strftime("%-H:%M")
+    return "%d %s" % (t.day, MONTHS[t.month - 1])
+
+
+def day_label(ms):
+    d = datetime.fromtimestamp(ms / 1000).date()
+    delta = (date.today() - d).days
+    if delta == 0:
+        return "Сегодня"
+    if delta == 1:
+        return "Вчера"
+    return "%d %s" % (d.day, MONTHS[d.month - 1])
+
+
+def label(text, cls, xalign=0.0, wrap=False, ellipsize=False):
+    lab = Gtk.Label(label=text, xalign=xalign)
+    lab.get_style_context().add_class(cls)
+    if wrap:
+        lab.set_line_wrap(True)
+        lab.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+    if ellipsize:
+        lab.set_ellipsize(Pango.EllipsizeMode.END)
+        lab.set_single_line_mode(True)
+    return lab
+
+
+def initials_icon(name, key, size=64):
+    area = Gtk.DrawingArea()
+    area.set_size_request(size, size)
+    letters = "".join(w[0] for w in (name or "?").split()[:2]).upper() or "?"
+    colour = COLOURS[abs(hash(key)) % len(COLOURS)]
+
+    def draw(_w, cr):
+        cr.set_source_rgb(*colour)
+        cr.arc(size / 2, size / 2, size / 2, 0, 6.2832)
+        cr.fill()
+        cr.set_source_rgb(1, 1, 1)
+        cr.select_font_face("Sans", 0, 1)
+        cr.set_font_size(size * 0.38)
+        ext = cr.text_extents(letters)
+        cr.move_to((size - ext.width) / 2 - ext.x_bearing, (size - ext.height) / 2 - ext.y_bearing)
+        cr.show_text(letters)
+        return False
+
+    area.connect("draw", draw)
+    return area
+
+
+def user_name(user):
+    for n in getattr(user, "names", None) or []:
+        full = getattr(n, "name", None) or " ".join(
+            x for x in (getattr(n, "first_name", None), getattr(n, "last_name", None)) if x)
+        if full:
+            return full
+    return "Пользователь %s" % getattr(user, "id", "")
+
+
+def attach_summary(a):
+    """(what, photo url or None) for one attachment."""
+    t = kind(getattr(a, "type", ""))
+    if t == "PHOTO":
+        return "", getattr(a, "base_url", None)
+    names = {"VIDEO": "видео", "AUDIO": "голосовое сообщение", "FILE": "файл",
+             "STICKER": "стикер", "CONTACT": "контакт", "POLL": "опрос", "CALL": "звонок",
+             "SHARE": "ссылка"}
+    if t == "FILE" and getattr(a, "name", None):
+        return "файл «%s»" % a.name, None
+    return names.get(t, ""), None
+
+
+# --- MAX, in its own thread -------------------------------------------------
+class Backend:
+    def __init__(self, ui):
+        self.ui = ui
+        self.loop = None
+        self.client = None
+        self.me = None
+        self.names = {}
+        self.chats = {}
+
+    def start(self):
+        threading.Thread(target=self._thread, daemon=True).start()
+
+    def _thread(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(self._main())
+        except Exception as exc:  # the client gave up for good
+            GLib.idle_add(self.ui.failed, repr(exc))
+
+    def run(self, coro, done=None):
+        """Run a coroutine in the MAX thread; done(result, error) in the window's."""
+        if not self.loop:
+            return
+        fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        if done:
+            def back(f):
+                try:
+                    res, err = f.result(), None
+                except Exception as exc:
+                    res, err = None, exc
+                GLib.idle_add(lambda: done(res, err) and False)
+            fut.add_done_callback(back)
+
+    async def _main(self):
+        from pymax import WebClient
+        from pymax.config import ExtraConfig
+
+        os.makedirs(DATA, mode=0o700, exist_ok=True)
+        self.client = WebClient(session_name="web.db", work_dir=DATA,
+                                extra_config=ExtraConfig(telemetry=False, log_level="WARNING",
+                                                         reconnect_delay=3.0),
+                                qr_provider=self)
+        self.client.on_start()(self._started)
+        self.client.on_message()(self._message)
+        await self.client.start()
+
+    # QrHandler for PyMax
+    async def show_qr(self, qr_url):
+        import qrcode
+
+        path = os.path.join(DATA, "qr.png")
+        qrcode.make(qr_url, box_size=12, border=2).save(path)
+        GLib.idle_add(self.ui.show_qr, path)
+
+    async def _started(self, client):
+        try:
+            os.chmod(os.path.join(DATA, "web.db"), 0o600)
+            os.remove(os.path.join(DATA, "qr.png"))
+        except OSError:
+            pass
+        self.me = client.me.contact.id if client.me else None
+        if self.me and client.me:
+            self.names[self.me] = user_name(client.me.contact)
+        # On a reconnect the sync only brings chats that changed since the
+        # last one, so page through the whole list as well.
+        found = {c.id: c for c in client.chats or []}
+        marker = None
+        for _page in range(5):
+            try:
+                page = await client._app.api.chats.fetch_chats(marker)
+            except Exception:
+                break
+            fresh = [c for c in page if c.id not in found]
+            for c in page:
+                found.setdefault(c.id, c)
+            if not page or not fresh:
+                break
+            marker = min(c.last_event_time for c in page if c.last_event_time) - 1
+        chats = list(found.values())
+        self.chats = found
+        want = set()
+        for c in chats:
+            if kind(c.type) == "DIALOG":
+                want.update(u for u in c.participants if u != self.me)
+        await self.lookup(want)
+        GLib.idle_add(self.ui.show_chats, [self.summary(c) for c in chats])
+
+    async def lookup(self, ids):
+        ids = [i for i in ids if i and i not in self.names]
+        for k in range(0, len(ids), 50):
+            try:
+                users = await self.client._app.api.users.get_users(ids[k:k + 50])
+            except Exception:
+                continue
+            for u in users or []:
+                if u:
+                    self.names[u.id] = user_name(u)
+
+    def title(self, chat):
+        if chat.title:
+            return chat.title
+        if kind(chat.type) == "DIALOG":
+            others = [u for u in chat.participants if u != self.me]
+            if not others:
+                return "Избранное"
+            return self.names.get(others[0], "Собеседник")
+        return "Чат"
+
+    def preview(self, msg):
+        if not msg:
+            return ""
+        text = (msg.text or "").replace("\n", " ")
+        if not text:
+            parts = [attach_summary(a)[0] or "фото" for a in msg.attaches or []]
+            text = ", ".join(p for p in parts if p).capitalize()
+        if msg.sender == self.me and self.me:
+            text = "Вы: " + text
+        return text
+
+    def summary(self, chat):
+        last = chat.last_message
+        return {"id": chat.id, "title": self.title(chat), "type": kind(chat.type),
+                "last": self.preview(last), "time": (last.time if last else 0) or chat.last_event_time,
+                "unread": chat.new_messages or 0}
+
+    def message(self, msg):
+        texts, photos = [], []
+        for a in msg.attaches or []:
+            what, url = attach_summary(a)
+            if url:
+                photos.append(url)
+            elif what:
+                texts.append("[%s]" % what)
+        body = msg.text or ""
+        if texts:
+            body = (body + "\n" if body else "") + " ".join(texts)
+        return {"id": msg.id, "chat": msg.chat_id, "sender": msg.sender,
+                "who": self.names.get(msg.sender, ""), "text": body, "photos": photos,
+                "time": msg.time, "mine": bool(self.me) and msg.sender == self.me}
+
+    async def history(self, chat_id):
+        chat = self.chats.get(chat_id)
+        if not chat:
+            return []
+        msgs = await chat.history(backward=HISTORY)
+        await self.lookup({m.sender for m in msgs})
+        msgs.sort(key=lambda m: m.time)
+        if msgs:
+            try:
+                await self.client._app.api.messages.read_message(msgs[-1].id, chat_id)
+                chat.new_messages = 0
+            except Exception:
+                pass
+        return [self.message(m) for m in msgs]
+
+    async def send(self, chat_id, text):
+        msg = await self.client._app.api.messages.send_message(chat_id, text)
+        return self.message(msg) if msg else None
+
+    async def read(self, chat_id, msg_id):
+        await self.client._app.api.messages.read_message(msg_id, chat_id)
+
+    async def _message(self, msg, _client):
+        await self.lookup({msg.sender})
+        chat = self.chats.get(msg.chat_id)
+        if chat is not None:
+            chat.last_message = msg
+            if msg.sender != self.me:
+                chat.new_messages = (chat.new_messages or 0) + 1
+        GLib.idle_add(self.ui.incoming, self.message(msg),
+                      self.summary(chat) if chat is not None else None)
+
+
+def load_photo(url, done):
+    """Download one photo in a thread (cached by URL) and hand back a pixbuf."""
+    os.makedirs(PHOTOS, mode=0o700, exist_ok=True)
+    path = os.path.join(PHOTOS, "%08x.img" % (hash(url) & 0xFFFFFFFF))
+
+    def work():
+        try:
+            if not os.path.exists(path):
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=20) as fh:
+                    data = fh.read(8 * 1024 * 1024)
+                with open(path + ".new", "wb") as out:
+                    out.write(data)
+                os.replace(path + ".new", path)
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 460, 460, True)
+        except Exception:
+            pix = None
+        GLib.idle_add(lambda: done(pix) and False)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+# --- the window -------------------------------------------------------------
+class Max(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="b8k.Max")
+        self.win = None
+        self.buzz = Buzz()
+        self.backend = Backend(self)
+        self.rows = {}
+        self.summaries = {}
+        self.open_chat = None
+        self.last_day = None
+
+    def do_activate(self):
+        if self.win:
+            self.win.present()
+            return
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.Button()  # the "pressed" signal exists once the class is set up
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
+
+        self.win = Gtk.ApplicationWindow(application=self, title="MAX")
+        self.win.set_default_size(1160, 800)
+        bar = Gtk.HeaderBar()
+        heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.title = label("MAX", "title", xalign=0.5)
+        self.sub = label("", "sub", xalign=0.5)
+        heading.pack_start(self.title, False, False, 0)
+        heading.pack_start(self.sub, False, False, 0)
+        bar.set_custom_title(heading)
+        self.back = Gtk.Button(label="←")
+        self.back.get_style_context().add_class("back")
+        self.back.connect("clicked", lambda _b: self.show_list())
+        self.back.set_no_show_all(True)
+        bar.pack_start(self.back)
+        self.win.set_titlebar(bar)
+
+        self.stack = Gtk.Stack()
+        self.win.add(self.stack)
+        wait = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        wait.set_valign(Gtk.Align.CENTER)
+        self.wait_text = label("Подключение к MAX…", "big", xalign=0.5)
+        wait.pack_start(self.wait_text, False, False, 0)
+        self.stack.add_named(wait, "wait")
+
+        qr = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        qr.set_valign(Gtk.Align.CENTER)
+        qr.pack_start(label("Вход в MAX", "big", xalign=0.5), False, False, 0)
+        self.qr_image = Gtk.Image()
+        qr.pack_start(self.qr_image, False, False, 0)
+        qr.pack_start(label("Откройте MAX на телефоне и отсканируйте этот код",
+                            "hint", xalign=0.5), False, False, 0)
+        self.stack.add_named(qr, "qr")
+
+        self.list = Gtk.ListBox()
+        self.list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.list.connect("row-activated", self.on_row)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_kinetic_scrolling(True)
+        scroll.add(self.list)
+        self.stack.add_named(scroll, "chats")
+
+        chat = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.msgs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.msgs.set_margin_start(16)
+        self.msgs.set_margin_end(16)
+        self.msgs.set_margin_top(12)
+        self.msgs.set_margin_bottom(12)
+        self.msg_scroll = Gtk.ScrolledWindow()
+        self.msg_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.msg_scroll.set_kinetic_scrolling(True)
+        self.msg_scroll.add(self.msgs)
+        # Stay at the newest message while photos load and messages come in,
+        # unless the reader has scrolled up to older ones.
+        self.at_bottom = True
+        adj = self.msg_scroll.get_vadjustment()
+        adj.connect("changed", self.keep_bottom)
+        adj.connect("value-changed", self.track_bottom)
+        chat.pack_start(self.msg_scroll, True, True, 0)
+        self.inputbar = Gtk.Box(spacing=10)
+        self.inputbar.get_style_context().add_class("inputbar")
+        self.entry = Gtk.Entry()
+        self.entry.get_style_context().add_class("input")
+        self.entry.set_placeholder_text("Сообщение")
+        self.entry.connect("activate", lambda _e: self.send())
+        self.sendb = Gtk.Button(label="Отправить")
+        self.sendb.get_style_context().add_class("send")
+        self.sendb.connect("clicked", lambda _b: self.send())
+        self.inputbar.pack_start(self.entry, True, True, 0)
+        self.inputbar.pack_start(self.sendb, False, False, 0)
+        chat.pack_start(self.inputbar, False, False, 0)
+        self.stack.add_named(chat, "chat")
+
+        self.win.show_all()
+        self.stack.set_visible_child_name("wait")
+        self.backend.start()
+
+    # called from the MAX thread through idle_add
+    def show_qr(self, path):
+        self.qr_image.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file(path))
+        self.stack.set_visible_child_name("qr")
+        return False
+
+    def failed(self, why):
+        self.wait_text.set_text("Нет связи с MAX.\n%s" % why[:120])
+        self.stack.set_visible_child_name("wait")
+        return False
+
+    def show_chats(self, summaries):
+        self.summaries = {s["id"]: s for s in summaries}
+        self.fill_list()
+        if self.open_chat is None:
+            self.stack.set_visible_child_name("chats")
+        return False
+
+    def incoming(self, msg, summary):
+        if summary:
+            self.summaries[summary["id"]] = summary
+        here = self.open_chat == msg["chat"]
+        if here:
+            if not msg["mine"] and not any(r == msg["id"] for r in self.shown):
+                self.add_bubble(msg)
+                self.scroll_down()
+                if self.win.is_active():
+                    self.backend.run(self.backend.read(msg["chat"], msg["id"]))
+                    self.summaries[msg["chat"]]["unread"] = 0
+        if not msg["mine"]:
+            self.buzz()
+            if not here:
+                GLib.timeout_add(180, lambda: self.buzz() and False)
+        self.fill_list()
+        return False
+
+    # the list
+    def fill_list(self):
+        for child in self.list.get_children():
+            self.list.remove(child)
+        total = 0
+        for s in sorted(self.summaries.values(), key=lambda s: -(s["time"] or 0)):
+            total += s["unread"]
+            row = Gtk.ListBoxRow()
+            row.chat_id = s["id"]
+            box = Gtk.Box(spacing=18)
+            box.set_margin_start(16)
+            box.set_margin_end(16)
+            box.set_margin_top(10)
+            box.set_margin_bottom(10)
+            box.pack_start(initials_icon(s["title"], s["id"]), False, False, 0)
+            mid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            mid.set_valign(Gtk.Align.CENTER)
+            mid.pack_start(label(s["title"], "chat-name", ellipsize=True), False, False, 0)
+            mid.pack_start(label(s["last"], "chat-last", ellipsize=True), False, False, 0)
+            box.pack_start(mid, True, True, 0)
+            right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            right.set_valign(Gtk.Align.CENTER)
+            right.pack_start(label(when(s["time"]), "chat-time", xalign=1.0), False, False, 0)
+            if s["unread"]:
+                badge = label(str(s["unread"]), "badge", xalign=0.5)
+                badge.set_halign(Gtk.Align.END)
+                right.pack_start(badge, False, False, 0)
+            box.pack_end(right, False, False, 0)
+            row.add(box)
+            self.list.add(row)
+        self.list.show_all()
+        if self.open_chat is None:
+            self.sub.set_text("непрочитанных: %d" % total if total else "")
+
+    def on_row(self, _list, row):
+        self.buzz()
+        self.open(row.chat_id)
+
+    def show_list(self):
+        self.open_chat = None
+        self.back.hide()
+        self.title.set_text("MAX")
+        self.fill_list()
+        self.stack.set_visible_child_name("chats")
+
+    # a chat
+    def open(self, chat_id):
+        s = self.summaries.get(chat_id, {})
+        self.open_chat = chat_id
+        self.shown = []
+        self.last_day = None
+        self.title.set_text(s.get("title", ""))
+        self.sub.set_text("загрузка…")
+        self.back.show()
+        for child in self.msgs.get_children():
+            self.msgs.remove(child)
+        self.inputbar.set_visible(s.get("type") != "CHANNEL")
+        self.stack.set_visible_child_name("chat")
+
+        def done(msgs, err):
+            if self.open_chat != chat_id:
+                return
+            self.sub.set_text("не удалось загрузить" if err else "")
+            for m in msgs or []:
+                self.add_bubble(m)
+            self.msgs.show_all()
+            if chat_id in self.summaries:
+                self.summaries[chat_id]["unread"] = 0
+            self.scroll_down()
+
+        self.backend.run(self.backend.history(chat_id), done)
+
+    def add_bubble(self, m):
+        self.shown.append(m["id"])
+        day = datetime.fromtimestamp(m["time"] / 1000).date() if m["time"] else None
+        if day and day != self.last_day:
+            self.last_day = day
+            sep = label(day_label(m["time"]), "day", xalign=0.5)
+            sep.set_halign(Gtk.Align.CENTER)
+            self.msgs.pack_start(sep, False, False, 6)
+        bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        bubble.get_style_context().add_class("bubble")
+        bubble.get_style_context().add_class("mine" if m["mine"] else "theirs")
+        bubble.set_halign(Gtk.Align.END if m["mine"] else Gtk.Align.START)
+        group = self.summaries.get(self.open_chat, {}).get("type") in ("CHAT", "CHANNEL")
+        if group and not m["mine"] and m["who"]:
+            bubble.pack_start(label(m["who"], "who"), False, False, 0)
+        for url in m["photos"]:
+            img = Gtk.Image.new_from_icon_name("image-x-generic", Gtk.IconSize.DIALOG)
+            img.set_size_request(460, 200)
+            bubble.pack_start(img, False, False, 0)
+            load_photo(url, lambda pix, img=img: pix and (img.set_from_pixbuf(pix),
+                                                          img.set_size_request(-1, -1)))
+        if m["text"]:
+            text = label(m["text"], "msg", wrap=True)
+            text.set_max_width_chars(38)
+            text.set_selectable(False)
+            bubble.pack_start(text, False, False, 0)
+        bubble.pack_start(label(when(m["time"], full=True), "when", xalign=1.0), False, False, 0)
+        self.msgs.pack_start(bubble, False, False, 0)
+        bubble.show_all()
+
+    def keep_bottom(self, adj):
+        if self.at_bottom:
+            adj.set_value(adj.get_upper() - adj.get_page_size())
+
+    def track_bottom(self, adj):
+        self.at_bottom = adj.get_value() + adj.get_page_size() >= adj.get_upper() - 60
+
+    def scroll_down(self):
+        self.at_bottom = True
+        adj = self.msg_scroll.get_vadjustment()
+        adj.set_value(adj.get_upper() - adj.get_page_size())
+
+    def send(self):
+        text = self.entry.get_text().strip()
+        chat_id = self.open_chat
+        if not text or chat_id is None:
+            return
+        self.sendb.set_sensitive(False)
+
+        def done(msg, err):
+            self.sendb.set_sensitive(True)
+            if err:
+                self.sub.set_text("не отправлено, попробуйте ещё раз")
+                return
+            self.entry.set_text("")
+            self.sub.set_text("")
+            if msg and self.open_chat == chat_id:
+                self.add_bubble(msg)
+                self.scroll_down()
+            s = self.summaries.get(chat_id)
+            if s:
+                s["last"], s["time"] = "Вы: " + text, int(time.time() * 1000)
+
+        self.backend.run(self.backend.send(chat_id, text), done)
+
+
+if __name__ == "__main__":
+    Max().run(None)

@@ -19,7 +19,9 @@ case "$UI_PROFILE" in
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		foot grim py3-pillow py3-cairo
+		foot grim py3-pillow py3-cairo font-noto-emoji
+		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
+		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
@@ -305,6 +307,16 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-paint" "$ROOT/usr/local/bin/b8k-paint"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-weather" "$ROOT/usr/local/bin/b8k-weather"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-max" "$ROOT/usr/local/bin/b8k-max"
+	# PyMax (MIT), MAX's web protocol for b8k-max: the pinned wheel from PyPI,
+	# checked against its sha256 and unpacked next to the program.
+	pymax_whl=/opt/b8000h/out/maxapi_python-2.4.1-py3-none-any.whl
+	[ -f "$pymax_whl" ] || wget -q -O "$pymax_whl" \
+		https://files.pythonhosted.org/packages/py3/m/maxapi-python/maxapi_python-2.4.1-py3-none-any.whl
+	echo "49c996cebebdcd490b8fc1424c84faad3c33d0b75eff4bb86cf1de9d968d76ea  $pymax_whl" | sha256sum -c -
+	rm -rf "$ROOT/usr/local/lib/b8k-max"
+	mkdir -p "$ROOT/usr/local/lib/b8k-max"
+	unzip -q -o "$pymax_whl" -d "$ROOT/usr/local/lib/b8k-max"
 	install -d -m 755 "$ROOT/usr/local/share/b8k/paint"
 	install -m 644 "$REPO"/linux-port/rootfs/paint/pictures/*.json "$ROOT/usr/local/share/b8k/paint/"
 	# Speaker: hardware gain fixed at the clean top step, software volume.
