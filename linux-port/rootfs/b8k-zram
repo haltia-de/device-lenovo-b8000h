@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Compressed swap in RAM. The tablet has 1 GB and no swap, and Firefox
+# alone takes about 440 MB. lz4 packs idle pages about 2.5:1, so 512 MB of
+# swap costs at most about 200 MB of RAM. Kernel 22 has no zram: skip.
+set -u
+dev=/sys/block/zram0
+[ -d "$dev" ] || exit 0
+grep -q '^/dev/zram0 ' /proc/swaps && exit 0
+
+echo lz4 > "$dev/comp_algorithm"
+echo 512M > "$dev/disksize"
+mkswap /dev/zram0 >/dev/null
+swapon -p 100 /dev/zram0
+
+# Swapping to RAM is cheap: prefer it to dropping file cache, and read one
+# page at a time, since there is no seek to save.
+echo 100 > /proc/sys/vm/swappiness
+echo 0 > /proc/sys/vm/page-cluster

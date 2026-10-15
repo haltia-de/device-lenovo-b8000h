@@ -1,7 +1,7 @@
 # Linux (Alpine) для Lenovo YOGA Tablet 10 B8000-H
 
 *English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
-kernel + ~37 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
+kernel + ~38 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
 **B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi, speakers and charging
 work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
 stock Android 4.4 blobs; a small touch shell (a waybar top bar with large program
@@ -41,6 +41,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
 | Аппаратное декодирование видео | нет |
 | Перезагрузка и выключение | работает (меню на значке батареи) |
+| Память | 1 ГБ и 512 МБ сжатой подкачки в памяти (zram, lz4) |
 | Стабильность | **случайные падения ядра раз в 10–40 минут**; если планшет завис — держать Power 15–20 с |
 
 Подробности по узлам — в `docs/`.

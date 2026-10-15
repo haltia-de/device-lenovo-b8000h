@@ -306,6 +306,19 @@ if [ "$UI_PROFILE" = phosh ]; then
 /usr/local/sbin/b8k-wdt-exrst
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-wdt-exrst.start"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-zram" "$ROOT/usr/local/sbin/b8k-zram"
+	cat > "$ROOT/etc/local.d/b8k-zram.start" <<'EOF'
+#!/bin/sh
+/usr/local/sbin/b8k-zram
+EOF
+	chmod +x "$ROOT/etc/local.d/b8k-zram.start"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-netwatch" "$ROOT/usr/local/sbin/b8k-netwatch"
+	cat > "$ROOT/etc/local.d/b8k-netwatch.start" <<'EOF'
+#!/bin/sh
+start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
+	--pidfile /run/b8k-netwatch.pid --make-pidfile
+EOF
+	chmod +x "$ROOT/etc/local.d/b8k-netwatch.start"
 	# The power key sleeps the backlight. elogind's default powers the
 	# tablet off, and kernel suspend does not resume this panel or Wi-Fi.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"

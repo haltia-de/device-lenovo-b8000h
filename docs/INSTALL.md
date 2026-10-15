@@ -14,7 +14,9 @@
 2. **Ядро.** [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1)
    ветка `blade/v7.1`, коммит `7dd245445adf`; поверх — патчи `linux-port/patches/` по
    порядку номеров (несколько патчей — Python-скрипты, их запускают в дереве ядра);
-   конфиг `lenovo-blade_defconfig` из патчей, `CONFIG_LOCALVERSION="-b8000h22"`.
+   конфиг `lenovo-blade_defconfig` из патчей, `CONFIG_LOCALVERSION="-b8000h23"` (патч 0038: zram). Номер сборки в
+   версии ядра выбирает каталог модулей GPU (`/usr/lib/b8k/k23`), так что
+   система загружается и со старым ядром, если его модули на месте.
 3. **boot.img с установщиком:**
    ```
    K=<дерево ядра> DTB_VARIANT=install2 IMAGE_SUFFIX=-my sh linux-port/build-safe-image.sh
