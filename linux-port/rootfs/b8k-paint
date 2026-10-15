@@ -14,7 +14,10 @@ bottom has one big button per number. Pick a colour, tap its cells.
   "look" (the finished picture while held). Drag to scroll.
 - A tap paints the whole connected area of that number at once (a
   large sky is one tap).
-- Every tap gives a short buzz; there is no timer, no score, no ads.
+- Every button and every painting tap gives a short buzz, a wrong cell
+  does not (one
+  emission hook on GtkButton "pressed" covers all buttons, dialogs
+  included); there is no timer, no score, no ads.
 - Progress is saved after every tap, so a picture can wait for tomorrow;
   the program starts on the last picture, unless it is finished, and the
   gallery opens at that picture's card.
@@ -45,7 +48,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GLibUnix", "2.0")
-from gi.repository import Gdk, GLib, GLibUnix, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, GLibUnix, GObject, Gtk  # noqa: E402
 
 BUILTIN = "/usr/local/share/b8k/paint"
 PHOTOS = os.path.expanduser("~/Раскраски")
@@ -616,6 +619,7 @@ class Board(Gtk.DrawingArea):
         if not (0 <= x < self.pic["w"] and 0 <= y < self.pic["h"]) or self.filled[y][x]:
             return
         if self.pic["cells"][y][x] != self.chosen:
+            # No buzz here: the red frame alone says "not this one".
             self.wrong = (x, y)
             self.queue_draw()
             GLib.timeout_add(400, self.clear_wrong)
@@ -678,6 +682,11 @@ class Board(Gtk.DrawingArea):
 class Paint:
     def __init__(self, open_id=None):
         self.buzz = Buzz()
+        # Every button buzzes as it goes down, the way the panel does. The
+        # signal exists only once the class is set up, hence the throwaway
+        # button.
+        Gtk.Button()
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.on_button)
         self.win = Gtk.Window(title="Раскраска")
         self.win.set_default_size(1160, 800)
         self.win.connect("destroy", self.quit)
@@ -697,6 +706,10 @@ class Paint:
             done, total = share_done(pic, load_progress(pic))
             if done < total:
                 self.open(pic)
+
+    def on_button(self, *_args):
+        self.buzz()
+        return True  # keep the hook
 
     # gallery
     def show_gallery(self):
@@ -940,9 +953,9 @@ class Paint:
         if name == "whole":
             self.whole_button = b
         if action:
-            b.connect("clicked", lambda _b: (self.buzz(), action()))
+            b.connect("clicked", lambda _b: action())
         else:
-            b.connect("pressed", lambda _b: (self.buzz(), self.preview(True)))
+            b.connect("pressed", lambda _b: self.preview(True))
             b.connect("released", lambda _b: self.preview(False))
         return b
 
