@@ -1,0 +1,280 @@
+diff --git a/keyboard.h b/keyboard.h
+--- a/keyboard.h
++++ b/keyboard.h
+@@ -80,10 +80,16 @@
+ 	  shift_code;            /* shift_code: secondary scancode */
+ 	uint8_t scheme;          // index of the scheme to use
+ 	bool reset_mod;          /* reset modifiers when clicked */
++	uint8_t lrows;           /* 2: stem also covers the next row */
++	double lfoot;            /* bottom bar, in key widths, left of the stem */
++	uint8_t split;           /* right half activates split_layout */
++	struct layout *split_layout;
++	const char *split_label;
+ 
+ 	// actual coordinates on the surface (pixels), will be computed automatically
+ 	// for all keys
+ 	uint32_t x, y, w, h;
++	uint32_t lfoot_px;       /* computed pixel width of the bottom bar */
+ };
+ 
+ struct layout {
+@@ -129,6 +135,7 @@
+ 	struct drwsurf *surf;
+ 	struct drwsurf *popup_surf;
+ 	struct zwp_virtual_keyboard_v1 *vkbd;
++	uint32_t press_x; /* x of the current press, for a split key */
+ 	void (*on_hide)(void);
+ 
+ 	uint32_t last_popup_x, last_popup_y, last_popup_w, last_popup_h;
+diff --git a/keyboard.c b/keyboard.c
+--- a/keyboard.c
++++ b/keyboard.c
+@@ -204,6 +204,36 @@
+     create_and_upload_keymap(kb, kb->layout->keymap_name, 0);
+ }
+ 
++
++/* The bottom bar of an enter key uses the pads reserved on the next row,
++ * so it starts where the letters end. */
++static void
++kbd_place_feet(struct layout *l)
++{
++    struct key *k = l->keys;
++    while (k->type != Last) {
++        k->lfoot_px = 0;
++        if (k->lrows > 1 && k->lfoot > 0 && k->w > 0) {
++            uint32_t next_y = k->y + l->keyheight;
++            uint32_t left = k->x;
++            struct key *p = l->keys;
++            while (p->type != Last) {
++                if (p->type == Pad && p->y == next_y && p->w > 0 &&
++                    p->x < k->x + k->w && p->x + p->w >= k->x && p->x < left)
++                    left = p->x;
++                p++;
++            }
++            if (left < k->x)
++                k->lfoot_px = k->x - left;
++            if (k->lfoot_px == 0)
++                k->lfoot_px = (uint32_t)(k->lfoot * ((double)k->w / k->width));
++            if (k->lfoot_px > k->x)
++                k->lfoot_px = k->x;
++        }
++        k++;
++    }
++}
++
+ void
+ kbd_init_layout(struct layout *l, uint32_t width, uint32_t height)
+ {
+@@ -232,9 +262,13 @@
+                 x++;
+             }
+         }
+-        k->h = l->keyheight;
++        if (k->lrows > 1)
++            k->h = l->keyheight * k->lrows;
++        else
++            k->h = l->keyheight;
+         k++;
+     }
++    kbd_place_feet(l);
+ }
+ 
+ double
+@@ -256,11 +290,18 @@
+     if (kb->debug)
+         fprintf(stderr, "get key: +%d+%d\n", x, y);
+     while (k->type != Last) {
+-        if ((k->type != EndRow) && (k->type != Pad) && (k->type != Pad) &&
++        if ((k->type != EndRow) && (k->type != Pad) &&
+             (x >= k->x) && (y >= k->y) && (x < k->x + k->w) &&
+             (y < k->y + k->h)) {
+             return k;
+         }
++        if (k->lfoot_px > 0 && k->lrows > 1) {
++            uint32_t row_h = k->h / k->lrows;
++            uint32_t fx = k->x - k->lfoot_px;
++            uint32_t fy = k->y + row_h;
++            if (x >= fx && x < k->x && y >= fy && y < fy + row_h)
++                return k;
++        }
+         k++;
+     }
+     return NULL;
+@@ -496,12 +537,17 @@
+         zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
+         break;
+     case Layout:
+-        // switch to the layout determined by the key
+-        kbd_switch_layout(kb, k->layout, kbd_get_layer_index(kb, k->layout));
+-        // Remember an alphabet so the numbers layer can return to it.
+-        if (k->layout && k->layout->abc) {
+-            kb->last_abc_layout = k->layout;
+-            kb->last_abc_index = kbd_get_layer_index(kb, k->layout);
++        /* The right half of a split key opens its second layout (digits). */
++        {
++            struct layout *dest = k->layout;
++            if (k->split && k->split_layout && kb->press_x >= k->x + k->w / 2)
++                dest = k->split_layout;
++            kbd_switch_layout(kb, dest, kbd_get_layer_index(kb, dest));
++            /* Remember an alphabet so the numbers layer can return to it. */
++            if (dest && dest->abc) {
++                kb->last_abc_layout = dest;
++                kb->last_abc_index = kbd_get_layer_index(kb, dest);
++            }
+         }
+         break;
+     case Compose:
+@@ -637,9 +683,105 @@
+     }
+ }
+ 
++
++void drwsurf_flip(struct drwsurf *ds);
++void drwsurf_damage(struct drwsurf *ds, uint32_t x, uint32_t y, uint32_t w,
++                    uint32_t h);
++
++static void
++draw_key_face(struct drwsurf *ds, uint32_t x, uint32_t y, uint32_t w,
++              uint32_t h, Color color, int rounding, bool over)
++{
++    if (over)
++        draw_over_inset(ds, x, y, w, h, KBD_KEY_BORDER, color, rounding);
++    else
++        draw_inset(ds, x, y, w, h, KBD_KEY_BORDER, color, rounding);
++}
++
++/* Stem on the right, two rows tall. Foot is the bottom bar to its left. */
++static void
++draw_l_key(struct kbd *kb, struct key *k, enum key_draw_type type)
++{
++    struct clr_scheme *scheme = &kb->schemes[k->scheme];
++    Color face = scheme->fg;
++    Color text = scheme->text;
++    bool over = false;
++    uint32_t row_h = k->h / k->lrows;
++
++    if (type == Press && kb->show_highlight) {
++        face = scheme->high;
++        text = scheme->text_press;
++    } else if (type == Swipe) {
++        face = scheme->swipe;
++        text = scheme->text_swipe;
++        over = true;
++    }
++    if (k->lfoot_px > 0)
++        draw_key_face(kb->surf, k->x - k->lfoot_px, k->y + row_h,
++                      k->lfoot_px + k->w, row_h, face, scheme->rounding, over);
++    draw_key_face(kb->surf, k->x, k->y, k->w, k->h, face, scheme->rounding,
++                  over);
++    drw_draw_text(kb->surf, text, k->x, k->y, k->w, k->h, KBD_KEY_BORDER,
++                  k->label, scheme->font_description);
++}
++
++static void
++draw_split_line(struct drwsurf *ds, uint32_t x, uint32_t y, uint32_t h)
++{
++    drwsurf_flip(ds);
++    struct drwbuf *d = ds->back_buffer;
++    drwsurf_damage(ds, x - 1, y, 3, h);
++    cairo_save(d->cairo);
++    cairo_set_source_rgba(d->cairo, 0.09, 0.10, 0.12, 1);
++    cairo_set_line_width(d->cairo, 2);
++    cairo_move_to(d->cairo, x + 0.5, y);
++    cairo_line_to(d->cairo, x + 0.5, y + h);
++    cairo_stroke(d->cairo);
++    cairo_restore(d->cairo);
++}
++
++static void
++draw_split_key(struct kbd *kb, struct key *k, enum key_draw_type type)
++{
++    struct clr_scheme *scheme = &kb->schemes[k->scheme];
++    Color face = scheme->fg;
++    Color text = scheme->text;
++    bool over = false;
++    uint32_t mid, half, y0, lh;
++
++    if (type == Press && kb->show_highlight) {
++        face = scheme->high;
++        text = scheme->text_press;
++    } else if (type == Swipe) {
++        face = scheme->swipe;
++        text = scheme->text_swipe;
++        over = true;
++    }
++    draw_key_face(kb->surf, k->x, k->y, k->w, k->h, face, scheme->rounding,
++                  over);
++    mid = k->x + k->w / 2;
++    half = k->w / 2;
++    y0 = k->y + KBD_KEY_BORDER + 10;
++    lh = k->h - (KBD_KEY_BORDER + 10) * 2;
++    if (lh > 8)
++        draw_split_line(kb->surf, mid, y0, lh);
++    drw_draw_text(kb->surf, text, k->x, k->y, half, k->h, KBD_KEY_BORDER,
++                  k->label, scheme->font_description);
++    drw_draw_text(kb->surf, text, mid, k->y, k->w - half, k->h, KBD_KEY_BORDER,
++                  k->split_label, scheme->font_description);
++}
++
+ void
+ kbd_draw_key(struct kbd *kb, struct key *k, enum key_draw_type type)
+ {
++    if (k->lrows > 1) {
++        draw_l_key(kb, k, type);
++        return;
++    }
++    if (k->split && k->split_label) {
++        draw_split_key(kb, k, type);
++        return;
++    }
+     const char *label = ((kb->mods & Shift)||((kb->mods & CapsLock) && 
+         strlen(k->label) == 1 && isalpha(k->label[0]))) ? k->shift_label : k->label;
+     if (kb->debug)
+@@ -713,7 +855,8 @@
+     }
+ 
+     while (next_key->type != Last) {
+-        if ((next_key->type == Pad) || (next_key->type == EndRow)) {
++        if ((next_key->type == Pad) || (next_key->type == EndRow) ||
++            (next_key->lrows > 1)) {
+             next_key++;
+             continue;
+         }
+@@ -725,6 +868,17 @@
+         }
+         next_key++;
+     }
++    next_key = kb->layout->keys;
++    while (next_key->type != Last) {
++        if (next_key->lrows > 1) {
++            if ((next_key->type == Mod && kb->mods & next_key->code) ||
++                (next_key->type == Compose && kb->compose))
++                kbd_draw_key(kb, next_key, Press);
++            else
++                kbd_draw_key(kb, next_key, None);
++        }
++        next_key++;
++    }
+ }
+ 
+ void
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -270,6 +270,7 @@
+ 
+     next_key = kbd_get_key(&keyboard, touch_x, touch_y);
+     if (next_key) {
++        keyboard.press_x = touch_x;
+         kbd_press_key(&keyboard, next_key, time);
+     } else if (keyboard.compose) {
+         keyboard.compose = 0;
+@@ -377,6 +378,7 @@
+     if (cur_press && cur_x >= 0 && cur_y >= 0) {
+         next_key = kbd_get_key(&keyboard, cur_x, cur_y);
+         if (next_key) {
++            keyboard.press_x = (uint32_t)cur_x;
+             kbd_press_key(&keyboard, next_key, time);
+         } else if (keyboard.compose) {
+             keyboard.compose = 0;

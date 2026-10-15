@@ -1,0 +1,31 @@
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -625,6 +625,18 @@ layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
+     } else {
+         wl_surface_set_buffer_scale(draw_surf.surf, keyboard.scale);
+     }
+ 
++    /* This tablet's GLES path paints any surface at least 1000x600 as
++     * opaque. The key popup is wider and taller than that and is
++     * transparent, so it covers the whole screen in black until a tap
++     * hides the keyboard. --no-popup does not need the surface. */
++    if (!keyboard.show_popup) {
++        popup_xdg_surface_configured = true;
++        zwlr_layer_surface_v1_ack_configure(surface, serial);
++        kbd_resize(&keyboard, layouts, NumLayouts);
++        drwsurf_attach(&draw_surf);
++        return;
++    }
++
+     popup_draw_surf.surf = wl_compositor_create_surface(compositor);
+ 
+     xdg_positioner_set_size(popup_xdg_positioner, w, h * 2);
+@@ -773,6 +785,7 @@ hide()
+     zwlr_layer_surface_v1_destroy(layer_surface);
+     layer_surface = NULL;
+     layer_surface_configured = false;
++    popup_xdg_surface_configured = false;
+ 
+     // Cancel pending frame callback before destroying surface
+     if (draw_surf.frame_cb) {

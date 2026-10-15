@@ -279,6 +279,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
 		"$ROOT/etc/init.d/b8k-android-system"
 	install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$ROOT/usr/local/bin/phoc-gpu"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-keyboard" "$ROOT/usr/local/bin/b8k-keyboard"
+	if [ -x /opt/b8000h/out/wvkbd-b8k ]; then
+		install -m 755 /opt/b8000h/out/wvkbd-b8k "$ROOT/usr/local/bin/wvkbd-b8k"
+	fi
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
 	# The power key sleeps the backlight. elogind's default powers the

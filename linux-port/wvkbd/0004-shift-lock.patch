@@ -1,0 +1,181 @@
+diff --git a/keyboard.h b/keyboard.h
+--- a/keyboard.h
++++ b/keyboard.h
+@@ -136,6 +136,7 @@
+ 	struct drwsurf *popup_surf;
+ 	struct zwp_virtual_keyboard_v1 *vkbd;
+ 	uint32_t press_x; /* x of the current press, for a split key */
++	int64_t last_shift_ms; /* last shift tap, for the caps double-tap */
+ 	void (*on_hide)(void);
+ 
+ 	uint32_t last_popup_x, last_popup_y, last_popup_w, last_popup_h;
+diff --git a/keyboard.c b/keyboard.c
+--- a/keyboard.c
++++ b/keyboard.c
+@@ -18,6 +18,9 @@
+     fprintf(stderr, __VA_ARGS__);                                              \
+     exit(1)
+ 
++/* A second shift tap inside this window locks capitals. */
++#define SHIFT_LOCK_MS 600
++
+ #ifndef KEYMAP
+ #error "make sure to define KEYMAP"
+ #endif
+@@ -515,6 +518,38 @@
+         }
+         break;
+     case Mod:
++        if (k->code == Shift) {
++            int64_t now = monotime();
++            if (kb->mods & CapsLock) {
++                bool had_shift = (kb->mods & Shift) != 0;
++                kb->mods &= (uint8_t)~(CapsLock | Shift);
++                zwp_virtual_keyboard_v1_key_mods(kb->vkbd, time, CapsLock,
++                                                 WL_KEYBOARD_KEY_STATE_RELEASED);
++                if (had_shift)
++                    zwp_virtual_keyboard_v1_key_mods(
++                        kb->vkbd, time, Shift, WL_KEYBOARD_KEY_STATE_RELEASED);
++                kb->last_shift_ms = 0;
++            } else if ((kb->mods & Shift) && kb->last_shift_ms != 0 &&
++                       now - kb->last_shift_ms <= SHIFT_LOCK_MS) {
++                kb->mods &= (uint8_t)~Shift;
++                kb->mods |= CapsLock;
++                zwp_virtual_keyboard_v1_key_mods(kb->vkbd, time, Shift,
++                                                 WL_KEYBOARD_KEY_STATE_RELEASED);
++                zwp_virtual_keyboard_v1_key_mods(kb->vkbd, time, CapsLock,
++                                                 WL_KEYBOARD_KEY_STATE_PRESSED);
++                kb->last_shift_ms = 0;
++            } else {
++                kb->mods ^= Shift;
++                zwp_virtual_keyboard_v1_key_mods(
++                    kb->vkbd, time, Shift,
++                    (kb->mods & Shift) ? WL_KEYBOARD_KEY_STATE_PRESSED
++                                       : WL_KEYBOARD_KEY_STATE_RELEASED);
++                kb->last_shift_ms = now;
++            }
++            zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
++            kbd_draw_layout(kb);
++            break;
++        }
+         kb->mods ^= k->code;
+         if (kb->mods & k->code) {
+             if (kb->debug)
+@@ -607,6 +642,24 @@
+     }
+ }
+ 
++/* One letter: ASCII, or a single Cyrillic character (two UTF-8 bytes). */
++static bool
++kbd_label_is_letter(const char *s)
++{
++    unsigned char c, c1;
++
++    if (!s || !s[0])
++        return false;
++    c = (unsigned char)s[0];
++    if ((c & 0x80) == 0)
++        return s[1] == '\0' && isalpha((int)c);
++    if ((c == 0xD0 || c == 0xD1) && s[1] && s[2] == '\0') {
++        c1 = (unsigned char)s[1];
++        return c1 >= 0x80 && c1 <= 0xBF;
++    }
++    return false;
++}
++
+ void
+ kbd_print_key_stdout(struct kbd *kb, struct key *k)
+ {
+@@ -643,8 +696,8 @@
+     }
+ 
+     if (!handled) {
+-        if ((kb->mods & Shift) || 
+-            ((kb->mods & CapsLock) & (strlen(k->label) == 1 && isalpha(k->label[0]))))
++        if ((kb->mods & Shift) ||
++            ((kb->mods & CapsLock) && kbd_label_is_letter(k->label)))
+             kbd_print_first_utf8_char_stdout(k->shift_label);
+         else if (!(kb->mods & Ctrl) && !(kb->mods & Alt) && !(kb->mods & Super))
+             kbd_print_first_utf8_char_stdout(k->label);
+@@ -771,9 +824,69 @@
+                   k->split_label, scheme->font_description);
+ }
+ 
++static void
++draw_lock_bar(struct drwsurf *ds, uint32_t x, uint32_t y, uint32_t w,
++              uint32_t h)
++{
++    drwsurf_flip(ds);
++    struct drwbuf *d = ds->back_buffer;
++    drwsurf_damage(ds, x, y, w, h);
++    cairo_save(d->cairo);
++    cairo_set_operator(d->cairo, CAIRO_OPERATOR_SOURCE);
++    cairo_set_source_rgba(d->cairo, 1.0, 230.0 / 255.0, 40.0 / 255.0, 1.0);
++    cairo_rectangle(d->cairo, x, y, w, h);
++    cairo_fill(d->cairo);
++    cairo_restore(d->cairo);
++}
++
++/* The arrow stays white until shift or caps is on, then it turns yellow.
++ * Caps also draws a bar under the arrow so the lock is visible. */
++static void
++draw_shift_key(struct kbd *kb, struct key *k, enum key_draw_type type)
++{
++    struct clr_scheme *scheme = &kb->schemes[k->scheme];
++    bool on = (kb->mods & Shift) || (kb->mods & CapsLock);
++    bool locked = (kb->mods & CapsLock) != 0;
++    Color face = scheme->fg;
++    Color text = scheme->text;
++    Color lit;
++    bool over = false;
++    uint32_t bw, bh, bx, by;
++
++    if (type == Swipe) {
++        face = scheme->swipe;
++        text = scheme->text_swipe;
++        over = true;
++    } else if (on || (type == Press && kb->show_highlight)) {
++        face = scheme->high;
++    }
++    if (on) {
++        lit.bgra[0] = 40;
++        lit.bgra[1] = 230;
++        lit.bgra[2] = 255;
++        lit.bgra[3] = 255;
++        text = lit;
++    }
++    draw_key_face(kb->surf, k->x, k->y, k->w, k->h, face, scheme->rounding,
++                  over);
++    drw_draw_text(kb->surf, text, k->x, k->y, k->w, k->h, KBD_KEY_BORDER,
++                  k->label, scheme->font_description);
++    if (!locked || k->w < 12 || k->h < 24)
++        return;
++    bw = k->w / 3;
++    bh = 4;
++    bx = k->x + (k->w - bw) / 2;
++    by = k->y + k->h - KBD_KEY_BORDER - bh - 6;
++    draw_lock_bar(kb->surf, bx, by, bw, bh);
++}
++
+ void
+ kbd_draw_key(struct kbd *kb, struct key *k, enum key_draw_type type)
+ {
++    if (k->type == Mod && k->code == Shift) {
++        draw_shift_key(kb, k, type);
++        return;
++    }
+     if (k->lrows > 1) {
+         draw_l_key(kb, k, type);
+         return;
+@@ -782,8 +895,9 @@
+         draw_split_key(kb, k, type);
+         return;
+     }
+-    const char *label = ((kb->mods & Shift)||((kb->mods & CapsLock) && 
+-        strlen(k->label) == 1 && isalpha(k->label[0]))) ? k->shift_label : k->label;
++    const char *label = ((kb->mods & Shift) ||
++        ((kb->mods & CapsLock) && kbd_label_is_letter(k->label)))
++        ? k->shift_label : k->label;
+     if (kb->debug)
+         fprintf(stderr, "Draw key +%d+%d %dx%d -> %s\n", k->x, k->y, k->w, k->h,
+                 label);

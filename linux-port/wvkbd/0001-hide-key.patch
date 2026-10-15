@@ -1,0 +1,82 @@
+diff --git a/keyboard.c b/keyboard.c
+index ea3be7e..593f5ab 100644
+--- a/keyboard.c
++++ b/keyboard.c
+@@ -498,13 +498,10 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
+     case Layout:
+         // switch to the layout determined by the key
+         kbd_switch_layout(kb, k->layout, kbd_get_layer_index(kb, k->layout));
+-        // reset previous layout to default/first so we don't get any weird
+-        // cycles
+-        kb->last_abc_index = 0;
+-        if (kb->landscape) {
+-            kb->last_abc_layout = &kb->layouts[kb->landscape_layers[0]];
+-        } else {
+-            kb->last_abc_layout = &kb->layouts[kb->layers[0]];
++        // Remember an alphabet so the numbers layer can return to it.
++        if (k->layout && k->layout->abc) {
++            kb->last_abc_layout = k->layout;
++            kb->last_abc_index = kbd_get_layer_index(kb, k->layout);
+         }
+         break;
+     case Compose:
+@@ -529,13 +526,9 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
+         if (kb->last_abc_layout) {
+             kb->compose = 0;
+             kbd_switch_layout(kb, kb->last_abc_layout, kb->last_abc_index);
+-            // reset previous layout to default/first so we don't get any weird
+-            // cycles
+-            kb->last_abc_index = 0;
+-            if (kb->landscape) {
+-                kb->last_abc_layout = &kb->layouts[kb->landscape_layers[0]];
+-            } else {
+-                kb->last_abc_layout = &kb->layouts[kb->layers[0]];
++            if (kb->layout && kb->layout->abc) {
++                kb->last_abc_layout = kb->layout;
++                kb->last_abc_index = kb->layer_index;
+             }
+         }
+         break;
+@@ -559,6 +552,10 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
+         if (kb->print || kb->print_intersect)
+             kbd_print_key_stdout(kb, k);
+         break;
++    case Hide:
++        if (kb->on_hide)
++            kb->on_hide();
++        break;
+     default:
+         break;
+     }
+diff --git a/keyboard.h b/keyboard.h
+index f1cf4c0..f89a818 100644
+--- a/keyboard.h
++++ b/keyboard.h
+@@ -24,6 +24,7 @@ enum key_type {
+ 	NextLayer, // Layout switch to the next layout in the layers sequence
+ 	Compose,   // Compose modifier key, switches to a specific associated layout
+ 	           // upon next keypress
++	Hide,      // Hide the on-screen keyboard
+ 	EndRow,    // Incidates the end of a key row
+ 	Last,      // Indicated the end of a layout
+ };
+@@ -128,6 +129,7 @@ struct kbd {
+ 	struct drwsurf *surf;
+ 	struct drwsurf *popup_surf;
+ 	struct zwp_virtual_keyboard_v1 *vkbd;
++	void (*on_hide)(void);
+ 
+ 	uint32_t last_popup_x, last_popup_y, last_popup_w, last_popup_h;
+ };
+diff --git a/main.c b/main.c
+index be7fb07..0ed7f5e 100644
+--- a/main.c
++++ b/main.c
+@@ -1256,6 +1256,7 @@ main(int argc, char **argv)
+ 
+     kbd_init(&keyboard, (struct layout *)&layouts, layer_names_list,
+              landscape_layer_names_list);
++    keyboard.on_hide = hide;
+ 
+     if (im_mgr != NULL) {
+         struct zwp_input_method_v2 *input_method =
