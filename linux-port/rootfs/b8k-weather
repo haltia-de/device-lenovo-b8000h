@@ -314,6 +314,70 @@ def cloud(cr, cx, cy, k, rgb):
     cr.fill()
 
 
+def draw_pressure(widget, cr, steps):
+    w, h = widget.get_allocated_width(), widget.get_allocated_height()
+    vals = [st.get("p") for st in steps]
+    times = [datetime.fromisoformat(st["valid"]) for st in steps]
+    lo, hi = min(vals), max(vals)
+    if hi - lo < 6:  # a calm day still reads as a gentle line, not a cliff
+        mid = (hi + lo) / 2
+        lo, hi = mid - 3, mid + 3
+    left, right, top, bottom = 30, 30, 50, 56
+    n = len(vals)
+    xs = [left + (w - left - right) * k / (n - 1) for k in range(n)]
+
+    def y_of(v):
+        return top + (h - top - bottom) * (hi - v) / (hi - lo)
+
+    cr.select_font_face("Sans", 0, 0)
+    # the day boundary and its name
+    for k in range(1, n):
+        if times[k].date() != times[k - 1].date():
+            x = (xs[k] + xs[k - 1]) / 2
+            cr.set_source_rgb(0.75, 0.75, 0.74)
+            cr.set_line_width(2)
+            cr.move_to(x, 8)
+            cr.line_to(x, h - 8)
+            cr.stroke()
+    # now
+    now = datetime.now()
+    for k in range(n - 1):
+        if times[k] <= now < times[k + 1]:
+            f = (now - times[k]).total_seconds() / (times[k + 1] - times[k]).total_seconds()
+            x = xs[k] + (xs[k + 1] - xs[k]) * f
+            cr.set_source_rgb(0.21, 0.52, 0.89)
+            cr.set_line_width(3)
+            cr.move_to(x, 14)
+            cr.line_to(x, h - bottom + 6)
+            cr.stroke()
+    # the line
+    cr.set_source_rgb(0.18, 0.2, 0.21)
+    cr.set_line_width(4)
+    cr.set_line_join(1)
+    for k, v in enumerate(vals):
+        (cr.line_to if k else cr.move_to)(xs[k], y_of(v))
+    cr.stroke()
+    # points, values above, hours below
+    for k, v in enumerate(vals):
+        x, y = xs[k], y_of(v)
+        cr.set_source_rgb(0.21, 0.52, 0.89)
+        cr.arc(x, y, 6, 0, 2 * math.pi)
+        cr.fill()
+        cr.set_source_rgb(0.18, 0.2, 0.21)
+        cr.set_font_size(22)
+        text = "%d" % v
+        ext = cr.text_extents(text)
+        cr.move_to(x - ext.width / 2 - ext.x_bearing, y - 14)
+        cr.show_text(text)
+        cr.set_source_rgb(0.47, 0.46, 0.48)
+        cr.set_font_size(18)
+        text = times[k].strftime("%-H")
+        ext = cr.text_extents(text)
+        cr.move_to(x - ext.width / 2 - ext.x_bearing, h - 18)
+        cr.show_text(text)
+    return False
+
+
 def icon(code, size):
     area = Gtk.DrawingArea()
     area.set_size_request(size, size)
@@ -430,6 +494,10 @@ class Weather(Gtk.Application):
                 page.pack_start(label("%s, %s" % (day_title(d["date"]), day_date(d["date"])),
                                       "section", xalign=0), False, False, 0)
                 page.pack_start(self.steps_card(d), False, False, 0)
+        steps = [st for d in data["days"][:2] for st in d.get("steps", [])]
+        if len(steps) > 1:
+            page.pack_start(label("Давление, мм рт. ст.", "section", xalign=0), False, False, 0)
+            page.pack_start(self.pressure_card(steps), False, False, 0)
         page.pack_start(label("На неделю", "section", xalign=0), False, False, 0)
         page.pack_start(self.week_card(data["days"]), False, False, 0)
         page.show_all()
@@ -504,6 +572,16 @@ class Weather(Gtk.Application):
             card.pack_start(slot, True, True, 0)
         return card
 
+    def pressure_card(self, steps):
+        """Pressure for today and tomorrow, in three-hour steps, as a line."""
+        card = Gtk.Box()
+        card.get_style_context().add_class("card")
+        area = Gtk.DrawingArea()
+        area.set_size_request(-1, 260)
+        area.connect("draw", draw_pressure, steps)
+        card.pack_start(area, True, True, 0)
+        return card
+
     def week_card(self, days):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.get_style_context().add_class("card")
@@ -511,7 +589,7 @@ class Weather(Gtk.Application):
             row = Gtk.Box(spacing=18)
             row.get_style_context().add_class("day")
             name = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            name.set_size_request(170, -1)
+            name.set_size_request(230, -1)
             name.set_valign(Gtk.Align.CENTER)
             name.pack_start(label(day_title(d["date"]), "day-name", xalign=0), False, False, 0)
             name.pack_start(label(day_date(d["date"]), "day-date", xalign=0), False, False, 0)
@@ -526,6 +604,8 @@ class Weather(Gtk.Application):
             rain = precip_text(d)
             if rain:
                 extra += ", " + rain
+            if d.get("pmin") and d.get("pmax"):
+                extra += ", давление %d–%d мм" % (d["pmin"], d["pmax"])
             desc.pack_start(label(extra, "day-date", xalign=0, wrap=True), False, False, 0)
             row.pack_start(desc, True, True, 0)
             temps = Gtk.Box(spacing=12)
