@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-# Large headlines. A tap opens the story in Firefox.
+# Large headlines. A tap opens the story itself in large type: the text from
+# the feed when the feed carries all of it (Деловой Петербург), otherwise
+# from the story's page (the JSON-LD articleBody of Фонтанка, the
+# itemprop="articleBody" paragraphs of Интерфакс), else the feed's summary.
+# A button under the story opens the full page in Firefox.
 # The window appears at once. The list fills when the feeds answer.
 # One title only: the header bar. A second "Новости" label used to sit under it.
+import html
+import json
+import re
 import threading
 import urllib.request
+from html.parser import HTMLParser
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -22,6 +30,8 @@ FEEDS = (
     ("Деловой Петербург", "https://www.dp.ru/news.rss", "/usr/local/share/b8k/news-dp.png"),
 )
 PER_FEED = 20
+FULL_FEED = 800  # a feed description this long is the whole story
+PAGE_MAX = 3 * 1024 * 1024
 SHOW = 24
 REFRESH_SEC = 30 * 60
 MONTHS = "янв фев мар апр май июн июл авг сен окт ноя дек".split()
@@ -55,6 +65,32 @@ button.refresh:disabled {
   background-color: #99c1f1;
 }
 label.item { font-size: 26px; color: #2e3436; }
+button.back {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 96px;
+  font-size: 30px;
+  color: #2e3436;
+}
+.story { background-color: #f2f2f0; }
+label.story-title { font-size: 32px; font-weight: bold; color: #2e3436; }
+label.story-meta { font-size: 20px; color: #77767b; }
+label.story-text { font-size: 25px; color: #2e3436; }
+button.full {
+  background-image: none;
+  background-color: #3584e4;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  padding: 0 28px;
+  font-size: 24px;
+}
+button.full label { color: #ffffff; }
 label.when { font-size: 20px; color: #77767b; }
 row { min-height: 96px; }
 """
@@ -87,10 +123,117 @@ def one_feed(name, url):
         # Only web links: anything else would reach Firefox as an option.
         if not title or not link.startswith(("https://", "http://")):
             continue
-        items.append((parse_when(item.findtext("pubDate")), name, title, link))
+        enc = item.find("enclosure")
+        image = enc.get("url", "") if enc is not None else ""
+        if not image.startswith("https://") or "default" in image:
+            image = ""  # Фонтанка sends one stock picture for every story
+        items.append((parse_when(item.findtext("pubDate")), name, title, link,
+                      (item.findtext("description") or "").strip(), image))
         if len(items) >= PER_FEED:
             break
     return items
+
+
+def paragraphs(text):
+    """Plain paragraphs from feed or page text that may hold HTML."""
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>", "\n", text)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    return [p.strip() for p in re.split(r"\n+", text) if p.strip()]
+
+
+class ArticleParser(HTMLParser):
+    """The paragraphs inside itemprop="articleBody", and any JSON-LD."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.depth = 0  # >0 inside the article element
+        self.in_p = False
+        self.in_ld = False
+        self.paras = []
+        self.ld = []
+        self.buf = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "script" and a.get("type") == "application/ld+json":
+            self.in_ld, self.buf = True, []
+        elif self.depth:
+            if tag not in ("br", "img", "hr", "meta", "link", "input", "source"):
+                self.depth += 1
+            if tag == "p":
+                self.in_p, self.buf = True, []
+        elif a.get("itemprop") == "articleBody":
+            self.depth = 1
+
+    def handle_endtag(self, tag):
+        if self.in_ld and tag == "script":
+            self.in_ld = False
+            self.ld.append("".join(self.buf))
+        elif self.depth:
+            if tag == "p" and self.in_p:
+                self.in_p = False
+                text = " ".join("".join(self.buf).split())
+                if text:
+                    self.paras.append(text)
+            self.depth -= 1
+
+    def handle_data(self, data):
+        if self.in_ld or self.in_p:
+            self.buf.append(data)
+
+
+def find_body(node):
+    if isinstance(node, dict):
+        if isinstance(node.get("articleBody"), str):
+            return node["articleBody"]
+        node = list(node.values())
+    if isinstance(node, list):
+        for child in node:
+            found = find_body(child)
+            if found:
+                return found
+    return ""
+
+
+def story(link, summary):
+    """The story's paragraphs: the feed's, else the page's, else the summary."""
+    if len(summary) >= FULL_FEED:
+        return paragraphs(summary)
+    try:
+        req = urllib.request.Request(link, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as fh:
+            raw = fh.read(PAGE_MAX)
+            charset = fh.headers.get_content_charset() or "utf-8"
+        parser = ArticleParser()
+        parser.feed(raw.decode(charset, "replace"))
+        for block in parser.ld:
+            try:
+                body = find_body(json.loads(block))
+            except ValueError:
+                continue
+            if body:
+                return paragraphs(body)
+        if parser.paras:
+            return parser.paras
+    except Exception:
+        pass
+    return paragraphs(summary)
+
+
+def picture(url):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as fh:
+            data = fh.read(PAGE_MAX)
+        loader = GdkPixbuf.PixbufLoader()
+        loader.write(data)
+        loader.close()
+        pix = loader.get_pixbuf()
+        scale = min(1.0, 900 / pix.get_width())
+        return pix.scale_simple(int(pix.get_width() * scale), int(pix.get_height() * scale),
+                                GdkPixbuf.InterpType.BILINEAR)
+    except Exception:
+        return None
 
 
 def headlines():
@@ -150,6 +293,11 @@ class News(Gtk.Application):
             self.refresh_btn.set_label("↻")
         self.refresh_btn.connect("clicked", lambda *_a: self.refresh(True))
         header.pack_end(self.refresh_btn)
+        self.back_btn = Gtk.Button(label="←")
+        self.back_btn.get_style_context().add_class("back")
+        self.back_btn.connect("clicked", lambda *_a: self.show_list())
+        self.back_btn.set_no_show_all(True)
+        header.pack_start(self.back_btn)
         win.set_titlebar(header)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.scroll = Gtk.ScrolledWindow()
@@ -159,7 +307,16 @@ class News(Gtk.Application):
         self.listbox.connect("row-activated", self.open_row)
         self.scroll.add(self.listbox)
         box.pack_start(self.scroll, True, True, 0)
-        win.add(box)
+        self.stack = Gtk.Stack()
+        self.stack.add_named(box, "list")
+        self.story_scroll = Gtk.ScrolledWindow()
+        self.story_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.story_scroll.get_style_context().add_class("story")
+        self.stack.add_named(self.story_scroll, "story")
+        self.story_box = None
+        self.stories = {}  # link -> paragraphs, for this run
+        self.showing = None
+        win.add(self.stack)
         self.note("Загрузка")
         win.show_all()
         self.refresh(True)
@@ -214,7 +371,7 @@ class News(Gtk.Application):
             y = self.scroll.get_vadjustment().get_value()
         self.have_items = True
         self.listbox.foreach(lambda row: self.listbox.remove(row))
-        for stamp, name, title, link in items:
+        for stamp, name, title, link, summary, image in items:
             row = Gtk.ListBoxRow()
             line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
             icon = Gtk.Image()
@@ -239,6 +396,7 @@ class News(Gtk.Application):
             line.pack_start(words, True, True, 0)
             row.add(line)
             row.link = link
+            row.item = (stamp, name, title, link, summary, image)
             self.listbox.add(row)
         self.listbox.show_all()
         if not jump:
@@ -250,9 +408,83 @@ class News(Gtk.Application):
         return False
 
     def open_row(self, _box, row):
-        link = getattr(row, "link", "")
-        if not link:
-            return
+        item = getattr(row, "item", None)
+        if item:
+            self.show_story(item)
+
+    def show_list(self):
+        self.showing = None
+        self.back_btn.hide()
+        self.refresh_btn.show()
+        self.stack.set_visible_child_name("list")
+
+    def show_story(self, item):
+        stamp, name, title, link, summary, image = item
+        self.showing = link
+        if self.story_box is not None:
+            self.story_box.destroy()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        box.set_margin_start(40)
+        box.set_margin_end(40)
+        box.set_margin_top(24)
+        box.set_margin_bottom(32)
+        meta = Gtk.Label(label="%s · %s" % (name, clock(stamp)), xalign=0)
+        meta.get_style_context().add_class("story-meta")
+        box.pack_start(meta, False, False, 0)
+        head = Gtk.Label(label=title, xalign=0)
+        head.set_line_wrap(True)
+        head.get_style_context().add_class("story-title")
+        box.pack_start(head, False, False, 0)
+        pic = Gtk.Image()
+        pic.set_no_show_all(True)
+        box.pack_start(pic, False, False, 0)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        box.pack_start(text, False, False, 0)
+        full = Gtk.Button(label="Открыть полную версию в браузере")
+        full.get_style_context().add_class("full")
+        full.set_halign(Gtk.Align.START)
+        full.connect("clicked", lambda *_a: self.open_link(link))
+        box.pack_start(full, False, False, 8)
+        self.story_box = box
+        self.story_scroll.add(box)
+        self.story_scroll.get_vadjustment().set_value(0)
+        box.show_all()
+        self.back_btn.show()
+        self.refresh_btn.hide()
+        self.stack.set_visible_child_name("story")
+
+        def put_text(paras):
+            if self.showing != link:
+                return False
+            self.stories[link] = paras
+            for child in text.get_children():
+                child.destroy()
+            for para in paras or ["Текст новости не найден. Полная версия — в браузере."]:
+                lab = Gtk.Label(label=para, xalign=0)
+                lab.set_line_wrap(True)
+                lab.get_style_context().add_class("story-text")
+                text.pack_start(lab, False, False, 0)
+            text.show_all()
+            return False
+
+        def put_picture(pix):
+            if self.showing == link and pix is not None:
+                pic.set_from_pixbuf(pix)
+                pic.show()
+            return False
+
+        if link in self.stories:
+            put_text(self.stories[link])
+        else:
+            put_text(paragraphs(summary) or ["Загрузка…"])
+            self.stories.pop(link, None)
+            threading.Thread(target=lambda: GLib.idle_add(put_text, story(link, summary)),
+                             daemon=True).start()
+        if image:
+            threading.Thread(target=lambda: GLib.idle_add(put_picture, picture(image)),
+                             daemon=True).start()
+
+    def open_link(self, link):
         subprocess = __import__("subprocess")
         subprocess.Popen(
             ["firefox", link],
