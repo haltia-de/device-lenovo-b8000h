@@ -11,3 +11,5 @@ pref("browser.startup.page", 1);
 pref("browser.tabs.unloadOnLowMemory", true);
 pref("browser.low_commit_space_threshold_percent", 10);
 pref("browser.tabs.min_inactive_duration_before_unload", 60000);
+// No screen reader here; otherwise Firefox starts the at-spi bus itself.
+pref("accessibility.force_disabled", 1);

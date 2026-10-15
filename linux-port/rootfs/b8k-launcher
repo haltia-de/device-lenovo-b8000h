@@ -8,6 +8,8 @@ mkdir -p "$run"
 # No screen reader runs here. Without these GTK starts the at-spi bus and
 # its registry for every session.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
+# Settings starts through D-Bus activation and takes the bus environment.
+dbus-update-activation-environment NO_AT_BRIDGE GTK_A11Y 2>/dev/null
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
