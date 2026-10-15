@@ -127,8 +127,20 @@
     return found;
   }
 
+  // A window that has finished starting. Right after a cold start the
+  // first window exists before it can open a chromeless one: asked too
+  // early, Firefox put the page into that normal window, address bar,
+  // tabs and an on-screen keyboard for the focused address included.
+  function ready(win) {
+    try {
+      return !!(win.gBrowserInit && win.gBrowserInit.delayedStartupFinished);
+    } catch (e) {
+      return false;
+    }
+  }
+
   function openerWindow() {
-    var wins = browserWindows();
+    var wins = browserWindows().filter(ready);
     for (var i = 0; i < wins.length; i++) {
       try {
         if (wins[i].toolbar && wins[i].toolbar.visible) {
@@ -273,6 +285,14 @@
         wins[i].__b8kSeen = true;
       } catch (e) {}
     }
+    // A fresh window has its address bar focused, which keeps the
+    // on-screen keyboard up: Firefox does not drop that text field when
+    // another of its windows comes to the front, so the keyboard stayed over
+    // the web app. Move the focus into the page first.
+    try {
+      opener.gURLBar.blur();
+      opener.gBrowser.selectedBrowser.focus();
+    } catch (e) {}
     var helper = ChromeUtils.importESModule(
       "resource:///modules/URILoadingHelper.sys.mjs"
     );
