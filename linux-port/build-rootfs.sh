@@ -22,6 +22,7 @@ case "$UI_PROFILE" in
 		foot grim py3-pillow py3-cairo font-noto-emoji
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
+		aisleriot aisleriot-lang
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac

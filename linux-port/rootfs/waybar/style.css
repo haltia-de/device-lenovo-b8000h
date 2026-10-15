@@ -6,7 +6,8 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-weather,
 #custom-news,
 #custom-max,
-#custom-paint {
+#custom-paint,
+#custom-cards {
   min-height: 26px;
   margin: 2px 4px;
   padding-top: 46px;
@@ -22,12 +23,14 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-news { background-image: url("/usr/local/share/b8k/news.svg"); }
 #custom-max { background-image: url("/usr/local/share/b8k/max.png"); }
 #custom-paint { background-image: url("/usr/local/share/b8k/paint.svg"); }
+#custom-cards { background-image: url("/usr/share/icons/hicolor/256x256/apps/gnome-aisleriot.png"); }
 #custom-firefox.running,
 #custom-calc.running,
 #custom-weather.running,
 #custom-news.running,
 #custom-max.running,
-#custom-paint.running {
+#custom-paint.running,
+#custom-cards.running {
   background-color: #3a3a3a;
   box-shadow: inset 0 -6px 0 #99c1f1;
 }
@@ -36,7 +39,8 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-weather.active,
 #custom-news.active,
 #custom-max.active,
-#custom-paint.active {
+#custom-paint.active,
+#custom-cards.active {
   background-color: #3584e4;
   color: #ffffff;
   box-shadow: inset 0 -6px 0 #ffffff;
@@ -46,7 +50,8 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-weather:active,
 #custom-news:active,
 #custom-max:active,
-#custom-paint:active {
+#custom-paint:active,
+#custom-cards:active {
   background-color: #3584e4;
   color: #ffffff;
 }
@@ -144,7 +149,8 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-weather.pressed,
 #custom-news.pressed,
 #custom-max.pressed,
-#custom-paint.pressed {
+#custom-paint.pressed,
+#custom-cards.pressed {
   background-color: #3584e4;
   color: #ffffff;
 }
