@@ -7,10 +7,10 @@ bottom has one big button per number. Pick a colour, tap its cells.
 - Cells of the chosen number are tinted and their numbers bold, so they
   are easy to find; a cell of another number cannot be painted.
 - The buttons on the right carry drawn icons, no words: back, zoom in,
-  zoom out (down to the whole picture on screen), "whole picture" (one
+  zoom out (down to the whole picture on screen), in small steps, "whole picture" (one
   tap fits the picture to the screen, the next one goes back to the
-  same zoom and place), "where?" (shows the
-  nearest unpainted cell of the chosen colour), undo, full screen, and
+  same zoom and place), "where?" (puts the
+  nearest unpainted cell of the chosen colour in the middle), undo, full screen, and
   "look" (the finished picture while held). Drag to scroll.
 - A tap paints the whole connected area of that number at once (a
   large sky is one tap).
@@ -60,7 +60,7 @@ LEVELS = (
 THEMES = ("Природа", "Северная природа", "Флот", "Военный флот", "Животные")
 # Cell sizes in pixels above "the whole picture on screen"; numbers show
 # from NUMBERS up, the grid from GRID up.
-ZOOMS = (12, 18, 26, 36, 50, 70)
+ZOOMS = (12, 16, 20, 26, 32, 40, 50, 70)
 OPEN_CELL = 26
 NUMBERS = 17
 GRID = 12
@@ -476,7 +476,6 @@ class Board(Gtk.DrawingArea):
         self.save_timer = None
         self.undo = []  # each entry: the cells one tap painted
         self.wrong = None
-        self.flash = None  # (x, y, on): the "where?" marker
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
                         | Gdk.EventMask.TOUCH_MASK)
         self.connect("draw", self.on_draw)
@@ -579,13 +578,6 @@ class Board(Gtk.DrawingArea):
                                                          (s - ext.height) / 2 - ext.y_bearing)
                             cr.move_to(x * s + at[0], y * s + at[1])
                             cr.show_text(label)
-        if self.flash and self.flash[2]:
-            fx, fy, _on = self.flash
-            # A ring around the cell, large enough to see when zoomed out.
-            cr.set_source_rgb(0.21, 0.52, 0.89)
-            cr.set_line_width(max(4, s / 5))
-            cr.arc((fx + 0.5) * s, (fy + 0.5) * s, max(24, s * 1.4), 0, 2 * math.pi)
-            cr.stroke()
         if self.wrong:
             wx, wy = self.wrong
             cr.set_source_rgb(0.88, 0.11, 0.14)
@@ -885,7 +877,8 @@ class Paint:
         return b
 
     def find(self):
-        """Show the nearest unpainted cell of the chosen colour, and flash it."""
+        """Centre the view on the nearest unpainted cell of the chosen colour,
+        zoomed in far enough to read the numbers."""
         h, v = self.scroll.get_hadjustment(), self.scroll.get_vadjustment()
         s = self.board.cell
         cx = (h.get_value() + h.get_page_size() / 2) / s
@@ -899,21 +892,6 @@ class Paint:
         index = max(self.zoom or 0,
                     next((i for i, z in enumerate(steps) if z >= OPEN_CELL), len(steps) - 1))
         self.set_zoom(index, ((x + 0.5) / self.board.pic["w"], (y + 0.5) / self.board.pic["h"]))
-        count = [0]
-
-        def blink():
-            count[0] += 1
-            done = count[0] >= 8
-            self.board.flash = None if done else (x, y, count[0] % 2 == 1)
-            self.board.queue_draw()
-            if done:
-                self.flash_timer = None
-            return not done
-
-        if getattr(self, "flash_timer", None):
-            GLib.source_remove(self.flash_timer)
-        self.flash_timer = GLib.timeout_add(260, blink)
-        blink()
 
     def on_view_size(self, _widget, alloc):
         size = (alloc.width, alloc.height)
