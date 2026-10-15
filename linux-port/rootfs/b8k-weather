@@ -1,0 +1,541 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""Weather for Saint Petersburg from Gismeteo, large and in one page.
+
+The data is the XML of Gismeteo's open inform service (the one its
+browser extension used; the paid API needs a token): now, sunrise and
+sunset, three-hour steps for today and tomorrow and seven days in all.
+The page: now with every value it has, today and tomorrow in eight
+steps each, then the week. The window shows the last forecast from the
+cache at once and refreshes in the background every 30 minutes, when it
+comes back to the front after a while, and from the button. Icons are
+drawn here from Gismeteo's icon codes; no artwork of theirs is used.
+"""
+import fcntl
+import json
+import math
+import os
+import struct
+import threading
+import time
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import date, datetime
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
+
+CITY = 4079  # Saint Petersburg
+URL = "https://services.gismeteo.ru/inform-service/inf_chrome/forecast/?city=%d&lang=ru" % CITY
+CACHE = os.path.expanduser("~/.cache/b8k-weather.json")
+REFRESH_SEC = 30 * 60
+STALE_SEC = 20 * 60  # refresh on coming to the front when older than this
+WEEKDAYS = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота",
+            "воскресенье")
+MONTHS = "января февраля марта апреля мая июня июля августа сентября октября ноября декабря".split()
+WIND = ("штиль", "северный", "северо-восточный", "восточный", "юго-восточный", "южный",
+        "юго-западный", "западный", "северо-западный")
+WIND_SHORT = ("", "С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ")
+GEOMAGNETIC = ("возмущений нет", "небольшие возмущения", "небольшие возмущения",
+               "небольшие возмущения", "небольшие возмущения", "слабая буря",
+               "умеренная буря", "сильная буря", "шторм", "экстремальный шторм")
+
+CSS = b"""
+window { background-color: #e6e6e4; }
+headerbar {
+  background-color: #dcdcda;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 16px;
+}
+headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
+headerbar label.when { font-size: 20px; color: #77767b; }
+button.refresh {
+  background-image: none;
+  background-color: #3584e4;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 72px;
+  padding: 8px;
+}
+button.refresh image { color: #ffffff; }
+button.refresh:disabled { background-color: #99c1f1; }
+.card { background-color: #f2f2f0; border-radius: 18px; padding: 16px 20px; }
+label { color: #2e3436; }
+label.section { font-size: 28px; font-weight: bold; margin: 18px 8px 8px 8px; }
+label.now-temp { font-size: 104px; font-weight: bold; }
+label.now-desc { font-size: 32px; }
+label.dim { font-size: 22px; color: #77767b; }
+label.tile-title { font-size: 20px; color: #77767b; }
+label.tile-value { font-size: 28px; font-weight: bold; }
+label.tile-extra { font-size: 20px; color: #5e5c64; }
+.slot { border-radius: 14px; padding: 8px 2px; }
+.slot.now { background-color: #c4dcf7; }
+.slot.past label { color: #9a9996; }
+label.slot-time { font-size: 22px; }
+label.slot-temp { font-size: 34px; font-weight: bold; }
+label.slot-small { font-size: 18px; color: #5e5c64; }
+.day { border-bottom: 1px solid #dcdcda; padding: 6px 4px; }
+label.day-name { font-size: 26px; font-weight: bold; }
+label.day-date { font-size: 20px; color: #77767b; }
+label.day-desc { font-size: 22px; }
+label.day-temp { font-size: 32px; font-weight: bold; }
+label.day-min { font-size: 26px; color: #77767b; }
+label.note { font-size: 22px; color: #a51d2d; margin: 8px; }
+"""
+
+
+# --- haptics, as in the other b8k programs --------------------------------
+class Buzz:
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self, *_args):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+        return True
+
+
+# --- data -------------------------------------------------------------------
+def num(v, default=None):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def values(el):
+    """The attributes of one <values> (or <day>) element, numbers as numbers."""
+    out = {}
+    for k, v in el.attrib.items():
+        n = num(v)
+        out[k] = v if n is None or k in ("icon", "descr", "date", "valid") else n
+    return out
+
+
+def fetch():
+    req = urllib.request.Request(URL, headers={"User-Agent": "b8k-weather/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as fh:
+        raw = fh.read(512 * 1024)
+    # The forecast never has a DOCTYPE; refusing one keeps entity tricks out.
+    if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("unexpected DOCTYPE in the forecast")
+    root = ET.fromstring(raw)
+    loc = root.find("location")
+    fact = loc.find("fact")
+    data = {"fetched": time.time(), "city": loc.get("name"), "now": values(fact.find("values")),
+            "now_time": fact.get("valid"), "days": []}
+    # risem/setm: sunrise and sunset in minutes after local midnight. (The
+    # sunrise/sunset stamps count local time as if it were UTC.)
+    data["now"].update({k: num(fact.get(k)) for k in ("risem", "setm", "durm")})
+    for d in loc.iter("day"):
+        day = values(d)
+        day["steps"] = []
+        for f in d.iter("forecast"):
+            step = values(f.find("values"))
+            step["valid"] = f.get("valid")
+            day["steps"].append(step)
+        data["days"].append(day)
+    return data
+
+
+def load_cache():
+    try:
+        with open(CACHE) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def save_cache(data):
+    try:
+        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+        with open(CACHE + ".new", "w") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        os.replace(CACHE + ".new", CACHE)
+    except OSError:
+        pass
+
+
+def deg(t):
+    if t is None:
+        return "—"
+    t = int(round(t))
+    if t > 0:
+        return "+%d°" % t
+    if t < 0:
+        return "−%d°" % -t
+    return "0°"
+
+
+def hm(minutes):
+    return "%d:%02d" % divmod(int(minutes), 60) if minutes is not None else "—"
+
+
+def day_title(iso):
+    d = date.fromisoformat(iso)
+    delta = (d - date.today()).days
+    if delta == 0:
+        return "Сегодня"
+    if delta == 1:
+        return "Завтра"
+    return WEEKDAYS[d.weekday()].capitalize()
+
+
+def day_date(iso):
+    d = date.fromisoformat(iso)
+    return "%d %s" % (d.day, MONTHS[d.month - 1])
+
+
+def precip_text(v):
+    """Rain, snow or none, from pt/pr/prflt."""
+    kind = int(v.get("pt") or 0)
+    if not kind:
+        return ""
+    names = {1: "дождь", 2: "снег", 3: "дождь со снегом"}
+    mm = v.get("prflt")
+    text = names.get(kind, "осадки")
+    if mm:
+        text += " %s мм" % ("%.1f" % mm).replace(".", ",")
+    return text
+
+
+# --- icons --------------------------------------------------------------------
+def draw_weather(cr, code, size):
+    """Draw a Gismeteo icon code ("d.c3.r1", "n.c2", "c4", ...) in size x size."""
+    parts = (code or "").split(".")
+    night = "n" in parts
+    day = "d" in parts
+    clouds = next((int(p[1:]) for p in parts if p[:1] == "c" and p[1:].isdigit()), 0)
+    rain = next((int(p[1:]) for p in parts if p[:1] == "r" and p[1:].isdigit()), 0)
+    snow = next((int(p[1:]) for p in parts if p[:1] == "s" and p[1:].isdigit()), 0)
+    storm = any(p.startswith("st") for p in parts)
+    if "rs" in parts:
+        rain = snow = 1
+    s = size / 100.0
+    cr.save()
+    cr.scale(s, s)
+    # sun or moon, unless the sky is overcast
+    if clouds < 4 or day or night:
+        cx, cy, r = (38, 36, 20) if clouds else (50, 46, 26)
+        if clouds >= 4:
+            cx, cy, r = 34, 30, 16
+        if night:
+            cr.set_source_rgb(0.75, 0.75, 0.74)
+            cr.arc(cx, cy, r, 0, 2 * math.pi)
+            cr.fill()
+            cr.set_source_rgb(0.95, 0.95, 0.94)
+            cr.arc(cx + r * 0.55, cy - r * 0.35, r * 0.85, 0, 2 * math.pi)
+            cr.fill()
+        else:
+            cr.set_source_rgb(0.96, 0.76, 0.07)
+            cr.arc(cx, cy, r, 0, 2 * math.pi)
+            cr.fill()
+            cr.set_line_width(4)
+            cr.set_line_cap(1)
+            for k in range(8):
+                a = k * math.pi / 4
+                cr.move_to(cx + math.cos(a) * (r + 5), cy + math.sin(a) * (r + 5))
+                cr.line_to(cx + math.cos(a) * (r + 12), cy + math.sin(a) * (r + 12))
+            cr.stroke()
+    # clouds: none, a small one, a big one, or two dark ones
+    if clouds:
+        dark = clouds >= 4 or rain >= 2 or storm
+        if clouds >= 4:
+            cloud(cr, 60, 40, 0.8, (0.6, 0.6, 0.59))
+        cloud(cr, 54, 56, {1: 0.55, 2: 0.75}.get(clouds, 1.0),
+              (0.47, 0.46, 0.48) if dark else (0.75, 0.75, 0.74))
+    top = 74
+    if rain:
+        cr.set_source_rgb(0.21, 0.52, 0.89)
+        cr.set_line_width(5)
+        cr.set_line_cap(1)
+        for k in range(min(3, rain + (1 if rain else 0))):
+            x = 36 + k * 15 - (6 if snow else 0)
+            cr.move_to(x, top)
+            cr.line_to(x - 5, top + 14)
+        cr.stroke()
+    if snow:
+        cr.set_source_rgb(0.38, 0.63, 0.92)
+        cr.set_line_width(3)
+        for k in range(min(3, snow + 1)):
+            x, y = 44 + k * 15 + (8 if rain else 0), top + 8
+            for a in range(3):
+                ang = a * math.pi / 3
+                cr.move_to(x - 6 * math.cos(ang), y - 6 * math.sin(ang))
+                cr.line_to(x + 6 * math.cos(ang), y + 6 * math.sin(ang))
+        cr.stroke()
+    if storm:
+        cr.set_source_rgb(0.96, 0.76, 0.07)
+        cr.move_to(58, 68)
+        cr.line_to(48, 84)
+        cr.line_to(56, 84)
+        cr.line_to(50, 98)
+        cr.line_to(66, 78)
+        cr.line_to(58, 78)
+        cr.close_path()
+        cr.fill()
+    cr.restore()
+
+
+def cloud(cr, cx, cy, k, rgb):
+    cr.set_source_rgb(*rgb)
+    for dx, dy, r in ((-18, 4, 13), (0, -6, 18), (18, 4, 13)):
+        cr.arc(cx + dx * k, cy + dy * k, r * k, 0, 2 * math.pi)
+        cr.fill()
+    cr.rectangle(cx - 30 * k, cy + 2 * k, 60 * k, 15 * k)
+    cr.fill()
+
+
+def icon(code, size):
+    area = Gtk.DrawingArea()
+    area.set_size_request(size, size)
+    area.connect("draw", lambda _w, cr: draw_weather(cr, code, size) or False)
+    return area
+
+
+def label(text, cls, xalign=0.5, wrap=False):
+    lab = Gtk.Label(label=text, xalign=xalign)
+    lab.get_style_context().add_class(cls)
+    if wrap:
+        lab.set_line_wrap(True)
+        lab.set_justify(Gtk.Justification.CENTER if xalign == 0.5 else Gtk.Justification.LEFT)
+    return lab
+
+
+# --- the window -------------------------------------------------------------
+class Weather(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="b8k.Weather")
+        self.win = None
+        self.data = None
+        self.loading = False
+        self.buzz = Buzz()
+
+    def do_activate(self):
+        if self.win:
+            self.win.present()
+            return
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.Button()  # the "pressed" signal exists once the class is set up
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
+
+        self.win = Gtk.ApplicationWindow(application=self, title="Погода")
+        self.win.set_default_size(1160, 800)
+        bar = Gtk.HeaderBar()
+        bar.set_show_close_button(False)
+        heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        heading.pack_start(label("Погода в Санкт-Петербурге", "title"), False, False, 0)
+        self.when = label("", "when")
+        heading.pack_start(self.when, False, False, 0)
+        bar.set_custom_title(heading)
+        self.button = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.DIALOG)
+        self.button.get_style_context().add_class("refresh")
+        self.button.connect("clicked", lambda _b: self.refresh())
+        bar.pack_end(self.button)
+        self.win.set_titlebar(bar)
+
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scroll.set_kinetic_scrolling(True)
+        self.win.add(self.scroll)
+        self.win.connect("notify::is-active", self.on_active)
+        self.win.show_all()
+
+        self.data = load_cache()
+        self.show_data(None)
+        self.refresh()
+        GLib.timeout_add_seconds(REFRESH_SEC, lambda: self.refresh() or True)
+
+    def on_active(self, win, _param):
+        # Back in front after a sleep or a while: bring the forecast up to date.
+        if win.is_active() and (not self.data or time.time() - self.data.get("fetched", 0) > STALE_SEC):
+            self.refresh()
+
+    def refresh(self):
+        if self.loading:
+            return
+        self.loading = True
+        self.button.set_sensitive(False)
+        threading.Thread(target=self.load, daemon=True).start()
+
+    def load(self):
+        try:
+            data, error = fetch(), None
+        except Exception as exc:  # network, HTTP or a changed format
+            data, error = None, exc
+        GLib.idle_add(self.loaded, data, error)
+
+    def loaded(self, data, error):
+        self.loading = False
+        self.button.set_sensitive(True)
+        if data:
+            self.data = data
+            save_cache(data)
+        self.show_data(error)
+        return False
+
+    # building the page
+    def show_data(self, error):
+        old = self.scroll.get_child()
+        if old:
+            self.scroll.remove(old)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        page.set_margin_start(16)
+        page.set_margin_end(16)
+        page.set_margin_bottom(24)
+        data = self.data
+        if error:
+            page.pack_start(label("Нет связи с Gismeteo" + (", показан прошлый прогноз" if data else ""),
+                                  "note", xalign=0), False, False, 0)
+        if not data:
+            self.when.set_text("загрузка…" if not error else "")
+            page.show_all()
+            self.scroll.add(page)
+            return
+        self.when.set_text("обновлено в " + datetime.fromtimestamp(data["fetched"]).strftime("%-H:%M"))
+        page.pack_start(self.now_card(data), False, False, 0)
+        for d in data["days"][:2]:
+            if d.get("steps"):
+                page.pack_start(label("%s, %s" % (day_title(d["date"]), day_date(d["date"])),
+                                      "section", xalign=0), False, False, 0)
+                page.pack_start(self.steps_card(d), False, False, 0)
+        page.pack_start(label("На неделю", "section", xalign=0), False, False, 0)
+        page.pack_start(self.week_card(data["days"]), False, False, 0)
+        page.show_all()
+        self.scroll.add(page)
+
+    def now_card(self, data):
+        v = data["now"]
+        card = Gtk.Box(spacing=24)
+        card.get_style_context().add_class("card")
+        card.set_margin_top(12)
+        card.pack_start(icon(v.get("icon"), 170), False, False, 0)
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        main.set_valign(Gtk.Align.CENTER)
+        main.pack_start(label(deg(v.get("t")), "now-temp", xalign=0), False, False, 0)
+        main.pack_start(label(v.get("descr", ""), "now-desc", xalign=0, wrap=True), False, False, 0)
+        main.pack_start(label("ощущается как " + deg(v.get("hi")), "dim", xalign=0), False, False, 0)
+        card.pack_start(main, False, False, 0)
+
+        grid = Gtk.Grid(column_spacing=28, row_spacing=14)
+        grid.set_valign(Gtk.Align.CENTER)
+        wd = int(v.get("wd") or 0)
+        today = data["days"][0] if data["days"] else {}
+        gust = today.get("gust_speed")
+        tiles = [
+            ("Ветер", "%d м/с" % (v.get("ws") or 0),
+             WIND[wd] if wd < len(WIND) else "" + (", порывы до %d" % gust if gust else "")),
+            ("Давление", "%d мм" % (v.get("p") or 0), "рт. ст."),
+            ("Влажность", "%d %%" % (v.get("hum") or 0), ""),
+            ("Вода", deg(v.get("water_t")), ""),
+            ("Солнце", "%s – %s" % (hm(v.get("risem")), hm(v.get("setm"))),
+             "день %d ч %d мин" % divmod(int(v.get("durm") or 0), 60)),
+            ("Магнитное поле", GEOMAGNETIC[min(9, int(v.get("grade") or 0))].capitalize(), ""),
+        ]
+        if gust and wd < len(WIND):
+            tiles[0] = ("Ветер", "%d м/с" % (v.get("ws") or 0), "%s, порывы до %d" % (WIND[wd], gust))
+        if v.get("water_t") is None:
+            tiles.pop(3)
+        for k, (title, value, extra) in enumerate(tiles):
+            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            tile.pack_start(label(title, "tile-title", xalign=0), False, False, 0)
+            tile.pack_start(label(value, "tile-value", xalign=0, wrap=True), False, False, 0)
+            if extra:
+                tile.pack_start(label(extra, "tile-extra", xalign=0, wrap=True), False, False, 0)
+            grid.attach(tile, k % 2, k // 2, 1, 1)
+        card.pack_end(grid, False, False, 0)
+        return card
+
+    def steps_card(self, day):
+        card = Gtk.Box(homogeneous=True)
+        card.get_style_context().add_class("card")
+        now = datetime.now()
+        for step in day["steps"]:
+            start = datetime.fromisoformat(step["valid"])
+            slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            slot.get_style_context().add_class("slot")
+            delta = (now - start).total_seconds()
+            if 0 <= delta < 3 * 3600:
+                slot.get_style_context().add_class("now")
+            elif delta >= 3 * 3600:
+                slot.get_style_context().add_class("past")
+            slot.pack_start(label(start.strftime("%-H:%M"), "slot-time"), False, False, 0)
+            ic = icon(step.get("icon"), 76)
+            ic.set_halign(Gtk.Align.CENTER)
+            slot.pack_start(ic, False, False, 0)
+            slot.pack_start(label(deg(step.get("t")), "slot-temp"), False, False, 0)
+            wd = int(step.get("wd") or 0)
+            slot.pack_start(label("%d м/с %s" % (step.get("ws") or 0, WIND_SHORT[wd] if wd < 9 else ""),
+                                  "slot-small"), False, False, 0)
+            rain = precip_text(step)
+            slot.pack_start(label(rain or "%d %%" % (step.get("hum") or 0), "slot-small"),
+                            False, False, 0)
+            card.pack_start(slot, True, True, 0)
+        return card
+
+    def week_card(self, days):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.get_style_context().add_class("card")
+        for d in days:
+            row = Gtk.Box(spacing=18)
+            row.get_style_context().add_class("day")
+            name = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            name.set_size_request(170, -1)
+            name.set_valign(Gtk.Align.CENTER)
+            name.pack_start(label(day_title(d["date"]), "day-name", xalign=0), False, False, 0)
+            name.pack_start(label(day_date(d["date"]), "day-date", xalign=0), False, False, 0)
+            row.pack_start(name, False, False, 0)
+            row.pack_start(icon(d.get("icon"), 72), False, False, 0)
+            desc = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            desc.set_valign(Gtk.Align.CENTER)
+            desc.pack_start(label(d.get("descr", ""), "day-desc", xalign=0, wrap=True), False, False, 0)
+            wd = int(d.get("wd") or 0)
+            extra = "ветер %d–%d м/с %s" % (d.get("wsmin") or 0, d.get("wsmax") or 0,
+                                           WIND_SHORT[wd] if wd < 9 else "")
+            rain = precip_text(d)
+            if rain:
+                extra += ", " + rain
+            desc.pack_start(label(extra, "day-date", xalign=0, wrap=True), False, False, 0)
+            row.pack_start(desc, True, True, 0)
+            temps = Gtk.Box(spacing=12)
+            temps.set_valign(Gtk.Align.CENTER)
+            temps.pack_start(label(deg(d.get("tmax")), "day-temp"), False, False, 0)
+            temps.pack_start(label(deg(d.get("tmin")), "day-min"), False, False, 0)
+            row.pack_end(temps, False, False, 0)
+            card.pack_start(row, False, False, 0)
+        return card
+
+
+if __name__ == "__main__":
+    Weather().run(None)

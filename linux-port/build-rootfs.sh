@@ -304,6 +304,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-paint" "$ROOT/usr/local/bin/b8k-paint"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-weather" "$ROOT/usr/local/bin/b8k-weather"
 	install -d -m 755 "$ROOT/usr/local/share/b8k/paint"
 	install -m 644 "$REPO"/linux-port/rootfs/paint/pictures/*.json "$ROOT/usr/local/share/b8k/paint/"
 	# Speaker: hardware gain fixed at the clean top step, software volume.
