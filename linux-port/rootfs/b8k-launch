@@ -109,6 +109,8 @@ status)
 			active|running) class=$found ;;
 		esac
 	fi
+	# b8k-press marks a tap for 300 ms; waybar ignores :active on touch.
+	[ -e "$run/b8k-press/$id" ] && class=pressed
 	printf '{"text":"%s","class":"%s"}\n' "$label" "$class"
 	exit 0
 	;;

@@ -30,7 +30,9 @@
 5. **wpa_supplicant для этой сети** — `sh linux-port/wifi/build-wpa-nm.sh`
    (официальный архив 2.11). Сборка выключает PMF/SAE/FILS/OWE и не
    объявляет capability `pmf`. Без этого NetworkManager не подключается.
-6. **Экранная клавиатура** — `linux-port/wvkbd/build.sh` в контейнере сборки
+6. **Отклик кнопок панели** — `linux-port/tools-arm/build-b8k-press.sh`
+   (`/opt/b8000h/tools/b8k-press`: подсветка нажатия и вибрация).
+   **Экранная клавиатура** — `linux-port/wvkbd/build.sh` в контейнере сборки
    (wvkbd 0.21 с патчами и крупной раскладкой). Результат —
    `/opt/b8000h/out/wvkbd-b8k`; без него в системе не будет экранной клавиатуры.
 7. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24

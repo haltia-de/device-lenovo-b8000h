@@ -11,14 +11,20 @@
     "custom/max",
     "custom/term"
   ],
-  "modules-right": ["custom/brightness", "custom/volume", "custom/wifi3", "custom/battery", "custom/clock"],
+  "modules-right": [
+    "custom/brightness",
+    "custom/volume",
+    "custom/wifi3",
+    "custom/battery",
+    "custom/clock"
+  ],
   "custom/firefox": {
     "exec": "/usr/local/bin/b8k-launch status firefox",
     "return-type": "json",
     "format": "{text}",
     "signal": 1,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap firefox",
+    "on-click": "/usr/local/bin/b8k-press firefox 1; /usr/local/bin/b8k-launch tap firefox",
     "tooltip": false
   },
   "custom/calc": {
@@ -27,7 +33,7 @@
     "format": "{text}",
     "signal": 2,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap calc",
+    "on-click": "/usr/local/bin/b8k-press calc 2; /usr/local/bin/b8k-launch tap calc",
     "tooltip": false
   },
   "custom/weather": {
@@ -36,7 +42,7 @@
     "format": "{text}",
     "signal": 5,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap weather",
+    "on-click": "/usr/local/bin/b8k-press weather 5; /usr/local/bin/b8k-launch tap weather",
     "tooltip": false
   },
   "custom/news": {
@@ -45,7 +51,7 @@
     "format": "{text}",
     "signal": 6,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap news",
+    "on-click": "/usr/local/bin/b8k-press news 6; /usr/local/bin/b8k-launch tap news",
     "tooltip": false
   },
   "custom/max": {
@@ -54,7 +60,7 @@
     "format": "{text}",
     "signal": 7,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap max",
+    "on-click": "/usr/local/bin/b8k-press max 7; /usr/local/bin/b8k-launch tap max",
     "tooltip": false
   },
   "custom/term": {
@@ -63,12 +69,16 @@
     "format": "{text}",
     "signal": 3,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap term",
+    "on-click": "/usr/local/bin/b8k-press term 3; /usr/local/bin/b8k-launch tap term",
     "tooltip": false
   },
   "custom/brightness": {
-    "format": " ",
-    "on-click": "/usr/local/bin/b8k-brightness",
+    "exec": "/usr/local/bin/b8k-meter brightness",
+    "return-type": "json",
+    "format": "{text}",
+    "signal": 9,
+    "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-press brightness 9; /usr/local/bin/b8k-brightness",
     "tooltip": false
   },
   "custom/volume": {
@@ -78,7 +88,7 @@
     "signal": 8,
     "interval": 60,
     "exec-on-event": true,
-    "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+    "on-click": "/usr/local/bin/b8k-press volume 8; pactl set-sink-mute @DEFAULT_SINK@ toggle",
     "tooltip": false
   },
   "custom/wifi3": {
@@ -87,8 +97,9 @@
     "format": "{text}",
     "interval": 10,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-launch tap settings",
-    "tooltip": false
+    "on-click": "/usr/local/bin/b8k-press wifi 10; /usr/local/bin/b8k-launch tap settings",
+    "tooltip": false,
+    "signal": 10
   },
   "custom/battery": {
     "exec": "/usr/local/bin/b8k-meter battery",
@@ -96,8 +107,9 @@
     "format": "{text}",
     "interval": 15,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-ask power",
-    "tooltip": false
+    "on-click": "/usr/local/bin/b8k-press battery 11; /usr/local/bin/b8k-ask power",
+    "tooltip": false,
+    "signal": 11
   },
   "custom/clock": {
     "exec": "/usr/local/bin/b8k-clock",

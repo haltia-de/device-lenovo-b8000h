@@ -106,3 +106,21 @@ window#waybar { background: #242424; color: #ffffff; }
   font-weight: bold;
   padding: 2px 0 6px;
 }
+
+/* A tap, shown for 300 ms by b8k-press (waybar ignores :active on touch). */
+#custom-firefox.pressed,
+#custom-calc.pressed,
+#custom-weather.pressed,
+#custom-news.pressed,
+#custom-max.pressed,
+#custom-term.pressed {
+  background-color: #3584e4;
+  color: #ffffff;
+}
+#custom-brightness.pressed,
+#custom-volume.pressed,
+#custom-wifi3.pressed,
+#custom-battery.pressed {
+  background-color: #3a3a3a;
+  border-radius: 12px;
+}

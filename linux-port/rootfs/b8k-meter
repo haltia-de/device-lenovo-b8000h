@@ -3,6 +3,15 @@
 # Always prints one JSON line and exits 0, so the icon cannot disappear.
 set -u
 
+# b8k-press marks a tap for 300 ms: print the class with "pressed" added.
+out() {
+	if [ -e "${XDG_RUNTIME_DIR:-/tmp}/b8k-press/$1" ]; then
+		printf '{"text":" ","class":["%s","pressed"]}\n' "$2"
+	else
+		printf '{"text":" ","class":"%s"}\n' "$2"
+	fi
+}
+
 wifi() {
 	# w0 is disconnected. w1..w4 are four signal bars, same idea as the battery.
 	# wx: associated, but the gateway does not answer (b8k-netwatch).
@@ -29,7 +38,7 @@ wifi() {
 			[ "$(cat /run/b8k-net/state 2>/dev/null)" = down ] && class=wx
 		fi
 	fi
-	printf '{"text":" ","class":"%s"}\n' "$class"
+	out wifi "$class"
 }
 
 battery() {
@@ -61,7 +70,7 @@ battery() {
 		Charging|Full) class=c$bars ;;
 		*) class=b$bars ;;
 	esac
-	printf '{"text":" ","class":"%s"}\n' "$class"
+	out battery "$class"
 }
 
 volume() {
@@ -70,7 +79,7 @@ volume() {
 	vol=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk -F/ '/Volume/ { gsub(/[ %]/, "", $2); print $2; exit }')
 	mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
 	case $vol in
-		''|*[!0-9]*) printf '{"text":" ","class":"v0"}\n'; return ;;
+		''|*[!0-9]*) out volume v0; return ;;
 	esac
 	if [ "$vol" -eq 0 ] || [ "$mute" = yes ] || [ "$mute" = да ]; then
 		class=v0
@@ -80,10 +89,11 @@ volume() {
 		[ "$w" -gt 4 ] && w=4
 		class=v$w
 	fi
-	printf '{"text":" ","class":"%s"}\n' "$class"
+	out volume "$class"
 }
 
 case ${1:-} in
+	brightness) out brightness idle ;;
 	volume) volume ;;
 	wifi) wifi ;;
 	battery) battery ;;

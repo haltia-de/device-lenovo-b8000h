@@ -291,6 +291,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 	if [ -x /opt/b8000h/out/wvkbd-b8k ]; then
 		install -m 755 /opt/b8000h/out/wvkbd-b8k "$ROOT/usr/local/bin/wvkbd-b8k"
 	fi
+	# Tap feedback on the panel (tools-arm/build-b8k-press.sh).
+	if [ -x /opt/b8000h/tools/b8k-press ]; then
+		install -m 755 /opt/b8000h/tools/b8k-press "$ROOT/usr/local/bin/b8k-press"
+	fi
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
