@@ -22,7 +22,7 @@ case "$UI_PROFILE" in
 		foot grim py3-pillow py3-cairo font-noto-emoji
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
-		aisleriot aisleriot-lang
+		aisleriot aisleriot-lang earlyoom earlyoom-openrc
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
@@ -352,6 +352,8 @@ EOF
 /usr/local/sbin/b8k-zram
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-zram.start"
+	install -m 644 "$REPO/linux-port/rootfs/earlyoom.conf" "$ROOT/etc/conf.d/earlyoom"
+	ln -sfn /etc/init.d/earlyoom "$ROOT/etc/runlevels/default/earlyoom"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-netwatch" "$ROOT/usr/local/sbin/b8k-netwatch"
 	cat > "$ROOT/etc/local.d/b8k-netwatch.start" <<'EOF'
 #!/bin/sh

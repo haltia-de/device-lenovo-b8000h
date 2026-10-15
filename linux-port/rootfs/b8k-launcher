@@ -31,9 +31,7 @@ if [ -x /usr/local/bin/b8k-keyboard ]; then
 elif [ -x /usr/bin/squeekboard ]; then
 	squeekboard >"$run"/squeekboard.log 2>&1 &
 fi
-# Firefox opens with the shell, on the default Firefox home page.
-if [ -x /usr/local/bin/b8k-launch ]; then
-	pidof firefox >/dev/null 2>&1 || \
-		/usr/local/bin/b8k-launch start firefox
-fi
+# Firefox starts only from its button: running without a window it held
+# 300-500 MB, and once its WebExtensions process filled the swap and froze
+# the session.
 exec waybar
