@@ -22,6 +22,7 @@ state() {
 	[ "$cur" = "$1" ] && return
 	echo "$1" > "$dir/state.new" && mv "$dir/state.new" "$dir/state"
 	logger -t b8k-netwatch "network $1"
+	/usr/local/sbin/b8k-panel-signal 10
 }
 
 reload() {

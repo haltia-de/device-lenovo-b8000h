@@ -14,4 +14,7 @@ rmmod wmt 2>/dev/null
 sync
 echo freeze > /sys/power/state
 logger -t b8k-suspend "awake ($?)"
+# The panel shows the Wi-Fi gone at once; NetworkManager's dispatcher
+# signals it again when the network is back.
+/usr/local/sbin/b8k-panel-signal 10 &
 sh /etc/local.d/00-b8k-modules.start >/dev/null 2>&1 &

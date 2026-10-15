@@ -313,6 +313,9 @@ if [ "$UI_PROFILE" = phosh ]; then
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-speaker.conf" \
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths/b8k-speaker.conf"
+	install -d -m 755 "$ROOT/etc/pulse/daemon.conf.d"
+	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-daemon.conf" \
+		"$ROOT/etc/pulse/daemon.conf.d/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-splash" "$ROOT/usr/local/bin/b8k-splash"
@@ -342,6 +345,11 @@ start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
 	--pidfile /run/b8k-netwatch.pid --make-pidfile
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-netwatch.start"
+	# Panel refresh from root helpers, and the NetworkManager hook that uses it.
+	install -m 755 "$REPO/linux-port/rootfs/b8k-panel-signal" "$ROOT/usr/local/sbin/b8k-panel-signal"
+	install -d -m 755 "$ROOT/etc/NetworkManager/dispatcher.d"
+	install -m 755 "$REPO/linux-port/rootfs/nm-dispatcher-b8k-panel" \
+		"$ROOT/etc/NetworkManager/dispatcher.d/90-b8k-panel"
 	# The empty microSD slot polls for a card every second; switch it off.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sdslot" "$ROOT/usr/local/sbin/b8k-sdslot"
 	cat > "$ROOT/etc/local.d/b8k-sdslot.start" <<'EOF'

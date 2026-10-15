@@ -67,8 +67,10 @@ ed('arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts', '''/*
 # reading GPT6, never reaches it. That stopped a CPU's timer at the second
 # wrap (660 s): the haptic pulse never ended and the watchdog reset the
 # tablet. So before each event: read GPT6 to bring the high word up to
-# date, then cut the event short at H:ffffffff. A cut event only fires
-# early; the next programming, after the wrap, latches the new high word.
+# date, then end the event 5 ms before the wrap: the compare condition
+# holds only until the wrap, and an event on the last tick (the first
+# version, k23w) was missed at the 8th wrap. A cut event only fires early;
+# the next programming, after the wrap, latches the new high word.
 ed('drivers/clocksource/arm_arch_timer.c', '''static __always_inline void set_next_event(const int access, unsigned long evt,
 					   struct clock_event_device *clk)
 {
@@ -85,6 +87,7 @@ ed('drivers/clocksource/arm_arch_timer.c', '''static __always_inline void set_ne
 		cnt = __arch_counter_get_cntvct();
 ''', '''/* MT6589: the GPT block; reading GPT6 latches CNTPCT's high word. */
 static void __iomem *mt6589_gpt;
+#define MT6589_WRAP_GUARD	65000	/* 5 ms at 13 MHz */
 
 static __always_inline void set_next_event(const int access, unsigned long evt,
 					   struct clock_event_device *clk)
@@ -106,9 +109,22 @@ static __always_inline void set_next_event(const int access, unsigned long evt,
 	else
 		cnt = __arch_counter_get_cntvct();
 
-	/* Never past H:ffffffff, see mt6589_gpt above. */
-	if (mt6589_gpt && evt > 0xffffffffUL - (u32)cnt)
-		evt = 0xffffffffUL - (u32)cnt;
+	/*
+	 * Keep the event 5 ms clear of the wrap of the visible low word. The
+	 * compare condition only holds until the wrap (then the count is back
+	 * at H:0), so an event on the last tick was lost by a CPU that had
+	 * interrupts off at that moment: k23w hung at the 8th wrap. Within the
+	 * last 5 ms, fire at once; the CPU reprograms until the wrap has passed
+	 * and the GPT6 read above has moved the high word on.
+	 */
+	if (mt6589_gpt) {
+		u32 left = 0xffffffffU - (u32)cnt;
+
+		if (left <= MT6589_WRAP_GUARD)
+			evt = 0;
+		else if (evt > left - MT6589_WRAP_GUARD)
+			evt = left - MT6589_WRAP_GUARD;
+	}
 ''', 'mt6589_gpt + 0x78')
 
 ed('drivers/clocksource/arm_arch_timer.c', '''	arch_timer_c3stop = !of_property_read_bool(np, "always-on");

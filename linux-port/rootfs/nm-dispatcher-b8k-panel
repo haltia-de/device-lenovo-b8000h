@@ -1,0 +1,10 @@
+#!/bin/sh
+# NetworkManager dispatcher: refresh the panel's Wi-Fi icon and drawer
+# handle (signal 10) as soon as the Wi-Fi goes up or down, rather than at
+# their next 30 s poll; after a sleep the network is back in about 4 s.
+case "$1:$2" in
+wlan0:up|wlan0:down|wlan0:dhcp4-change|*:connectivity-change)
+	/usr/local/sbin/b8k-panel-signal 10
+	;;
+esac
+exit 0
