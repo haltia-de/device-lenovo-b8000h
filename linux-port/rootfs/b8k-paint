@@ -10,7 +10,7 @@ bottom has one big button per number. Pick a colour, tap its cells.
   zoom out (down to the whole picture on screen), in small steps, "whole picture" (one
   tap fits the picture to the screen, the next one goes back to the
   same zoom and place), "where?" (puts the
-  nearest unpainted cell of the chosen colour in the middle), undo, full screen, and
+  nearest unpainted cell of the chosen colour in the middle), undo, and
   "look" (the finished picture while held). Drag to scroll.
 - A tap paints the whole connected area of that number at once (a
   large sky is one tap).
@@ -385,7 +385,7 @@ def paint_scaled(cr, image, cell):
     cr.restore()
 
 
-def draw_icon(cr, name, size, rgb, full=False):
+def draw_icon(cr, name, size, rgb):
     """Icons drawn on a 48x48 grid with round 4-unit strokes."""
     cr.save()
     cr.scale(size / 48.0, size / 48.0)
@@ -442,20 +442,6 @@ def draw_icon(cr, name, size, rgb, full=False):
         cr.line_to(22, 21)
         cr.close_path()
         cr.fill()
-    elif name == "full":
-        # Corners point out to go full screen, in to come back.
-        for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
-            cx, cy = 24 - sx * 18, 24 - sy * 18
-            if not full:
-                cr.move_to(cx, cy + sy * 11)
-                cr.line_to(cx, cy)
-                cr.line_to(cx + sx * 11, cy)
-            else:
-                ix, iy = cx + sx * 11, cy + sy * 11
-                cr.move_to(cx, iy)
-                cr.line_to(ix, iy)
-                cr.line_to(ix, cy)
-        cr.stroke()
     elif name == "look":
         cr.move_to(4, 24)
         cr.curve_to(14, 9, 34, 9, 44, 24)
@@ -692,8 +678,6 @@ class Paint:
         self.win.connect("destroy", self.quit)
         # Progress is written a moment after a tap; write it on the way out.
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self.quit)
-        self.full = False
-        self.win.connect("window-state-event", self.on_window_state)
         self.stack = Gtk.Stack()
         self.win.add(self.stack)
         self.board = None
@@ -873,12 +857,11 @@ class Paint:
         # how the screen looks.
         tools = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         tools.get_style_context().add_class("tools")
-        self.full_icon = None
         for name, action, gap in (("back", self.back, True), ("zoom-in", self.zoom_in, False),
                                   ("zoom-out", self.zoom_out, False),
                                   ("whole", self.whole, True), ("find", self.find, False),
                                   ("undo", self.board.undo_last, True),
-                                  ("full", self.toggle_full, False), ("look", None, False)):
+                                  ("look", None, False)):
             tools.pack_start(self.tool(name, action), False, False, 0)
             if gap:
                 tools.pack_start(Gtk.Box(), True, True, 0)
@@ -943,13 +926,11 @@ class Paint:
         def draw(widget, cr):
             cr.translate((widget.get_allocated_width() - 48) / 2,
                          (widget.get_allocated_height() - 48) / 2)
-            draw_icon(cr, name, 48, rgb, self.full)
+            draw_icon(cr, name, 48, rgb)
             return False
 
         icon.connect("draw", draw)
         b.add(icon)
-        if name == "full":
-            self.full_icon = icon
         if name == "whole":
             self.whole_button = b
         if action:
@@ -1045,18 +1026,6 @@ class Paint:
     def forget_whole(self):
         self.whole_back = None
         self.whole_button.get_style_context().remove_class("on")
-
-    def toggle_full(self):
-        if self.full:
-            self.win.unfullscreen()
-        else:
-            self.win.fullscreen()
-
-    def on_window_state(self, _win, event):
-        self.full = bool(event.new_window_state & Gdk.WindowState.FULLSCREEN)
-        if self.board and self.full_icon:
-            self.full_icon.queue_draw()
-        return False
 
     def choose(self, number):
         self.board.set_chosen(number)
