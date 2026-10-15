@@ -3,9 +3,9 @@
 
 Kernel suspend is not used. The DSI panel is left in the bootloader video
 mode and the Wi-Fi driver's suspend path does nothing, so a real sleep
-does not come back. A press of the power key turns the lamp off or on at
-once; holding it for two seconds turns it on again and opens the power
-menu (b8k-ask power) in the user's session.
+does not come back. A short press of the power key turns the lamp off or
+on when the key is released; holding it for two seconds opens the power
+menu (b8k-ask power) in the user's session instead.
 
 The key shares its input device with Home. The device is grabbed so
 elogind cannot power the tablet off, and Home is passed through.
@@ -208,6 +208,16 @@ SESSION_VARS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"
                 "LANG", "NO_AT_BRIDGE", "GTK_A11Y")
 
 
+def session_user():
+    # desktop.start runs the session as this user, or as root without it.
+    try:
+        name = open("/etc/b8k/session-user").read().strip()
+        pwd.getpwnam(name)
+        return name
+    except (OSError, KeyError):
+        return "root"
+
+
 def session_env():
     """Environment, uid and gid of the session, taken from its panel.
 
@@ -238,6 +248,8 @@ def session_env():
             user = pwd.getpwuid(st.st_uid)
         except KeyError:
             continue
+        if user.pw_name != session_user():
+            continue
         env.update(HOME=user.pw_dir, USER=user.pw_name, LOGNAME=user.pw_name,
                    PATH="/usr/local/bin:/usr/bin:/bin")
         return env, st.st_uid, st.st_gid
@@ -253,6 +265,12 @@ def as_session_user(argv):
     groups = os.getgrouplist(env["USER"], gid)
 
     def demote():
+        # Drop the handler's raised priority before the user's program runs.
+        try:
+            os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+        except (OSError, AttributeError):
+            pass
+        os.setpriority(os.PRIO_PROCESS, 0, 0)
         os.setgroups(groups)
         os.setgid(gid)
         os.setuid(uid)
@@ -366,7 +384,6 @@ def listen():
             left = LONG_PRESS - (time.monotonic() - down)
             if left <= 0 or not select.select([power], [], [], left)[0]:
                 down = None
-                # The press already toggled the lamp; the menu needs it on.
                 if lamp.asleep:
                     lamp.wake()
                 power_menu()
@@ -375,13 +392,14 @@ def listen():
         if ev.type == EV_KEY and ev.code == KEY_POWER:
             now = time.monotonic()
             if ev.value == 1:
-                # Act at once on the press; a hold then opens the menu.
                 if now - last >= 0.4:
-                    last = now
                     down = now
-                    lamp.press()
-            elif ev.value == 0:
+            elif ev.value == 0 and down is not None:
+                # A short press acts on release, so a hold for the menu
+                # leaves the screen alone.
                 down = None
+                last = now
+                lamp.press()
             continue
         if home is None or not grabbed:
             continue
