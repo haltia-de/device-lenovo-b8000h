@@ -11,7 +11,7 @@
     "custom/max",
     "custom/term"
   ],
-  "modules-right": ["custom/volume", "custom/wifi3", "custom/battery", "custom/clock"],
+  "modules-right": ["custom/brightness", "custom/volume", "custom/wifi3", "custom/battery", "custom/clock"],
   "custom/firefox": {
     "exec": "/usr/local/bin/b8k-launch status firefox",
     "return-type": "json",
@@ -64,6 +64,11 @@
     "signal": 3,
     "exec-on-event": false,
     "on-click": "/usr/local/bin/b8k-launch tap term",
+    "tooltip": false
+  },
+  "custom/brightness": {
+    "format": " ",
+    "on-click": "/usr/local/bin/b8k-brightness",
     "tooltip": false
   },
   "custom/volume": {

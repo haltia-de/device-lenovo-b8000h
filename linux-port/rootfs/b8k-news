@@ -26,9 +26,10 @@ SHOW = 24
 REFRESH_SEC = 30 * 60
 MONTHS = "янв фев мар апр май июн июл авг сен окт ноя дек".split()
 CSS = b"""
-window { background-color: #fafafa; }
+window { background-color: #e6e6e4; }
+list, row { background-color: #f2f2f0; }
 headerbar {
-  background-color: #ebebeb;
+  background-color: #dcdcda;
   background-image: none;
   border: none;
   box-shadow: none;

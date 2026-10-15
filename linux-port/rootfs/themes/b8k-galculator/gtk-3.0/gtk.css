@@ -1,5 +1,8 @@
 @import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
 
+/* b8k palette: the light content one step darker than Adwaita. */
+window, .background { background-color: #e6e6e4; }
+
 /* galculator puts new labels on =, ( and ) when it sets the mode, and
    those labels lose the button font from galculator.conf. */
 button.toggle label {

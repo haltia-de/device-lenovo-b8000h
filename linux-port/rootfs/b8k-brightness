@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+# Screen brightness: a large slider opened from the sun on the panel.
+# The level goes through logind (Session.SetBrightness), so no root is
+# needed; the dialog redraws while the slider moves, and that frame is
+# what makes the BLS take the new duty at once.
+import fcntl
+import os
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+
+BACKLIGHT = "mt6589-bls"
+SYSFS = "/sys/class/backlight/%s" % BACKLIGHT
+LOWEST = 10  # never black: the slider must stay visible
+
+CSS = b"""
+window { background-color: #242424; }
+label { color: #ffffff; font-size: 36px; }
+scale trough {
+  min-height: 24px;
+  border-radius: 12px;
+  background-color: #3a3a3a;
+  border: none;
+}
+scale highlight { background-color: #3584e4; border-radius: 12px; border: none; }
+scale slider {
+  min-width: 64px;
+  min-height: 64px;
+  border-radius: 32px;
+  background-color: #ffffff;
+  border: none;
+  box-shadow: none;
+}
+button {
+  font-size: 32px;
+  min-height: 92px;
+  border-radius: 16px;
+  background: #303030;
+  color: #ffffff;
+  border: none;
+  box-shadow: none;
+}
+"""
+
+
+def read_int(path, default):
+    try:
+        with open(path) as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return default
+
+
+def session_paths():
+    yield "/org/freedesktop/login1/session/auto"
+    sid = os.environ.get("XDG_SESSION_ID")
+    if sid:
+        # Object paths escape every byte that is not [A-Za-z0-9] as _xx.
+        esc = "".join(c if c.isalnum() else "_%02x" % ord(c) for c in sid)
+        yield "/org/freedesktop/login1/session/" + esc
+
+
+class Brightness:
+    def __init__(self):
+        self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.path = None
+        self.pending = None
+
+    def set(self, level):
+        args = GLib.Variant("(ssu)", ("backlight", BACKLIGHT, int(level)))
+        paths = [self.path] if self.path else list(session_paths())
+        for path in paths:
+            try:
+                self.bus.call_sync("org.freedesktop.login1", path,
+                                   "org.freedesktop.login1.Session",
+                                   "SetBrightness", args, None,
+                                   Gio.DBusCallFlags.NONE, -1, None)
+                self.path = path
+                return
+            except GLib.Error as exc:
+                sys.stderr.write("b8k-brightness: %s: %s\n" % (path, exc.message))
+
+
+def main():
+    lock = open(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+                             "b8k-brightness.lock"), "a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return 0
+
+    top = read_int(SYSFS + "/max_brightness", 255)
+    now = read_int(SYSFS + "/brightness", top // 2)
+    light = Brightness()
+
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    win = Gtk.Window(title="Яркость")
+    win.set_decorated(False)
+    win.set_default_size(860, 520)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+    box.set_margin_top(36)
+    box.set_margin_bottom(28)
+    box.set_margin_start(40)
+    box.set_margin_end(40)
+    title = Gtk.Label(label="Яркость")
+    box.pack_start(title, False, False, 0)
+
+    scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, LOWEST, top, 1)
+    scale.set_draw_value(False)
+    scale.set_value(max(LOWEST, now))
+    box.pack_start(scale, True, True, 0)
+
+    def apply():
+        light.set(scale.get_value())
+        light.pending = None
+        return False
+
+    def changed(_scale):
+        # Coalesce a drag into one call every 60 ms.
+        if light.pending is None:
+            light.pending = GLib.timeout_add(60, apply)
+
+    scale.connect("value-changed", changed)
+
+    done = Gtk.Button(label="Готово")
+    done.connect("clicked", lambda _b: Gtk.main_quit())
+    box.pack_start(done, False, False, 0)
+
+    win.connect("destroy", Gtk.main_quit)
+    win.add(box)
+    win.show_all()
+    Gtk.main()
+    if light.pending is not None:
+        apply()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -7,14 +7,14 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-news,
 #custom-max,
 #custom-term {
-  min-height: 30px;
-  margin: 3px 4px;
-  padding-top: 50px;
+  min-height: 26px;
+  margin: 2px 4px;
+  padding-top: 46px;
   border-radius: 12px;
   background-color: #303030;
   background-repeat: no-repeat;
   background-position: center 4px;
-  background-size: 44px 44px;
+  background-size: 40px 40px;
 }
 #custom-firefox { background-image: url("/usr/share/icons/hicolor/64x64/apps/firefox.png"); }
 #custom-calc { background-image: url("/usr/share/icons/hicolor/scalable/apps/galculator.svg"); }
@@ -50,8 +50,18 @@ window#waybar { background: #242424; color: #ffffff; }
   background-color: #3584e4;
   color: #ffffff;
 }
+#custom-brightness {
+  min-height: 42px;
+  margin: 2px 4px;
+  padding: 0;
+  background-color: #242424;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 40px 40px;
+  background-image: url("/usr/local/share/b8k/brightness.svg");
+}
 #custom-volume {
-  min-height: 48px;
+  min-height: 42px;
   margin: 2px 4px;
   padding: 0;
   background-color: #242424;
@@ -66,7 +76,7 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-volume.v4 { background-image: url("/usr/local/share/b8k/vol-4.svg"); }
 #custom-wifi3,
 #custom-battery {
-  min-height: 44px;
+  min-height: 40px;
   margin: 2px 4px;
   padding: 0;
   background-color: #242424;
@@ -94,5 +104,5 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-clock {
   font-size: 18px;
   font-weight: bold;
-  padding: 6px 0 10px;
+  padding: 2px 0 6px;
 }
