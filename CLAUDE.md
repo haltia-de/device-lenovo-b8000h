@@ -14,6 +14,13 @@ There is no test suite, no linter and no CI. A change is verified by building th
 - **USB serial (development rootfs only):** `/dev/ttyACM0` on the host is a raw root shell (`acm-shell` on `ttyGS0`). It has no prompt or echo, so wrap each command between marker lines. The host user needs `dialout` group membership or an ACL. `make-release-rootfs.sh` removes this shell.
 - **Running things in the session:** run them as `user` with the environment of the `waybar` process (`/proc/<pid>/environ`: `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `DBUS_*`). `grim` takes screenshots. `b8k-launch start <id>` opens programs.
 - **Power:** a failed `reboot` used to leave the tablet off; that is fixed by `b8k-wdt-exrst`. After `poweroff` with USB attached, LK shows the charging animation and stays off. Either way the user must press Power to bring it back, so ask before you power the tablet off.
+- **Gotchas:**
+  - The Python helpers run as `python3 /usr/local/bin/<name>`, so `pkill -x <name>` and `killall <name>` miss them. Find the pid with `ps -o pid,args`.
+  - `pkill -f <pattern>` run over SSH also matches the remote shell that runs it, and kills your own command.
+  - Killing `waybar` restarts the whole session and closes all programs. `kill -USR2 $(pidof waybar)` reloads its config and CSS in place.
+  - Children of `b8k-launcher` that exit become zombies, because it `exec`s into waybar, which does not reap them. `pidof` still lists them.
+  - Only one `wvkbd` may run: a second input-method client makes phoc misbehave.
+  - The USB ACM console does not come back after s2idle, and the host ACL on `/dev/ttyACM0` is lost when the device re-enumerates.
 
 ## Build pipeline
 
@@ -46,7 +53,7 @@ The build is not fully automated. `docs/INSTALL.md` §0 is the authoritative ste
 
 ## Tablet shell
 
-The session in `/etc/local.d/desktop.start` runs `phoc-gpu ... -E b8k-launcher` in a restart loop. `b8k-launcher` starts the wallpaper, the keyboard (`b8k-keyboard` → `wvkbd-b8k`), `b8k-focus watch` and finally `exec waybar`. If waybar dies, the whole session restarts. `docs/shell.md` (Russian) describes the shell in full. The parts that span files:
+The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b8k/phoc.ini -E b8k-launcher` in a restart loop. `b8k-launcher` sets `NO_AT_BRIDGE`/`GTK_A11Y`, restores the brightness (`b8k-brightness --restore`), and starts the volume keys (`b8k-volume`), the keyboard (`b8k-keyboard` → `wvkbd-b8k`) and `b8k-focus watch`. It ends with `exec waybar`. If waybar dies, the whole session restarts. The panel is 120px wide on the left edge. `docs/shell.md` (Russian) describes the shell in full, including the palette. The parts that span files:
 
 - **Buttons and state.**
   - Program button ids (`firefox calc weather news max term settings`) are repeated in `waybar/config`, `b8k-launch` (`label_of`/`url_of`/`bin_of`/`aliases_of`), `b8k-focus` (`BUTTONS` with signal numbers) and `b8k-ask` (`NAMES`/`ALIASES`). Change all of them together.
@@ -55,9 +62,23 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu ... -E b8k-launcher` 
   - `firefox/b8k-webapp.js` runs in Firefox through autoconfig. It picks up URLs that `b8k-launch` writes to `$XDG_RUNTIME_DIR/b8k-webapp.d/` and opens them in chromeless windows.
   - Its `ALLOW` keys must match `url_of` in `b8k-launch` exactly. `HOSTS` limits each window to its own site; foreign pages move to a normal window.
 - **Runtime files** go to `$XDG_RUNTIME_DIR`, which `pam_elogind` sets up through `b8k-session`. Never use `/tmp`.
-- **Power.**
+- **Layers.**
+  - waybar stays on the `top` layer. The keyboard runs on `bottom` (`--wayland-layer bottom`). Then phoc arranges the panel first, and the keyboard gets the width right of it.
+  - With the keyboard on `top`, it squeezed the left panel to 440px. waybar asked for 800px again, and phoc looped (`Timeout ... configures pending` in the log), so the keyboard never appeared.
+  - Moving waybar to `overlay` blanked the screen.
+- **Dialogs** (`b8k-ask`, `b8k-brightness`) are undecorated dark windows.
+  - Once mapped, each asks `b8k-focus activate <app_id>` to raise it. A second launch, which finds the lock taken, raises the open one, because a dialog opened during boot could end up under Firefox.
+  - Their GTK CSS must request `Gdk` 3.0 explicitly: GTK4 is installed too.
+- **Power key** (`b8k-sleep.py`, root, nice -10).
+  - A short press toggles the backlight on release. A one-second hold opens `b8k-ask power`. 30 s after the screen goes off, `b8k-suspend` runs s2idle.
+  - BLS latches a new PWM duty only at the start of a frame, so after each change the handler runs `grim` into `/dev/null` to make phoc draw one.
+  - Programs for the session start with the uid and an allowlisted environment of the real `/usr/bin/waybar` process. That uid must belong to `/etc/b8k/session-user`.
   - `b8k-ask power` calls `doas -n /usr/local/sbin/b8k-poweroff off|reboot`. The doas rule is written by `make-release-rootfs.sh`.
-  - The power key only toggles the backlight (`b8k-sleep.py`), because suspend does not resume the panel or Wi-Fi.
+- **Brightness and volume.**
+  - `b8k-brightness` sets the level through logind `Session.SetBrightness` and keeps it in `~/.config/b8k/brightness`.
+  - `b8k-volume` steps the PulseAudio sink by 5% (at most 100%) and signals the panel's volume module with `SIGRTMIN+8`.
+  - The hardware `Speaker` gain is pinned at step 7 by a PulseAudio profile set (`rootfs/pulse/`, selected by a udev rule), because steps 0–2 crackle.
+- **Palette.** The frame is dark and the content light, in GNOME/libadwaita colours with the accent `#3584e4`. The palette table in `docs/shell.md` lists every file that repeats it. The keyboard colours are compiled into `wvkbd/config.b8k.h`.
 
 ## Architecture constraints that span files
 
@@ -66,9 +87,11 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu ... -E b8k-launcher` 
 - **Display path.** The display uses mediatek-drm over DSI and takes over the LK-initialized pipeline (patches 0017–0036: OVL/RDMA FIFO, BLS backlight, CRTC kept on across DPMS, cached dumb buffers). Runtime tuning such as the RDMA FIFO threshold lives in `linux-port/rootfs/b8k-rdma-fifo.py`. `docs/scroll-tear.md` explains why.
 - **CPU frequency.** The CPU runs at up to 1209 MHz (vproc 1.2 V). An old 806 MHz cap (`00-b8k-stability.start`) was never part of the build and is gone. There is no thermal zone and no thermal throttling, so watch for heat under long load.
 - **Reboot.** `mtk_wdt_restart` resets through TOPRGU (`0x10000000`), leaving `WDT_MODE` as LK set it (`0x79`). Without `EXRST_EN` (bit 2) the preloader keeps the tablet off. `rootfs/b8k-wdt-exrst` sets the bit at boot, and a successful reboot shows `boot_reason=4` in `/proc/cmdline`. Access `/dev/mem` there with 32-bit reads and writes only: a byte store raises a bus error.
-- **Wi-Fi hangs.** `wlan_mt6628` sometimes stops passing traffic during large transfers (an scp of a few MB) while the link stays up. `rootfs/b8k-netwatch` pings the gateway and reloads the driver once; the panel shows `wifi-x.svg`. Copy big files to the tablet over SSH in pieces of about 128 KB with pauses. Pushing base64 through the ACM shell lost data.
+- **Wi-Fi hangs.** `wlan_mt6628` sometimes stops passing traffic during large transfers (an scp of a few MB) while the link stays up. `rootfs/b8k-netwatch` pings the gateway and reloads the driver once; the panel shows `wifi-x.svg`. It also reloads once when the link has been gone for a minute with Wi-Fi switched on. Copy big files to the tablet over SSH in pieces of about 128 KB with pauses. Pushing base64 through the ACM shell lost data.
+- **Sleep.** Only s2idle exists (there is no SPM code for MT6589, so no `deep`). The screen and touch survive it. The power key's PMIC IRQ wakes the tablet (`wakeup-source` in `mt6320.dtsi`). `wlan_mt6628` does not survive it, so `b8k-suspend` unloads `wlan_mt6628` and `wmt` before the sleep and reloads them after. bq24190 logs harmless "Transfer while suspended" warnings.
+- **Memory.** Kernel 23 has zram. `b8k-zram` makes 512 MB of lz4 swap at boot, with `swappiness` 100.
 - **Wi-Fi MAC.** Without Android NVRAM, `wlan_mt6628` builds its MAC from the timer, and the MAC cannot be changed after the module loads. The module takes a `mac=` parameter, which the boot script derives from `/etc/machine-id`.
-- GPU module sets are keyed by kernel build number (`/root/kN`, e.g. `K=k22` in `make-release-rootfs.sh`). `g3-run.sh` picks the set that matches the running kernel.
+- GPU module sets are keyed by kernel build number: `/usr/lib/b8k/kN` (the old development tablet used `/root/kN`). `b8k-gpu` and `g3-run.sh` pick the set that matches the running kernel, and `make-release-rootfs.sh` keeps every set it finds.
 
 ## Windows tooling
 

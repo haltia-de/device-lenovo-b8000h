@@ -19,7 +19,6 @@ OUT=$3
 AUDIT=${4:-}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 R=/opt/b8000h/release-root
-K=k22		# GPU module set (kernel build 22)
 
 PAT=$(mktemp)	# audit patterns, removed at exit
 trap 'rm -f "$PAT"' EXIT
@@ -37,10 +36,19 @@ cat "$R"/etc/NetworkManager/system-connections/* 2>/dev/null |
 	sed -n 's/^\(ssid\|psk\|password\)=//p' | sort -u > "$PAT"
 [ -z "$AUDIT" ] || grep -v '^$' "$AUDIT" >> "$PAT"
 
-# --- GPU files that live in /root on the development tablet -------------
+# --- GPU module sets: /usr/lib/b8k/kN, one per kernel build -------------
+# The old development tablet kept them in /root/kN; an installed system
+# already has them in /usr/lib/b8k. Keep every set, so each boot.img that
+# matches one still boots.
 install -d "$R/usr/lib/b8k"
-cp -a "$R/root/$K" "$R/usr/lib/b8k/$K"
-rm -f "$R/usr/lib/b8k/$K"/*.tar.gz
+for d in "$R"/root/k[0-9]*; do
+	[ -d "$d" ] && cp -a "$d" "$R/usr/lib/b8k/"
+done
+ls -d "$R"/usr/lib/b8k/k[0-9]* >/dev/null 2>&1 || {
+	echo "no GPU module set (/usr/lib/b8k/kN or /root/kN) in $TAR" >&2
+	exit 1
+}
+rm -f "$R"/usr/lib/b8k/k[0-9]*/*.tar.gz
 install -m 755 "$REPO/linux-port/gpu/pvr-run.sh" "$R/usr/lib/b8k/pvr-run.sh"
 install -m 755 "$REPO/linux-port/gpu/b8k-gpu.initd" "$R/etc/init.d/b8k-gpu"
 install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
