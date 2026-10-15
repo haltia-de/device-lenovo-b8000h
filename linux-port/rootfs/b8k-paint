@@ -85,6 +85,31 @@ window, .paint-bg { background-color: #e6e6e4; }
 .card { padding: 10px; }
 .card label { font-size: 24px; color: #2e3436; }
 .card label.progress { font-size: 20px; color: #77767b; }
+button.reset {
+  font-size: 22px;
+  min-height: 56px;
+  border-radius: 14px;
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  color: #2e3436;
+}
+.confirm { background-color: #f2f2f0; }
+.confirm label { font-size: 30px; color: #2e3436; }
+.confirm button {
+  font-size: 28px;
+  min-height: 110px;
+  border-radius: 16px;
+  background-image: none;
+  box-shadow: none;
+  background-color: #e6e6e4;
+  border: 1px solid #c0bfbc;
+  color: #2e3436;
+}
+.confirm button label { text-shadow: none; }
+.confirm button.danger { background-color: #c01c28; border-color: #a51d2d; }
+.confirm button.danger label { color: #ffffff; }
 label.section {
   font-size: 28px;
   font-weight: bold;
@@ -773,7 +798,52 @@ class Paint:
         button.add(inner)
         button.connect("clicked", lambda _b: self.open(pic))
         self.cards[pic["id"]] = button
-        return button
+        if not done:
+            return button
+        # A started or finished picture can be wiped and begun again.
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.pack_start(button, True, True, 0)
+        reset = Gtk.Button(label="↺  Начать заново")
+        reset.get_style_context().add_class("reset")
+        reset.connect("clicked", lambda _b: self.reset(pic))
+        box.pack_start(reset, False, False, 0)
+        return box
+
+    def reset(self, pic):
+        if not self.confirm("Стереть раскраску «%s»\nи начать заново?" % pic["name"], "Стереть"):
+            return
+        for path in (progress_path(pic), os.path.join(DATA, "thumbs", pic["id"] + ".png")):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        # The gallery comes back at this picture's card.
+        write_last(pic["id"])
+        self.show_gallery()
+
+    def confirm(self, question, yes):
+        """A large yes/no question; True when the first button is pressed."""
+        dialog = Gtk.Dialog(transient_for=self.win, modal=True)
+        dialog.set_decorated(False)
+        dialog.set_default_size(760, 440)
+        area = dialog.get_content_area()
+        area.get_style_context().add_class("confirm")
+        area.set_spacing(16)
+        area.set_border_width(28)
+        label = Gtk.Label(label=question)
+        label.set_justify(Gtk.Justification.CENTER)
+        area.pack_start(label, True, True, 0)
+        answer = []
+        for text, kind, value in ((yes, "danger", True), ("Отмена", "", False)):
+            b = Gtk.Button(label=text)
+            if kind:
+                b.get_style_context().add_class(kind)
+            b.connect("clicked", lambda _b, v=value: (answer.append(v), dialog.response(0)))
+            area.pack_start(b, False, False, 0)
+        area.show_all()
+        dialog.run()
+        dialog.destroy()
+        return bool(answer and answer[0])
 
     # board
     def open(self, pic):
