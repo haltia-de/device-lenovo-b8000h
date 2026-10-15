@@ -19,7 +19,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		foot grim
+		foot grim py3-pillow py3-cairo
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
@@ -298,6 +298,9 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-paint" "$ROOT/usr/local/bin/b8k-paint"
+	install -d -m 755 "$ROOT/usr/local/share/b8k/paint"
+	install -m 644 "$REPO"/linux-port/rootfs/paint/pictures/*.json "$ROOT/usr/local/share/b8k/paint/"
 	# Speaker: hardware gain fixed at the clean top step, software volume.
 	mkdir -p "$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets" \
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths" "$ROOT/etc/udev/rules.d"

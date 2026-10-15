@@ -9,7 +9,8 @@
     "custom/weather",
     "custom/news",
     "custom/max",
-    "custom/term"
+    "custom/term",
+    "custom/paint"
   ],
   "modules-right": [
     "custom/brightness",
@@ -70,6 +71,15 @@
     "signal": 3,
     "exec-on-event": false,
     "on-click": "/usr/local/bin/b8k-press term 3; /usr/local/bin/b8k-launch tap term",
+    "tooltip": false
+  },
+  "custom/paint": {
+    "exec": "/usr/local/bin/b8k-launch status paint",
+    "return-type": "json",
+    "format": "{text}",
+    "signal": 4,
+    "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-press paint 4; /usr/local/bin/b8k-launch tap paint",
     "tooltip": false
   },
   "custom/brightness": {

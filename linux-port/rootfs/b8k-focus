@@ -24,6 +24,7 @@ BUTTONS = (
     ("news", 6, ("b8k.News", "b8k-news")),
     ("max", 7, ()),
     ("term", 3, ("foot",)),
+    ("paint", 4, ("b8k-paint",)),
     ("settings", 0, ("org.gnome.Settings", "gnome-control-center")),
 )
 # The same invisible mark is written by b8k-webapp.js onto web-app windows.

@@ -18,6 +18,7 @@ label_of() {
 		news) echo Новости ;;
 		max) echo MAX ;;
 		term) echo Терминал ;;
+		paint) echo Раскраска ;;
 		settings) echo Настройки ;;
 		*) return 1 ;;
 	esac
@@ -38,6 +39,7 @@ bin_of() {
 		calc) echo galculator ;;
 		news) echo b8k-news ;;
 		term) echo foot ;;
+		paint) echo b8k-paint ;;
 		settings) echo gnome-control-center ;;
 		*) return 1 ;;
 	esac
@@ -49,6 +51,7 @@ aliases_of() {
 		calc) echo galculator Galculator ;;
 		news) echo b8k.News b8k-news ;;
 		term) echo foot ;;
+		paint) echo b8k-paint ;;
 		settings) echo org.gnome.Settings gnome-control-center ;;
 		*) return 1 ;;
 	esac
@@ -230,7 +233,7 @@ open)
 	done
 	;;
 *)
-	echo "usage: b8k-launch start|tap <firefox|calc|weather|news|max|term|settings>" >&2
+	echo "usage: b8k-launch start|tap <firefox|calc|weather|news|max|term|paint|settings>" >&2
 	exit 2
 	;;
 esac

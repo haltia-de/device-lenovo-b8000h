@@ -1,0 +1,685 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""Colour by number in large cells, made for an older player.
+
+A picture is a grid of cells, each with a number; the palette at the
+bottom has one big button per number. Pick a colour, tap its cells.
+- Cells of the chosen number are tinted and their numbers bold, so they
+  are easy to find; a cell of another number cannot be painted.
+- Zoom with the + and - buttons and drag to scroll: one finger is enough.
+- A tap paints the whole connected area of that number at once (a
+  large sky is one tap); the "Клетка" mode paints one cell per tap.
+- Every tap gives a short buzz; there is no timer, no score, no ads.
+- Progress is saved after every cell, so a picture can wait for tomorrow;
+  the program starts on the last picture, unless it is finished, and the
+  gallery opens at that picture's card.
+
+The gallery runs from easy to hard as it scrolls down: level 1 has
+16x12 cells and five colours, level 2 32x24 cells, levels 3 and 4 are
+paintings in 32 and 48 cells across with up to 10 and 14 colours.
+
+Pictures: the built-in ones in /usr/local/share/b8k/paint/, and any photo
+put into ~/Раскраски (JPEG or PNG), which is turned into a picture of at
+most 32 cells across and 10 colours the first time it is opened.
+"""
+import fcntl
+import hashlib
+import json
+import os
+import struct
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("Pango", "1.0")
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+
+BUILTIN = "/usr/local/share/b8k/paint"
+PHOTOS = os.path.expanduser("~/Раскраски")
+DATA = os.path.expanduser("~/.local/share/b8k-paint")
+DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+LEVELS = (
+    (1, "Лёгкие — крупные клетки"),
+    (2, "Средние"),
+    (3, "Сложные — картины"),
+    (4, "Очень сложные — большие картины"),
+    (5, "Мои фотографии"),
+)
+THEMES = ("Природа", "Северная природа", "Флот", "Военный флот", "Животные")
+ZOOMS = (1.0, 1.4, 1.9, 2.6)  # times the cell size that fits the width
+MIN_CELL = 30
+
+CSS = b"""
+window, .paint-bg { background-color: #e6e6e4; }
+.bar { background-color: #dcdcda; padding: 8px; }
+.bar button, .card {
+  font-size: 26px;
+  min-height: 72px;
+  min-width: 96px;
+  border-radius: 14px;
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  color: #2e3436;
+}
+.bar label.title { font-size: 30px; font-weight: bold; color: #2e3436; }
+.card { padding: 10px; }
+.card label { font-size: 24px; color: #2e3436; }
+.card label.progress { font-size: 20px; color: #77767b; }
+label.section {
+  font-size: 28px;
+  font-weight: bold;
+  color: #2e3436;
+  margin: 24px 16px 12px 20px;
+}
+.swatch {
+  min-width: 104px;
+  min-height: 96px;
+  border-radius: 16px;
+  border: 4px solid #c0bfbc;
+  background-image: none;
+  box-shadow: none;
+  padding: 0;
+}
+.swatch.chosen { border: 8px solid #3584e4; }
+.swatch.done { opacity: 0.35; }
+.swatch label { font-size: 30px; font-weight: bold; }
+.swatch label.left { font-size: 18px; font-weight: normal; }
+.palette { background-color: #dcdcda; padding: 6px; }
+"""
+
+
+# --- haptics ----------------------------------------------------------------
+class Buzz:
+    """A short pulse on the regulator-haptic motor, set up once."""
+
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        self.effect = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                # struct ff_effect, 32-bit: type, id, direction, trigger,
+                # replay, then the rumble magnitudes and padding.
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+
+
+# --- pictures -----------------------------------------------------------------
+def photo_to_picture(path):
+    """Turn a photo into a grid picture; None when Pillow cannot read it."""
+    try:
+        from PIL import Image, ImageFilter, ImageOps
+    except ImportError:
+        return None
+    try:
+        img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    except OSError:
+        return None
+    w, h = img.size
+    cols = 32 if w >= h else 24
+    rows = max(8, round(cols * h / w))
+    if rows > 32:
+        rows = 32
+        cols = max(8, round(rows * w / h))
+    small = img.filter(ImageFilter.MedianFilter(5)).resize((cols, rows), Image.LANCZOS)
+    pal_img = small.quantize(colors=10, method=Image.Quantize.MEDIANCUT,
+                             dither=Image.Dither.NONE)
+    raw = pal_img.getpalette()[:30]
+    used = sorted(set(pal_img.getdata()))
+    colours = [tuple(raw[i * 3:i * 3 + 3]) for i in used]
+    # Light to dark, so number 1 is the lightest colour.
+    order = sorted(range(len(used)),
+                   key=lambda i: -(0.299 * colours[i][0] + 0.587 * colours[i][1]
+                                   + 0.114 * colours[i][2]))
+    remap = {used[i]: n for n, i in enumerate(order)}
+    palette = ["#%02x%02x%02x" % colours[i] for i in order]
+    data = list(pal_img.getdata())
+    grid = ["".join(DIGITS[remap[data[y * cols + x]]] for x in range(cols))
+            for y in range(rows)]
+    name = os.path.splitext(os.path.basename(path))[0]
+    return {"name": name, "level": 5, "w": cols, "h": rows, "palette": palette, "rows": grid}
+
+
+def load_pictures():
+    found = []
+    if os.path.isdir(BUILTIN):
+        for f in sorted(os.listdir(BUILTIN)):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(BUILTIN, f)) as fh:
+                        pic = json.load(fh)
+                except (OSError, ValueError):
+                    continue
+                pic["id"] = "builtin-" + f[:-5]
+                found.append(pic)
+    if os.path.isdir(PHOTOS):
+        cache = os.path.join(DATA, "photos")
+        os.makedirs(cache, exist_ok=True)
+        for f in sorted(os.listdir(PHOTOS)):
+            if not f.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            path = os.path.join(PHOTOS, f)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            key = hashlib.sha1(("%s|%d|%d" % (path, st.st_size, st.st_mtime)).encode()).hexdigest()[:16]
+            cached = os.path.join(cache, key + ".json")
+            pic = None
+            if os.path.exists(cached):
+                try:
+                    with open(cached) as fh:
+                        pic = json.load(fh)
+                except (OSError, ValueError):
+                    pic = None
+            if pic is None:
+                pic = photo_to_picture(path)
+                if pic is None:
+                    continue
+                with open(cached, "w") as fh:
+                    json.dump(pic, fh, ensure_ascii=False)
+            pic["id"] = "photo-" + key
+            pic["level"] = 5
+            found.append(pic)
+    for pic in found:
+        pic["cells"] = [[int(ch, 36) for ch in row] for row in pic["rows"]]
+    return found
+
+
+def progress_path(pic):
+    return os.path.join(DATA, "progress", pic["id"] + ".json")
+
+
+def load_progress(pic):
+    try:
+        with open(progress_path(pic)) as fh:
+            rows = json.load(fh)["filled"]
+        return [[ch == "1" for ch in row] for row in rows]
+    except (OSError, ValueError, KeyError):
+        return [[False] * pic["w"] for _ in range(pic["h"])]
+
+
+def save_progress(pic, filled):
+    path = progress_path(pic)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".new"
+    with open(tmp, "w") as fh:
+        json.dump({"filled": ["".join("1" if f else "0" for f in row) for row in filled]}, fh)
+    os.replace(tmp, path)
+
+
+def read_last():
+    try:
+        with open(os.path.join(DATA, "last")) as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def write_last(pic_id):
+    try:
+        os.makedirs(DATA, exist_ok=True)
+        with open(os.path.join(DATA, "last"), "w") as fh:
+            fh.write(pic_id)
+    except OSError:
+        pass
+
+
+def share_done(pic, filled):
+    total = pic["w"] * pic["h"]
+    done = sum(row.count(True) for row in filled)
+    return done, total
+
+
+def hex_rgb(colour):
+    return tuple(int(colour[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+
+
+def text_colour(colour):
+    r, g, b = hex_rgb(colour)
+    return (0.0, 0.0, 0.0) if 0.299 * r + 0.587 * g + 0.114 * b > 0.55 else (1.0, 1.0, 1.0)
+
+
+# --- the picture being painted ----------------------------------------------
+class Board(Gtk.DrawingArea):
+    def __init__(self, app, pic):
+        super().__init__()
+        self.app = app
+        self.pic = pic
+        self.filled = load_progress(pic)
+        self.chosen = 0
+        self.zoom = 0
+        self.cell = MIN_CELL
+        self.undo = []  # each entry: the cells one tap painted
+        self.wrong = None
+        self.by_area = True
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.TOUCH_MASK)
+        self.connect("draw", self.on_draw)
+        self.tap = Gtk.GestureMultiPress.new(self)
+        self.tap.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
+        self.tap.connect("released", self.on_tap)
+
+    def fit(self, width):
+        base = max(MIN_CELL, int(width / self.pic["w"]))
+        self.cell = int(base * ZOOMS[self.zoom])
+        self.set_size_request(self.cell * self.pic["w"], self.cell * self.pic["h"])
+        self.queue_draw()
+
+    def left(self, number):
+        return sum(1 for y in range(self.pic["h"]) for x in range(self.pic["w"])
+                   if self.pic["cells"][y][x] == number and not self.filled[y][x])
+
+    def on_draw(self, _widget, cr):
+        pic, s = self.pic, self.cell
+        pal = [hex_rgb(c) for c in pic["palette"]]
+        cr.select_font_face("Sans", 0, 1)
+        for y in range(pic["h"]):
+            for x in range(pic["w"]):
+                n = pic["cells"][y][x]
+                x0, y0 = x * s, y * s
+                if self.filled[y][x]:
+                    cr.set_source_rgb(*pal[n])
+                    cr.rectangle(x0, y0, s, s)
+                    cr.fill()
+                    continue
+                if n == self.chosen:
+                    # A light tint of the chosen colour marks where to tap.
+                    r, g, b = pal[n]
+                    cr.set_source_rgb(0.62 + 0.38 * r * 0.6, 0.62 + 0.38 * g * 0.6,
+                                      0.62 + 0.38 * b * 0.6)
+                else:
+                    cr.set_source_rgb(0.949, 0.949, 0.941)
+                cr.rectangle(x0, y0, s, s)
+                cr.fill()
+                cr.set_source_rgb(0.75, 0.75, 0.74)
+                cr.set_line_width(1)
+                cr.rectangle(x0 + 0.5, y0 + 0.5, s - 1, s - 1)
+                cr.stroke()
+                if s >= 22:
+                    label = str(n + 1)
+                    cr.set_font_size(s * (0.5 if n == self.chosen else 0.4))
+                    ext = cr.text_extents(label)
+                    if n == self.chosen:
+                        cr.set_source_rgb(0.18, 0.2, 0.21)
+                    else:
+                        cr.set_source_rgb(0.6, 0.6, 0.6)
+                    cr.move_to(x0 + (s - ext.width) / 2 - ext.x_bearing,
+                               y0 + (s - ext.height) / 2 - ext.y_bearing)
+                    cr.show_text(label)
+        if self.wrong:
+            wx, wy = self.wrong
+            cr.set_source_rgb(0.88, 0.11, 0.14)
+            cr.set_line_width(4)
+            cr.rectangle(wx * s + 2, wy * s + 2, s - 4, s - 4)
+            cr.stroke()
+        return False
+
+    def on_tap(self, _gesture, _n, px, py):
+        x, y = int(px // self.cell), int(py // self.cell)
+        if not (0 <= x < self.pic["w"] and 0 <= y < self.pic["h"]) or self.filled[y][x]:
+            return
+        if self.pic["cells"][y][x] != self.chosen:
+            self.wrong = (x, y)
+            self.queue_draw()
+            GLib.timeout_add(400, self.clear_wrong)
+            return
+        cells = self.area(x, y) if self.by_area else [(x, y)]
+        for cx, cy in cells:
+            self.filled[cy][cx] = True
+        self.undo.append(cells)
+        self.app.buzz()
+        self.queue_draw()
+        save_progress(self.pic, self.filled)
+        self.app.cell_painted(self.chosen)
+
+    def area(self, x, y):
+        """Unpainted cells of the same number connected to (x, y)."""
+        n = self.pic["cells"][y][x]
+        seen = {(x, y)}
+        todo = [(x, y)]
+        while todo:
+            cx, cy = todo.pop()
+            for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                if (0 <= nx < self.pic["w"] and 0 <= ny < self.pic["h"]
+                        and (nx, ny) not in seen and not self.filled[ny][nx]
+                        and self.pic["cells"][ny][nx] == n):
+                    seen.add((nx, ny))
+                    todo.append((nx, ny))
+        return sorted(seen)
+
+    def clear_wrong(self):
+        self.wrong = None
+        self.queue_draw()
+        return False
+
+    def undo_last(self):
+        if not self.undo:
+            return
+        cells = self.undo.pop()
+        for x, y in cells:
+            self.filled[y][x] = False
+        save_progress(self.pic, self.filled)
+        self.queue_draw()
+        x, y = cells[0]
+        self.app.cell_painted(self.pic["cells"][y][x])
+
+
+# --- the program ------------------------------------------------------------
+class Paint:
+    def __init__(self, open_id=None):
+        self.buzz = Buzz()
+        self.win = Gtk.Window(title="Раскраска")
+        self.win.set_default_size(1160, 800)
+        self.win.connect("destroy", Gtk.main_quit)
+        self.stack = Gtk.Stack()
+        self.win.add(self.stack)
+        self.board = None
+        self.swatches = []
+        self.show_gallery()
+        self.win.show_all()
+        open_id = open_id or read_last()
+        pic = next((p for p in load_pictures() if p["id"] == open_id), None)
+        if pic:
+            done, total = share_done(pic, load_progress(pic))
+            if done < total:
+                self.open(pic)
+
+    # gallery
+    def show_gallery(self):
+        self.cards = {}
+        old = self.stack.get_child_by_name("gallery")
+        if old:
+            self.stack.remove(old)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bar = Gtk.Box(spacing=12)
+        bar.get_style_context().add_class("bar")
+        title = Gtk.Label(label="Раскраски")
+        title.get_style_context().add_class("title")
+        bar.pack_start(title, True, True, 0)
+        box.pack_start(bar, False, False, 0)
+
+        # One section per level, easiest at the top.
+        sections = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        pictures = load_pictures()
+        for level, heading in LEVELS:
+            pics = sorted((p for p in pictures if p.get("level", 2) == level),
+                          key=lambda p: THEMES.index(p["theme"]) if p.get("theme") in THEMES
+                          else len(THEMES))
+            if not pics:
+                continue
+            label = Gtk.Label(label=heading, xalign=0)
+            label.get_style_context().add_class("section")
+            sections.pack_start(label, False, False, 0)
+            flow = Gtk.FlowBox()
+            flow.set_selection_mode(Gtk.SelectionMode.NONE)
+            flow.set_homogeneous(True)
+            flow.set_max_children_per_line(3)
+            flow.set_min_children_per_line(3)
+            flow.set_row_spacing(16)
+            flow.set_column_spacing(16)
+            flow.set_margin_start(16)
+            flow.set_margin_end(16)
+            flow.set_margin_bottom(8)
+            for pic in pics:
+                flow.add(self.card(pic))
+            sections.pack_start(flow, False, False, 0)
+        if not pictures:
+            sections.pack_start(Gtk.Label(label="Нет картинок"), True, True, 0)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_kinetic_scrolling(True)
+        scroll.add(sections)
+        box.pack_start(scroll, True, True, 0)
+        box.show_all()
+        self.stack.add_named(box, "gallery")
+        self.stack.set_visible_child_name("gallery")
+        # GTK scrolls to whichever card takes the focus; show the last
+        # picture's card instead, or the top.
+        self.win.set_focus(None)
+        GLib.timeout_add(150, self.scroll_to_last, scroll, sections)
+
+    def scroll_to_last(self, scroll, sections):
+        y = 0
+        card = self.cards.get(read_last())
+        if card:
+            pos = card.translate_coordinates(sections, 0, 0)
+            if pos:
+                y = max(0, pos[1] - 70)
+        scroll.get_vadjustment().set_value(y)
+        return False
+
+    def card(self, pic):
+        filled = load_progress(pic)
+        done, total = share_done(pic, filled)
+        thumb = Gtk.DrawingArea()
+        tw, th = 320, 220
+        cell = min(tw / pic["w"], th / pic["h"])
+        thumb.set_size_request(tw, th)
+
+        def draw(_w, cr):
+            cr.translate((tw - cell * pic["w"]) / 2, (th - cell * pic["h"]) / 2)
+            for y in range(pic["h"]):
+                for x in range(pic["w"]):
+                    r, g, b = hex_rgb(pic["palette"][pic["cells"][y][x]])
+                    if not filled[y][x] and done != total:
+                        # Still to paint: a pale version, so the picture shows.
+                        r, g, b = 0.72 + 0.28 * r, 0.72 + 0.28 * g, 0.72 + 0.28 * b
+                    cr.set_source_rgb(r, g, b)
+                    cr.rectangle(x * cell, y * cell, cell + 0.5, cell + 0.5)
+                    cr.fill()
+            return False
+
+        thumb.connect("draw", draw)
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        inner.pack_start(thumb, False, False, 0)
+        name = Gtk.Label(label=pic["name"])
+        name.set_line_wrap(True)
+        name.set_justify(Gtk.Justification.CENTER)
+        name.set_max_width_chars(18)
+        inner.pack_start(name, False, False, 0)
+        if pic.get("theme"):
+            theme = Gtk.Label(label=pic["theme"])
+            theme.get_style_context().add_class("progress")
+            inner.pack_start(theme, False, False, 0)
+        state = "Готово" if done == total else ("%d%%" % (100 * done // total) if done else "Новая")
+        prog = Gtk.Label(label=state)
+        prog.get_style_context().add_class("progress")
+        inner.pack_start(prog, False, False, 0)
+        button = Gtk.Button()
+        button.get_style_context().add_class("card")
+        button.add(inner)
+        button.connect("clicked", lambda _b: self.open(pic))
+        self.cards[pic["id"]] = button
+        return button
+
+    # board
+    def open(self, pic):
+        write_last(pic["id"])
+        old = self.stack.get_child_by_name("board")
+        if old:
+            self.stack.remove(old)
+        self.board = Board(self, pic)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        bar = Gtk.Box(spacing=10)
+        bar.get_style_context().add_class("bar")
+        for text, action in (("← Назад", self.back), ("−", self.zoom_out),
+                             ("+", self.zoom_in), ("Отменить", self.board.undo_last)):
+            b = Gtk.Button(label=text)
+            b.connect("clicked", lambda _b, a=action: a())
+            bar.pack_start(b, False, False, 0)
+        mode = Gtk.Button(label="Область")
+
+        def toggle(_b):
+            self.board.by_area = not self.board.by_area
+            mode.set_label("Область" if self.board.by_area else "Клетка")
+
+        mode.connect("clicked", toggle)
+        bar.pack_start(mode, False, False, 0)
+        name = Gtk.Label(label=pic["name"])
+        name.get_style_context().add_class("title")
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        bar.pack_start(name, True, True, 0)
+        look = Gtk.Button(label="Картинка")
+        look.connect("pressed", lambda _b: self.preview(True))
+        look.connect("released", lambda _b: self.preview(False))
+        bar.pack_end(look, False, False, 0)
+        box.pack_start(bar, False, False, 0)
+
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_kinetic_scrolling(True)
+        self.scroll.get_style_context().add_class("paint-bg")
+        holder = Gtk.Box()
+        holder.set_halign(Gtk.Align.CENTER)
+        holder.set_valign(Gtk.Align.START)
+        holder.pack_start(self.board, False, False, 0)
+        self.scroll.add(holder)
+        box.pack_start(self.scroll, True, True, 0)
+
+        pal_scroll = Gtk.ScrolledWindow()
+        pal_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        pal_scroll.set_kinetic_scrolling(True)
+        pal = Gtk.Box(spacing=8)
+        pal.get_style_context().add_class("palette")
+        self.swatches = []
+        for n, colour in enumerate(pic["palette"]):
+            b = Gtk.Button()
+            b.get_style_context().add_class("swatch")
+            prov = Gtk.CssProvider()
+            prov.load_from_data((".swatch { background-color: %s; }" % colour).encode())
+            b.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+            fg = "#000000" if text_colour(colour) == (0.0, 0.0, 0.0) else "#ffffff"
+            lab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            num = Gtk.Label()
+            num.set_markup('<span foreground="%s">%d</span>' % (fg, n + 1))
+            left = Gtk.Label()
+            left.get_style_context().add_class("left")
+            lab.pack_start(num, True, True, 0)
+            lab.pack_start(left, False, False, 0)
+            b.add(lab)
+            b.connect("clicked", lambda _b, k=n: self.choose(k))
+            pal.pack_start(b, False, False, 0)
+            self.swatches.append((b, left, fg))
+        pal_scroll.add(pal)
+        box.pack_start(pal_scroll, False, False, 0)
+
+        box.show_all()
+        self.stack.add_named(box, "board")
+        self.stack.set_visible_child_name("board")
+        GLib.idle_add(self.fit)
+        first = next((n for n in range(len(pic["palette"])) if self.board.left(n)), 0)
+        self.choose(first)
+
+    def fit(self):
+        width = self.scroll.get_allocated_width() - 8
+        if width > 50:
+            self.board.fit(width)
+        return False
+
+    def zoom_in(self):
+        if self.board.zoom < len(ZOOMS) - 1:
+            self.board.zoom += 1
+            self.fit()
+
+    def zoom_out(self):
+        if self.board.zoom > 0:
+            self.board.zoom -= 1
+            self.fit()
+
+    def choose(self, number):
+        self.board.chosen = number
+        self.board.queue_draw()
+        self.refresh_swatches()
+
+    def refresh_swatches(self):
+        for n, (b, left, fg) in enumerate(self.swatches):
+            count = self.board.left(n)
+            left.set_markup('<span foreground="%s">%s</span>' % (fg, "✓" if count == 0 else str(count)))
+            ctx = b.get_style_context()
+            (ctx.add_class if n == self.board.chosen else ctx.remove_class)("chosen")
+            (ctx.add_class if count == 0 else ctx.remove_class)("done")
+
+    def cell_painted(self, number):
+        if self.board.left(number) == 0:
+            nxt = next((n for n in range(len(self.board.pic["palette"]))
+                        if self.board.left(n)), None)
+            if nxt is None:
+                self.refresh_swatches()
+                self.finished()
+                return
+            if number == self.board.chosen:
+                self.choose(nxt)
+                return
+        self.refresh_swatches()
+
+    def preview(self, on):
+        # While "Картинка" is held, the board shows the finished picture.
+        if not self.board:
+            return
+        if on:
+            self.saved_filled = self.board.filled
+            self.board.filled = [[True] * self.board.pic["w"] for _ in range(self.board.pic["h"])]
+        elif getattr(self, "saved_filled", None) is not None:
+            self.board.filled = self.saved_filled
+            self.saved_filled = None
+        self.board.queue_draw()
+
+    def finished(self):
+        dialog = Gtk.MessageDialog(transient_for=self.win, modal=True,
+                                   message_type=Gtk.MessageType.INFO,
+                                   buttons=Gtk.ButtonsType.OK, text="Готово!")
+        dialog.format_secondary_text("Картинка раскрашена.")
+        dialog.run()
+        dialog.destroy()
+        self.back()
+
+    def back(self):
+        self.board = None
+        self.show_gallery()
+
+
+def main():
+    run = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
+    lock = open(os.path.join(run, "b8k-paint.lock"), "a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return 0
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    os.makedirs(PHOTOS, exist_ok=True)
+    # --open ID goes straight to one picture (for testing).
+    open_id = sys.argv[2] if sys.argv[1:2] == ["--open"] and len(sys.argv) > 2 else None
+    Paint(open_id)
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
