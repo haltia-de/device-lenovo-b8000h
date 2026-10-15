@@ -140,6 +140,7 @@ int main(int argc, char **argv)
 {
 	const char *run = getenv("XDG_RUNTIME_DIR");
 	char dir[256], mark[512];
+	struct stat st;
 	int sig, fd;
 
 	if (argc < 2 || !argv[1][0] || strchr(argv[1], '/')) {
@@ -147,10 +148,21 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	sig = argc > 2 ? atoi(argv[2]) : 0;
-	if (!run || !run[0])
-		run = "/tmp";
+	/*
+	 * The mark lives only in the user's own runtime directory: no /tmp
+	 * fallback, and the b8k-press directory must be a real directory of
+	 * this user, so nobody can point the mark or its unlink elsewhere.
+	 */
+	if (!run || run[0] != '/') {
+		buzz();
+		return 0;
+	}
 	snprintf(dir, sizeof(dir), "%s/b8k-press", run);
 	mkdir(dir, 0700);
+	if (lstat(dir, &st) || !S_ISDIR(st.st_mode) || st.st_uid != getuid()) {
+		buzz();
+		return 0;
+	}
 	snprintf(mark, sizeof(mark), "%s/%s", dir, argv[1]);
 
 	fd = open(mark, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
