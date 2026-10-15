@@ -137,7 +137,8 @@ static struct key keys_cyrillic[] = {
 	{"", "", 0.0, Last},
 };
 
-/* Row sum 11. Enter stays square: a foot here would cover symbols. */
+/* Row sum 11. Enter stays square: a foot here would cover symbols.
+ * Tab, Esc and Ctrl are for the terminal. */
 static struct key keys_numbers[] = {
 	{"1", "1", 1.0, Code, KEY_1},
 	{"2", "2", 1.0, Code, KEY_2},
@@ -162,7 +163,7 @@ static struct key keys_numbers[] = {
 	{"@", "@", 1.0, Code, KEY_2, 0, Shift},
 	{"(", "(", 1.0, Code, KEY_9, 0, Shift},
 	{")", ")", 1.0, Code, KEY_0, 0, Shift},
-	{"", "", 1.0, Pad},
+	{"Tab", "Tab", 1.0, Code, KEY_TAB, .scheme = 1},
 	{"", "", 0.0, EndRow},
 
 	{",", ",", 1.0, Code, KEY_COMMA},
@@ -175,10 +176,12 @@ static struct key keys_numbers[] = {
 	{"$", "$", 1.0, Code, KEY_4, 0, Shift},
 	{"&", "&", 1.0, Code, KEY_7, 0, Shift},
 	{"*", "*", 1.0, Code, KEY_8, 0, Shift},
-	{"", "", 1.0, Pad},
+	{"Esc", "Esc", 1.0, Code, KEY_ESC, .scheme = 1},
 	{"", "", 0.0, EndRow},
 
-	{"АБВ", "АБВ", 2.0, BackLayer, .scheme = 1},
+	/* Ctrl holds for the next key, also after АБВ: Ctrl, АБВ, c is Ctrl+C. */
+	{"Ctrl", "Ctrl", 1.0, Mod, Ctrl, .scheme = 1},
+	{"АБВ", "АБВ", 1.0, BackLayer, .scheme = 1},
 	{"пробел", "пробел", 7.0, Code, KEY_SPACE},
 	{"↵", "↵", 1.0, Code, KEY_ENTER, .scheme = 1},
 	{"▼", "▼", 1.0, Hide, 0, .scheme = 2},
