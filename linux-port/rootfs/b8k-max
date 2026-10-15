@@ -14,11 +14,22 @@ and a chat (bubbles, photos, a large entry and a send button). New
 messages arrive live and buzz. PyMax runs in its own thread with an
 asyncio loop; every call from the window goes through run(), every answer
 comes back with GLib.idle_add.
+
+It lives in the background: b8k-launcher starts it with --background at
+session start, closing the window only hides it, and the panel's MAX
+button brings the same process back (one instance through D-Bus). The
+unread count of dialogs and groups (channels left out) goes to
+$XDG_RUNTIME_DIR/b8k-badge/max, which b8k-launch shows on the button, and
+the panel is told at once (SIGRTMIN+7). Chats open from a cache: the last
+messages of each chat on disk (~/.cache/b8k-max/chats, mode 600) and the
+last six chats kept built in memory; only newer messages are fetched.
 """
 import asyncio
 import fcntl
 import hashlib
+import json
 import os
+import signal
 import struct
 import sys
 import threading
@@ -45,6 +56,10 @@ HISTORY = 60  # messages loaded when a chat opens
 # elsewhere.
 PHOTO_HOSTS = ("oneme.ru", "max.ru")
 PHOTO_DAYS = 30  # cached photos older than this are removed
+CHATS = os.path.join(PHOTOS, "chats")  # message cache, one file per chat
+KEEP = 80  # messages kept per chat on disk
+VIEWS = 6  # chats kept built in memory
+PANEL_SIGNAL = 7  # the MAX button's waybar signal (apps.conf)
 MONTHS = "янв фев мар апр мая июн июл авг сен окт ноя дек".split()
 COLOURS = ((0.21, 0.52, 0.89), (0.15, 0.64, 0.41), (0.90, 0.38, 0.0), (0.57, 0.25, 0.67),
            (0.75, 0.11, 0.16), (0.10, 0.58, 0.62), (0.53, 0.36, 0.24))
@@ -385,11 +400,16 @@ class Backend:
                 chat.new_messages = 0
             except Exception:
                 pass
-        return [self.message(m) for m in msgs]
+        out = [self.message(m) for m in msgs]
+        cache_add(chat_id, out)
+        return out
 
     async def send(self, chat_id, text):
         msg = await self.client._app.api.messages.send_message(chat_id, text)
-        return self.message(msg) if msg else None
+        out = self.message(msg) if msg else None
+        if out:
+            cache_add(chat_id, [out])
+        return out
 
     async def read(self, chat_id, msg_id):
         await self.client._app.api.messages.read_message(msg_id, chat_id)
@@ -401,8 +421,92 @@ class Backend:
             chat.last_message = msg
             if msg.sender != self.me:
                 chat.new_messages = (chat.new_messages or 0) + 1
-        GLib.idle_add(self.ui.incoming, self.message(msg),
-                      self.summary(chat) if chat is not None else None)
+        out = self.message(msg)
+        if msg.chat_id is not None:
+            cache_add(msg.chat_id, [out])
+        GLib.idle_add(self.ui.incoming, out, self.summary(chat) if chat is not None else None)
+
+
+_cache_lock = threading.Lock()
+
+
+def cache_read(chat_id):
+    try:
+        with open(os.path.join(CHATS, "%d.json" % chat_id)) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+
+def cache_add(chat_id, msgs):
+    """Merge messages into the chat's cache file; the newest KEEP stay."""
+    if not msgs:
+        return
+    with _cache_lock:
+        known = {m["id"]: m for m in cache_read(chat_id)}
+        for m in msgs:
+            known[m["id"]] = m
+        keep = sorted(known.values(), key=lambda m: m["time"] or 0)[-KEEP:]
+        try:
+            os.makedirs(CHATS, mode=0o700, exist_ok=True)
+            path = os.path.join(CHATS, "%d.json" % chat_id)
+            fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                json.dump(keep, fh, ensure_ascii=False)
+            os.replace(path + ".new", path)
+        except OSError:
+            pass
+
+
+def save_list(summaries):
+    try:
+        os.makedirs(CHATS, mode=0o700, exist_ok=True)
+        path = os.path.join(CHATS, "list.json")
+        fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            json.dump(summaries, fh, ensure_ascii=False)
+        os.replace(path + ".new", path)
+    except OSError:
+        pass
+
+
+def load_list():
+    try:
+        with open(os.path.join(CHATS, "list.json")) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+
+def set_badge(count):
+    """The number on the panel's MAX button, then a nudge to redraw it."""
+    run = os.environ.get("XDG_RUNTIME_DIR")
+    if not run:
+        return
+    folder = os.path.join(run, "b8k-badge")
+    try:
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        with open(os.path.join(folder, "max.new"), "w") as fh:
+            fh.write("%d\n" % count)
+        os.replace(os.path.join(folder, "max.new"), os.path.join(folder, "max"))
+    except OSError:
+        return
+    signum = signal.SIGRTMIN + PANEL_SIGNAL
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.readlink("/proc/%s/exe" % pid) != "/usr/bin/waybar":
+                continue
+            if os.stat("/proc/" + pid).st_uid != os.getuid():
+                continue
+            with open("/proc/%s/status" % pid) as fh:
+                caught = next((int(l.split()[1], 16) for l in fh if l.startswith("SigCgt:")), 0)
+            # An uncaught real-time signal would kill the bar and the session.
+            if caught >> (signum - 1) & 1:
+                os.kill(int(pid), signum)
+        except (OSError, ValueError):
+            continue
 
 
 def photo_ok(url):
@@ -464,10 +568,11 @@ class Max(Gtk.Application):
         self.win = None
         self.buzz = Buzz()
         self.backend = Backend(self)
-        self.rows = {}
         self.summaries = {}
         self.open_chat = None
-        self.last_day = None
+        self.views = {}  # chat id -> built view, most recently used last
+        self.view = None
+        self.background = "--background" in sys.argv[1:]
 
     def do_activate(self):
         if self.win:
@@ -482,6 +587,8 @@ class Max(Gtk.Application):
 
         self.win = Gtk.ApplicationWindow(application=self, title="MAX")
         self.win.set_default_size(1160, 800)
+        # Closing only hides the window: messages keep coming in.
+        self.win.connect("delete-event", lambda w, _e: w.hide() or True)
         bar = Gtk.HeaderBar()
         heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.title = label("MAX", "title", xalign=0.5)
@@ -523,15 +630,12 @@ class Max(Gtk.Application):
         self.stack.add_named(scroll, "chats")
 
         chat = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.msgs = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.msgs.set_margin_start(16)
-        self.msgs.set_margin_end(16)
-        self.msgs.set_margin_top(12)
-        self.msgs.set_margin_bottom(12)
         self.msg_scroll = Gtk.ScrolledWindow()
         self.msg_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.msg_scroll.set_kinetic_scrolling(True)
-        self.msg_scroll.add(self.msgs)
+        self.viewport = Gtk.Viewport()
+        self.viewport.set_shadow_type(Gtk.ShadowType.NONE)
+        self.msg_scroll.add(self.viewport)
         # Stay at the newest message while photos load and messages come in,
         # unless the reader has scrolled up to older ones.
         self.at_bottom = True
@@ -553,8 +657,20 @@ class Max(Gtk.Application):
         chat.pack_start(self.inputbar, False, False, 0)
         self.stack.add_named(chat, "chat")
 
-        self.win.show_all()
-        self.stack.set_visible_child_name("wait")
+        # The last known list at once; the connection refreshes it.
+        cached = load_list()
+        if cached:
+            self.summaries = {c["id"]: c for c in cached}
+            self.fill_list()
+            self.sub.set_text("подключение…")
+        if self.background:
+            # Started with the session: everything built, nothing on screen.
+            self.background = False
+            self.win.get_child().show_all()
+            bar.show_all()
+        else:
+            self.win.show_all()
+        self.stack.set_visible_child_name("chats" if cached else "wait")
         threading.Thread(target=prune_photos, daemon=True).start()
         self.backend.start()
 
@@ -562,6 +678,7 @@ class Max(Gtk.Application):
     def show_qr(self, path):
         self.qr_image.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file(path))
         self.stack.set_visible_child_name("qr")
+        self.win.present()  # a login needs the person, background or not
         return False
 
     def failed(self, why):
@@ -571,6 +688,7 @@ class Max(Gtk.Application):
 
     def show_chats(self, summaries):
         self.summaries = {s["id"]: s for s in summaries}
+        save_list(summaries)
         self.fill_list()
         if self.open_chat is None:
             self.stack.set_visible_child_name("chats")
@@ -579,14 +697,15 @@ class Max(Gtk.Application):
     def incoming(self, msg, summary):
         if summary:
             self.summaries[summary["id"]] = summary
-        here = self.open_chat == msg["chat"]
-        if here:
-            if not msg["mine"] and not any(r == msg["id"] for r in self.shown):
-                self.add_bubble(msg)
+        here = self.open_chat == msg["chat"] and self.win.is_visible()
+        view = self.views.get(msg["chat"])
+        if view and msg["id"] not in view.shown:
+            self.add_bubble(view, msg)
+            if here:
                 self.scroll_down()
-                if self.win.is_active():
-                    self.backend.run(self.backend.read(msg["chat"], msg["id"]))
-                    self.summaries[msg["chat"]]["unread"] = 0
+        if here and not msg["mine"] and self.win.is_active():
+            self.backend.run(self.backend.read(msg["chat"], msg["id"]))
+            self.summaries[msg["chat"]]["unread"] = 0
         if not msg["mine"]:
             self.buzz()
             if not here:
@@ -627,6 +746,8 @@ class Max(Gtk.Application):
         self.list.show_all()
         if self.open_chat is None:
             self.sub.set_text("непрочитанных: %d" % total if total else "")
+        # The button counts people, not news: channels are left out.
+        set_badge(sum(s["unread"] for s in self.summaries.values() if s.get("type") != "CHANNEL"))
 
     def on_row(self, _list, row):
         self.buzz()
@@ -640,45 +761,78 @@ class Max(Gtk.Application):
         self.stack.set_visible_child_name("chats")
 
     # a chat
+    def view_for(self, chat_id):
+        """The built chat, from memory, else from the disk cache."""
+        view = self.views.pop(chat_id, None)
+        if view is None:
+            view = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            view.set_margin_start(16)
+            view.set_margin_end(16)
+            view.set_margin_top(12)
+            view.set_margin_bottom(12)
+            view.chat_id = chat_id
+            view.shown = set()
+            view.last_day = None
+            for m in cache_read(chat_id):
+                self.add_bubble(view, m)
+        self.views[chat_id] = view  # most recently used last
+        while len(self.views) > VIEWS:
+            old_id = next(iter(self.views))
+            old = self.views.pop(old_id)
+            if old is self.view:
+                self.views[old_id] = old
+                break
+            old.destroy()
+        return view
+
     def open(self, chat_id):
         s = self.summaries.get(chat_id, {})
         self.open_chat = chat_id
-        self.shown = []
-        self.last_day = None
+        view = self.view_for(chat_id)
+        if self.view is not view:
+            if self.view is not None:
+                self.viewport.remove(self.view)
+            self.viewport.add(view)
+            self.view = view
+        view.show_all()
         self.title.set_text(s.get("title", ""))
-        self.sub.set_text("загрузка…")
+        self.sub.set_text("" if view.shown else "загрузка…")
         self.back.show()
-        for child in self.msgs.get_children():
-            self.msgs.remove(child)
         self.inputbar.set_visible(s.get("type") != "CHANNEL")
         self.stack.set_visible_child_name("chat")
+        self.scroll_down()
 
         def done(msgs, err):
-            if self.open_chat != chat_id:
+            if err:
+                if self.open_chat == chat_id:
+                    self.sub.set_text("" if view.shown else "не удалось загрузить")
                 return
-            self.sub.set_text("не удалось загрузить" if err else "")
+            latest = max((m["time"] for m in msgs if m["id"] in view.shown), default=0)
             for m in msgs or []:
-                self.add_bubble(m)
-            self.msgs.show_all()
+                if m["id"] not in view.shown and m["time"] >= latest:
+                    self.add_bubble(view, m)
+            if self.open_chat == chat_id:
+                self.sub.set_text("")
             if chat_id in self.summaries:
                 self.summaries[chat_id]["unread"] = 0
-            self.scroll_down()
+                self.fill_list()
 
         self.backend.run(self.backend.history(chat_id), done)
 
-    def add_bubble(self, m):
-        self.shown.append(m["id"])
+    def add_bubble(self, view, m):
+        view.shown.add(m["id"])
         day = datetime.fromtimestamp(m["time"] / 1000).date() if m["time"] else None
-        if day and day != self.last_day:
-            self.last_day = day
+        if day and day != view.last_day:
+            view.last_day = day
             sep = label(day_label(m["time"]), "day", xalign=0.5)
             sep.set_halign(Gtk.Align.CENTER)
-            self.msgs.pack_start(sep, False, False, 6)
+            view.pack_start(sep, False, False, 6)
+            sep.show()
         bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         bubble.get_style_context().add_class("bubble")
         bubble.get_style_context().add_class("mine" if m["mine"] else "theirs")
         bubble.set_halign(Gtk.Align.END if m["mine"] else Gtk.Align.START)
-        group = self.summaries.get(self.open_chat, {}).get("type") in ("CHAT", "CHANNEL")
+        group = self.summaries.get(view.chat_id, {}).get("type") in ("CHAT", "CHANNEL")
         if group and not m["mine"] and m["who"]:
             bubble.pack_start(label(m["who"], "who"), False, False, 0)
         for url in m["photos"]:
@@ -693,7 +847,7 @@ class Max(Gtk.Application):
             text.set_selectable(False)
             bubble.pack_start(text, False, False, 0)
         bubble.pack_start(label(when(m["time"], full=True), "when", xalign=1.0), False, False, 0)
-        self.msgs.pack_start(bubble, False, False, 0)
+        view.pack_start(bubble, False, False, 0)
         bubble.show_all()
 
     def keep_bottom(self, adj):
@@ -722,8 +876,9 @@ class Max(Gtk.Application):
                 return
             self.entry.set_text("")
             self.sub.set_text("")
-            if msg and self.open_chat == chat_id:
-                self.add_bubble(msg)
+            view = self.views.get(chat_id)
+            if msg and view and msg["id"] not in view.shown:
+                self.add_bubble(view, msg)
                 self.scroll_down()
             s = self.summaries.get(chat_id)
             if s:

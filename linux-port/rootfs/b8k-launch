@@ -107,6 +107,13 @@ status)
 	fi
 	# b8k-press marks a tap for 300 ms; waybar ignores :active on touch.
 	[ -e "$run/b8k-press/$id" ] && class=pressed
+	# An unread count from the program itself (b8k-max writes one).
+	badge=
+	[ -f "$run/b8k-badge/$id" ] && read -r badge <"$run/b8k-badge/$id" 2>/dev/null
+	case $badge in
+		''|0|*[!0-9]*) ;;
+		*) label="$label <span background='#e01b24' foreground='#ffffff' weight='bold'> $badge </span>" ;;
+	esac
 	printf '{"text":"%s","class":"%s"}\n' "$label" "$class"
 	exit 0
 	;;

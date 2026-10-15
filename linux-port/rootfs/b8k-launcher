@@ -20,6 +20,11 @@ fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
+# MAX lives in the background: messages buzz and the button counts them
+# with no window open.
+if [ -x /usr/local/bin/b8k-max ] && [ -s "$HOME/.local/share/b8k-max/web.db" ]; then
+	setsid /usr/local/bin/b8k-max --background >"$run"/b8k-max.log 2>&1 &
+fi
 if [ -x /usr/local/bin/b8k-keyboard ]; then
 	pidof wvkbd-b8k >/dev/null 2>&1 || \
 		/usr/local/bin/b8k-keyboard >"$run"/b8k-keyboard.log 2>&1 &
