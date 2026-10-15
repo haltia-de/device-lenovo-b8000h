@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Large questions. A tap on the battery opens the power menu, which also
+# Large questions. Holding the power key opens the power menu, which also
 # holds the terminal. A tap on the program that is already in front asks
 # before it is closed.
 import configparser

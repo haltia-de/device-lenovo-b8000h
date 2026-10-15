@@ -130,7 +130,6 @@
     "format": "{text}",
     "interval": 15,
     "exec-on-event": false,
-    "on-click": "/usr/local/bin/b8k-press battery 11; /usr/local/bin/b8k-ask power",
     "tooltip": false,
     "signal": 11
   },

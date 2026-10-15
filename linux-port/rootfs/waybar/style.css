@@ -139,8 +139,7 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-system.pressed,
 #custom-brightness.pressed,
 #custom-volume.pressed,
-#custom-wifi3.pressed,
-#custom-battery.pressed {
+#custom-wifi3.pressed {
   background-color: #3a3a3a;
   border-radius: 12px;
 }
