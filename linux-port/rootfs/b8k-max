@@ -17,11 +17,13 @@ comes back with GLib.idle_add.
 """
 import asyncio
 import fcntl
+import hashlib
 import os
 import struct
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from datetime import date, datetime
 
@@ -38,6 +40,11 @@ from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E40
 DATA = os.path.expanduser("~/.local/share/b8k-max")
 PHOTOS = os.path.expanduser("~/.cache/b8k-max")
 HISTORY = 60  # messages loaded when a chat opens
+# Photo URLs come inside messages, so any sender can choose them: fetch only
+# https from MAX's own CDN (i.oneme.ru), never the LAN, a file or a redirect
+# elsewhere.
+PHOTO_HOSTS = ("oneme.ru", "max.ru")
+PHOTO_DAYS = 30  # cached photos older than this are removed
 MONTHS = "янв фев мар апр мая июн июл авг сен окт ноя дек".split()
 COLOURS = ((0.21, 0.52, 0.89), (0.15, 0.64, 0.41), (0.90, 0.38, 0.0), (0.57, 0.25, 0.67),
            (0.75, 0.11, 0.16), (0.10, 0.58, 0.62), (0.53, 0.36, 0.24))
@@ -183,7 +190,7 @@ def initials_icon(name, key, size=64):
     area = Gtk.DrawingArea()
     area.set_size_request(size, size)
     letters = "".join(w[0] for w in (name or "?").split()[:2]).upper() or "?"
-    colour = COLOURS[abs(hash(key)) % len(COLOURS)]
+    colour = COLOURS[int(key) % len(COLOURS)]
 
     def draw(_w, cr):
         cr.set_source_rgb(*colour)
@@ -398,16 +405,46 @@ class Backend:
                       self.summary(chat) if chat is not None else None)
 
 
+def photo_ok(url):
+    parts = urllib.parse.urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and any(host == h or host.endswith("." + h)
+                                           for h in PHOTO_HOSTS)
+
+
+class PhotoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not photo_ok(newurl):
+            return None  # urllib then raises: no hop off MAX's CDN
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+PHOTO_OPENER = urllib.request.build_opener(PhotoRedirect)
+
+
+def prune_photos():
+    limit = time.time() - PHOTO_DAYS * 86400
+    try:
+        for name in os.listdir(PHOTOS):
+            path = os.path.join(PHOTOS, name)
+            if os.path.getmtime(path) < limit:
+                os.remove(path)
+    except OSError:
+        pass
+
+
 def load_photo(url, done):
     """Download one photo in a thread (cached by URL) and hand back a pixbuf."""
+    if not photo_ok(url):
+        return
     os.makedirs(PHOTOS, mode=0o700, exist_ok=True)
-    path = os.path.join(PHOTOS, "%08x.img" % (hash(url) & 0xFFFFFFFF))
+    path = os.path.join(PHOTOS, hashlib.sha1(url.encode()).hexdigest()[:20] + ".img")
 
     def work():
         try:
             if not os.path.exists(path):
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=20) as fh:
+                with PHOTO_OPENER.open(req, timeout=20) as fh:
                     data = fh.read(8 * 1024 * 1024)
                 with open(path + ".new", "wb") as out:
                     out.write(data)
@@ -518,6 +555,7 @@ class Max(Gtk.Application):
 
         self.win.show_all()
         self.stack.set_visible_child_name("wait")
+        threading.Thread(target=prune_photos, daemon=True).start()
         self.backend.start()
 
     # called from the MAX thread through idle_add
