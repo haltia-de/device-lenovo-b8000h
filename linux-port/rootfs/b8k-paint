@@ -7,7 +7,9 @@ bottom has one big button per number. Pick a colour, tap its cells.
 - Cells of the chosen number are tinted and their numbers bold, so they
   are easy to find; a cell of another number cannot be painted.
 - The buttons on the right carry drawn icons, no words: back, zoom in,
-  zoom out (down to the whole picture on screen), "where?" (shows the
+  zoom out (down to the whole picture on screen), "whole picture" (one
+  tap fits the picture to the screen, the next one goes back to the
+  same zoom and place), "where?" (shows the
   nearest unpainted cell of the chosen colour), undo, full screen, and
   "look" (the finished picture while held). Drag to scroll.
 - A tap paints the whole connected area of that number at once (a
@@ -91,7 +93,7 @@ label.section {
 }
 .tool {
   min-width: 96px;
-  min-height: 78px;
+  min-height: 64px;
   padding: 0;
   border-radius: 16px;
   background-image: none;
@@ -101,8 +103,9 @@ label.section {
 }
 .tool:active { background-color: #d5d5d3; }
 .tool.accent { background-color: #3584e4; border-color: #1c71d8; }
+.tool.on { background-color: #c4dcf7; border-color: #3584e4; }
 .tool.accent:active { background-color: #1c71d8; }
-.tools { background-color: #dcdcda; padding: 8px; }
+.tools { background-color: #dcdcda; padding: 6px 8px; }
 .swatch {
   min-width: 104px;
   min-height: 96px;
@@ -379,6 +382,19 @@ def draw_icon(cr, name, size, rgb, full=False):
             cr.move_to(20, 13)
             cr.line_to(20, 27)
         cr.stroke()
+    elif name == "whole":
+        # A framed landscape: "the whole picture".
+        cr.rectangle(5, 9, 38, 30)
+        cr.stroke()
+        cr.move_to(9, 35)
+        cr.line_to(19, 22)
+        cr.line_to(26, 30)
+        cr.line_to(31, 25)
+        cr.line_to(39, 35)
+        cr.close_path()
+        cr.fill()
+        cr.arc(33, 17, 3.5, 0, 2 * math.pi)
+        cr.fill()
     elif name == "find":
         cr.arc(24, 24, 14, 0, 2 * math.pi)
         for x0, y0, x1, y1 in ((24, 3, 24, 12), (24, 36, 24, 45), (3, 24, 12, 24),
@@ -780,11 +796,12 @@ class Paint:
 
         # Icon buttons on the right, in groups: leave; zoom; find and undo;
         # how the screen looks.
-        tools = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        tools = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         tools.get_style_context().add_class("tools")
         self.full_icon = None
         for name, action, gap in (("back", self.back, True), ("zoom-in", self.zoom_in, False),
-                                  ("zoom-out", self.zoom_out, True), ("find", self.find, False),
+                                  ("zoom-out", self.zoom_out, False),
+                                  ("whole", self.whole, True), ("find", self.find, False),
                                   ("undo", self.board.undo_last, True),
                                   ("full", self.toggle_full, False), ("look", None, False)):
             tools.pack_start(self.tool(name, action), False, False, 0)
@@ -797,6 +814,7 @@ class Paint:
         self.scroll.connect("size-allocate", self.on_view_size)
         self.view_size = None
         self.zoom = None
+        self.whole_back = None
         self.scroll.get_style_context().add_class("paint-bg")
         holder = Gtk.Box()
         holder.set_halign(Gtk.Align.CENTER)
@@ -845,7 +863,7 @@ class Paint:
         if name == "find":
             b.get_style_context().add_class("accent")
         icon = Gtk.DrawingArea()
-        icon.set_size_request(48, 48)
+        icon.set_size_request(44, 44)
         rgb = (1.0, 1.0, 1.0) if name == "find" else (0.18, 0.2, 0.21)
         def draw(widget, cr):
             cr.translate((widget.get_allocated_width() - 48) / 2,
@@ -857,6 +875,8 @@ class Paint:
         b.add(icon)
         if name == "full":
             self.full_icon = icon
+        if name == "whole":
+            self.whole_button = b
         if action:
             b.connect("clicked", lambda _b: (self.buzz(), action()))
         else:
@@ -874,6 +894,7 @@ class Paint:
         if not where or not self.view_size:
             return
         x, y = where
+        self.forget_whole()
         steps = self.steps()
         index = max(self.zoom or 0,
                     next((i for i, z in enumerate(steps) if z >= OPEN_CELL), len(steps) - 1))
@@ -934,11 +955,35 @@ class Paint:
 
     def zoom_in(self):
         if self.zoom is not None:
+            self.forget_whole()
             self.set_zoom(self.zoom + 1)
 
     def zoom_out(self):
         if self.zoom is not None and self.zoom > 0:
+            self.forget_whole()
             self.set_zoom(self.zoom - 1)
+
+    def whole(self):
+        """Fit the picture to the screen; a second tap goes back."""
+        if self.zoom is None:
+            return
+        if self.whole_back:
+            index, focus = self.whole_back
+            self.forget_whole()
+            self.set_zoom(index, focus)
+            return
+        if self.zoom == 0:
+            return
+        h, v = self.scroll.get_hadjustment(), self.scroll.get_vadjustment()
+        focus = ((h.get_value() + h.get_page_size() / 2) / max(1, h.get_upper()),
+                 (v.get_value() + v.get_page_size() / 2) / max(1, v.get_upper()))
+        self.whole_back = (self.zoom, focus)
+        self.whole_button.get_style_context().add_class("on")
+        self.set_zoom(0)
+
+    def forget_whole(self):
+        self.whole_back = None
+        self.whole_button.get_style_context().remove_class("on")
 
     def toggle_full(self):
         if self.full:

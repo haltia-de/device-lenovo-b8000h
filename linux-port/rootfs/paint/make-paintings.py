@@ -47,6 +47,20 @@ PAINTINGS = [
      "Утро в сосновом лесу", "Животные", 5),
     ("monarch", "Monarch of the Glen, Edwin Landseer, 1851.jpg", "Король долины",
      "Животные", 5),
+    ("ship-grove", "Корабельная роща (Шишкин).jpg", "Корабельная роща", "Природа", 5),
+    ("birch-grove", "Kuindzhi Birch Grove 1879.jpg", "Берёзовая роща", "Природа", 5),
+    ("rooks", "Aleksey Savrasov - Грачи прилетели - Google Art Project.jpg",
+     "Грачи прилетели", "Природа", 5),
+    ("march", "Isaak Levitan - March.jpg", "Март", "Северная природа", 5),
+    ("eternal-peace", "LevitanAboveEternalPeace.jpg", "Над вечным покоем",
+     "Северная природа", 5),
+    ("among-waves", "Ivan Konstantinovich Aivazovsky - Among the Waves, 1898.jpg",
+     "Среди волн", "Флот", 5),
+    ("sinop", "Battle of Sinop.jpg", "Синопский бой", "Военный флот", 5),
+    ("ploughing", "Rosa Bonheur - Ploughing in Nevers - Google Art Project.jpg",
+     "Пахота в Ниверне", "Животные", 5),
+    ("horse-fair", "Rosa Bonheur, The Horse Fair, 1852–55.jpg", "Конская ярмарка",
+     "Животные", 5),
 ]
 LEVELS = {3: (64, 16), 4: (96, 24), 5: (128, 28)}
 
