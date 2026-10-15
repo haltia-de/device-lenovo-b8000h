@@ -3,7 +3,9 @@
 
 Kernel suspend is not used. The DSI panel is left in the bootloader video
 mode and the Wi-Fi driver's suspend path does nothing, so a real sleep
-does not come back. The power key only turns the lamp off and on.
+does not come back. A press of the power key turns the lamp off or on at
+once; holding it for two seconds turns it on again and opens the power
+menu (b8k-ask power) in the user's session.
 
 The key shares its input device with Home. The device is grabbed so
 elogind cannot power the tablet off, and Home is passed through.
@@ -12,6 +14,9 @@ import ctypes
 import errno
 import fcntl
 import os
+import pwd
+import select
+import subprocess
 import sys
 import time
 
@@ -22,6 +27,7 @@ KEY_POWER = 116
 BUS_VIRTUAL = 0x06
 
 LEVEL_PATH = "/run/b8k-sleep/level"
+LONG_PRESS = 2.0  # seconds held before the power menu opens
 
 
 class Timeval(ctypes.Structure):
@@ -164,11 +170,13 @@ class Lamp:
             remember(current)
         self._grab_touch()
         write_level(self.path, 0)
+        kick_frame()
         self.asleep = True
         log("SLEEP")
 
     def wake(self):
         write_level(self.path, saved_level(self.path))
+        kick_frame()
         self._ungrab_touch()
         self.asleep = False
         log("WAKE")
@@ -192,6 +200,88 @@ class Lamp:
                 pass
             os.close(fd)
         self.touch = []
+
+
+# Only these variables reach the menu; anything else in the panel's
+# environment (LD_PRELOAD, PATH...) is not trusted by a root process.
+SESSION_VARS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+                "LANG", "NO_AT_BRIDGE", "GTK_A11Y")
+
+
+def session_env():
+    """Environment, uid and gid of the session, taken from its panel.
+
+    The panel is the process running the real /usr/bin/waybar, not any
+    process that calls itself waybar, and its runtime directory must be the
+    one logind made for its uid.
+    """
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.readlink("/proc/%s/exe" % pid) != "/usr/bin/waybar":
+                continue
+            with open("/proc/%s/environ" % pid, "rb") as fh:
+                raw = fh.read().split(b"\0")
+            st = os.stat("/proc/%s" % pid)
+        except OSError:
+            continue
+        env = {}
+        for item in raw:
+            key, sep, val = item.partition(b"=")
+            key = key.decode(errors="replace")
+            if sep and key in SESSION_VARS:
+                env[key] = val.decode(errors="replace")
+        if env.get("XDG_RUNTIME_DIR") != "/run/user/%d" % st.st_uid:
+            continue
+        try:
+            user = pwd.getpwuid(st.st_uid)
+        except KeyError:
+            continue
+        env.update(HOME=user.pw_dir, USER=user.pw_name, LOGNAME=user.pw_name,
+                   PATH="/usr/local/bin:/usr/bin:/bin")
+        return env, st.st_uid, st.st_gid
+    return None
+
+
+def as_session_user(argv):
+    """Start argv in the user's session; False when there is no session."""
+    found = session_env()
+    if not found:
+        return False
+    env, uid, gid = found
+    groups = os.getgrouplist(env["USER"], gid)
+
+    def demote():
+        os.setgroups(groups)
+        os.setgid(gid)
+        os.setuid(uid)
+
+    subprocess.Popen(argv, env=env, cwd=env["HOME"], preexec_fn=demote,
+                     start_new_session=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
+def kick_frame():
+    # The BLS PWM duty is latched at the start of a display frame, and phoc
+    # sends no frames while nothing on screen changes, so a new brightness
+    # could wait seconds for the clock to redraw. A screen capture makes
+    # phoc render one frame now; the picture itself is thrown away.
+    try:
+        as_session_user(["grim", "-t", "ppm", "/dev/null"])
+    except OSError as exc:
+        log("KICK_FAIL %s" % exc.errno)
+
+
+def power_menu():
+    try:
+        if as_session_user(["/usr/local/bin/b8k-ask", "power"]):
+            log("MENU")
+        else:
+            log("MENU_NO_SESSION")
+    except OSError as exc:
+        log("MENU_FAIL %s" % exc.errno)
 
 
 def check():
@@ -268,17 +358,30 @@ def listen():
         log("NO_GRAB")
     lamp = Lamp()
     last = 0.0
+    down = None  # press time while the key is held and not yet handled
     log("LISTEN asleep=%s" % int(lamp.asleep))
     while True:
+        if down is not None:
+            # Held: wait for the release, or open the menu at LONG_PRESS.
+            left = LONG_PRESS - (time.monotonic() - down)
+            if left <= 0 or not select.select([power], [], [], left)[0]:
+                down = None
+                # The press already toggled the lamp; the menu needs it on.
+                if lamp.asleep:
+                    lamp.wake()
+                power_menu()
+                continue
         ev = read_event(power)
         if ev.type == EV_KEY and ev.code == KEY_POWER:
-            if ev.value != 1:
-                continue
             now = time.monotonic()
-            if now - last < 0.4:
-                continue
-            last = now
-            lamp.press()
+            if ev.value == 1:
+                # Act at once on the press; a hold then opens the menu.
+                if now - last >= 0.4:
+                    last = now
+                    down = now
+                    lamp.press()
+            elif ev.value == 0:
+                down = None
             continue
         if home is None or not grabbed:
             continue
@@ -287,9 +390,24 @@ def listen():
             emit(home, EV_SYN, SYN_REPORT, 0)
 
 
+def raise_priority():
+    # The press must act at once even with every core busy. The handler
+    # sleeps in read() almost all the time, so real-time costs nothing.
+    try:
+        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(10))
+        log("PRIO fifo")
+    except (OSError, AttributeError):
+        try:
+            os.nice(-10)
+            log("PRIO nice")
+        except OSError:
+            pass
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--check":
         return check()
+    raise_priority()
     lock_path = "/run/b8k-sleep.lock"
     os.makedirs("/run", exist_ok=True)
     lock = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
