@@ -343,6 +343,7 @@ EOF
 	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
 	install -m 644 "$REPO/linux-port/rootfs/phoc.ini" "$ROOT/usr/local/share/b8k/phoc.ini"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
+	install -m 644 "$REPO/linux-port/rootfs/firefox/userContent.css" "$ROOT/usr/local/share/b8k/userContent.css"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
 	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
 		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.cfg" \

@@ -1,0 +1,12 @@
+/* Fixes for sites whose layout breaks under uBlock Origin. */
+
+/* fontanka.ru articles: the grid places its five children in order (left
+   column, gap, article, gap, right column). uBlock hides the left column,
+   which holds ads, and the article then fell into the 28px gap track, one
+   word per line. Pin every child to its own track. */
+@-moz-document domain(fontanka.ru) {
+  [class*="grid_"] > aside[class*="left_"] { grid-column: 1 !important; }
+  [class*="grid_"] > main[class*="gridContent"] { grid-column: 3 !important; }
+  [class*="grid_"] > span[class*="rightGap"] { grid-column: 4 !important; }
+  [class*="grid_"] > aside[class*="gridAside"]:not([class*="left_"]) { grid-column: 5 !important; }
+}

@@ -54,20 +54,23 @@ aliases_of() {
 	esac
 }
 
-# Firefox reads this from the profile. A later launch copies the shared file in.
+# Firefox reads these from the profile. A later launch copies the shared files in.
 install_firefox_chrome() {
-	src=/usr/local/share/b8k/userChrome.css
-	[ -f "$src" ] || return 0
+	[ -f /usr/local/share/b8k/userChrome.css ] || return 0
 	home=${HOME:-/home/user}
 	for root in "$home/.config/mozilla/firefox" "$home/.mozilla/firefox"; do
 		[ -d "$root" ] || continue
 		for prof in "$root"/*.*; do
 			[ -f "$prof/prefs.js" ] || continue
 			mkdir -p "$prof/chrome"
-			if ! cmp -s "$src" "$prof/chrome/userChrome.css" 2>/dev/null; then
-				cp "$src" "$prof/chrome/userChrome.css"
-				chmod 644 "$prof/chrome/userChrome.css" 2>/dev/null || true
-			fi
+			for css in userChrome.css userContent.css; do
+				src=/usr/local/share/b8k/$css
+				[ -f "$src" ] || continue
+				if ! cmp -s "$src" "$prof/chrome/$css" 2>/dev/null; then
+					cp "$src" "$prof/chrome/$css"
+					chmod 644 "$prof/chrome/$css" 2>/dev/null || true
+				fi
+			done
 			js=$prof/user.js
 			touch "$js"
 			line='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
