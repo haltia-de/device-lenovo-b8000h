@@ -1,0 +1,9 @@
+#!/bin/sh
+# The only power command the bar may run. doas allows these two words and nothing else.
+set -u
+case ${1:-} in
+	off) exec /sbin/poweroff ;;
+	reboot) exec /sbin/reboot ;;
+esac
+echo "usage: b8k-poweroff off|reboot" >&2
+exit 2

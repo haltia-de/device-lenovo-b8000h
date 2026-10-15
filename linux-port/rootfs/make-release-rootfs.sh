@@ -124,6 +124,13 @@ apk --root "$R" --arch armv7 --no-cache del -q gdb 2>/dev/null || true
 apk --root "$R" --arch armv7 --no-cache add -q doas
 install -d "$R/etc/doas.d"
 echo 'permit persist :wheel' > "$R/etc/doas.d/wheel.conf"
+# The power menu may turn the machine off without a password prompt.
+# It cannot run any other command.
+# z- sorts after wheel.conf. doas uses the last matching rule.
+cat > "$R/etc/doas.d/z-b8k-power.conf" << 'EOF'
+permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
+permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
+EOF
 rm -rf "$R"/var/cache/apk/*
 
 # --- audit ---------------------------------------------------------------

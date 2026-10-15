@@ -280,6 +280,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 		"$ROOT/etc/init.d/b8k-android-system"
 	install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$ROOT/usr/local/bin/phoc-gpu"
 	install -d -m 755 "$ROOT/usr/local/sbin"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
 	# The power key sleeps the backlight. elogind's default powers the
 	# tablet off, and kernel suspend does not resume this panel or Wi-Fi.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
