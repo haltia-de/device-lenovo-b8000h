@@ -71,7 +71,10 @@ done
 rmmod wlan_mt6628 2>/dev/null || true
 rmmod wmt 2>/dev/null || true
 modprobe wmt
-modprobe wlan_mt6628
+# A fixed MAC from the machine id. Without the Android NVRAM file the
+# driver makes one up on every load, and DHCP gave a new address each boot.
+mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
+modprobe wlan_mt6628 ${mac:+mac=$mac}
 EOF
 chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 
