@@ -5,8 +5,9 @@
   make-paintings.py CACHE_DIR
 
 downloads each painting from Wikimedia Commons (800 px wide) into
-CACHE_DIR, then writes pictures/<slug>.json: level 3 at 32 cells across
-and up to 10 colours, level 4 at 48 cells and up to 14 colours. All
+CACHE_DIR, then writes pictures/<slug>.json: level 3 at 64 cells along
+the long side and up to 16 colours, level 4 at 96 cells and up to 24
+colours. All
 works are by artists who died more than 70 years ago, so they are in the
 public domain; PAINTINGS names each Commons file.
 """
@@ -27,9 +28,10 @@ PAINTINGS = [
     ("rye", "Ivan Shishkin - Рожь - Google Art Project.jpg", "Рожь", "Природа", 3),
     ("winter", "Ivan Shishkin - Winter.JPG", "Зима", "Северная природа", 3),
     ("rainbow-sea", "Aivazovsky, Rainbow.JPG", "Радуга над морем", "Флот", 3),
-    ("sevastopol-small", "Ivan Constantinovich Aivazovsky - The Russian Squadron on the Sebastopol Roads.jpg",
-     "Эскадра на рейде", "Военный флот", 3),
+    ("brig-mercury", "Aivazovsky, Brig Mercury Attacked by Two Turkish Ships 1892.jpg",
+     "Бриг «Меркурий»", "Военный флот", 3),
     ("fox", "Koson - fox-in-the-reeds.jpg", "Лиса в камышах", "Животные", 3),
+    ("hare", "Albrecht Dürer - Hare, 1502 - Google Art Project.jpg", "Заяц", "Животные", 3),
     ("north", "Arkhip Kuindzhi - North.jpg", "Север", "Северная природа", 4),
     ("swans", "Rylov Blue Expanse.jpg", "В голубом просторе", "Северная природа", 4),
     ("great-wave", "The Great Wave off Kanagawa.jpg", "Большая волна", "Флот", 4),
@@ -38,18 +40,22 @@ PAINTINGS = [
      "Эскадра на Севастопольском рейде", "Военный флот", 4),
     ("feodosia", "Aivazovsky - Black Sea Fleet in the Bay of Theodosia.jpg",
      "Черноморский флот", "Военный флот", 4),
+    ("twelve-apostles", 'Aivasovsky I C Ship "Twelve Apostles".jpg',
+     "Корабль «Двенадцать апостолов»", "Военный флот", 4),
     ("crow", "Cawing crow by Ohara Koson.jpg", "Ворона", "Животные", 4),
+    ("pine-morning", "Shishkin, Ivan - Morning in a Pine Forest.jpg",
+     "Утро в сосновом лесу", "Животные", 4),
     ("monarch", "Monarch of the Glen, Edwin Landseer, 1851.jpg", "Король долины",
      "Животные", 4),
 ]
-LEVELS = {3: (32, 10), 4: (48, 14)}
+LEVELS = {3: (64, 16), 4: (96, 24)}
 
 
 def fetch(cache, name):
     path = os.path.join(cache, name.replace("/", "_"))
     if not os.path.exists(path):
         url = ("https://commons.wikimedia.org/wiki/Special:FilePath/"
-               + urllib.parse.quote(name) + "?width=800")
+               + urllib.parse.quote(name) + "?width=1200")
         req = urllib.request.Request(url, headers={"User-Agent": "b8k-paint/1.0"})
         with urllib.request.urlopen(req, timeout=60) as r, open(path, "wb") as fh:
             fh.write(r.read())
@@ -77,7 +83,7 @@ def convert(path, cols_long, colours):
         cols, rows = cols_long, max(8, round(cols_long * h / w))
     else:
         rows, cols = cols_long, max(8, round(cols_long * w / h))
-    small = img.filter(ImageFilter.MedianFilter(5)).resize((cols, rows), Image.LANCZOS)
+    small = img.filter(ImageFilter.MedianFilter(3)).resize((cols, rows), Image.LANCZOS)
     q = small.quantize(colors=colours + 4, method=Image.Quantize.MEDIANCUT,
                        dither=Image.Dither.NONE)
     raw = q.getpalette()
@@ -88,7 +94,7 @@ def convert(path, cols_long, colours):
     # Most used first, then drop colours too close to one already kept.
     used = sorted(counts, key=lambda v: -counts[v])
     rgb = [tuple(raw[i * 3:i * 3 + 3]) for i in used]
-    keep = [rgb[i] for i in merge_close(rgb, 48)][:colours]
+    keep = [rgb[i] for i in merge_close(rgb, 36)][:colours]
     pix = list(small.getdata())
 
     def nearest(c):

@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
-"""Colour by number in large cells, made for an older player.
+"""Colour by number on paintings, made for an older player.
 
 A picture is a grid of cells, each with a number; the palette at the
 bottom has one big button per number. Pick a colour, tap its cells.
 - Cells of the chosen number are tinted and their numbers bold, so they
   are easy to find; a cell of another number cannot be painted.
-- Zoom with the + and - buttons and drag to scroll: one finger is enough.
+- "−" goes down to the whole picture on screen, "+" up to large cells;
+  drag to scroll, one finger is enough. "Весь экран" hides the panel.
 - A tap paints the whole connected area of that number at once (a
   large sky is one tap); the "Клетка" mode paints one cell per tap.
 - Every tap gives a short buzz; there is no timer, no score, no ads.
-- Progress is saved after every cell, so a picture can wait for tomorrow;
+- Progress is saved after every tap, so a picture can wait for tomorrow;
   the program starts on the last picture, unless it is finished, and the
   gallery opens at that picture's card.
 
-The gallery runs from easy to hard as it scrolls down: level 1 has
-16x12 cells and five colours, level 2 32x24 cells, levels 3 and 4 are
-paintings in 32 and 48 cells across with up to 10 and 14 colours.
+The gallery runs from easier to harder as it scrolls down: paintings in
+64 cells along the long side with up to 16 colours, then in 96 cells
+with up to 24 colours.
 
 Pictures: the built-in ones in /usr/local/share/b8k/paint/, and any photo
-put into ~/Раскраски (JPEG or PNG), which is turned into a picture of at
-most 32 cells across and 10 colours the first time it is opened.
+put into ~/Раскраски (JPEG or PNG), which is turned into a picture of 64
+cells along the long side and up to 16 colours the first time it is shown.
 """
 import fcntl
 import hashlib
@@ -29,6 +30,7 @@ import os
 import struct
 import sys
 
+import cairo
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -41,15 +43,19 @@ PHOTOS = os.path.expanduser("~/Раскраски")
 DATA = os.path.expanduser("~/.local/share/b8k-paint")
 DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 LEVELS = (
-    (1, "Лёгкие — крупные клетки"),
-    (2, "Средние"),
-    (3, "Сложные — картины"),
-    (4, "Очень сложные — большие картины"),
+    (3, "Сложные"),
+    (4, "Очень сложные"),
     (5, "Мои фотографии"),
 )
 THEMES = ("Природа", "Северная природа", "Флот", "Военный флот", "Животные")
-ZOOMS = (1.0, 1.4, 1.9, 2.6)  # times the cell size that fits the width
-MIN_CELL = 30
+# Cell sizes in pixels above "the whole picture on screen"; numbers show
+# from NUMBERS up, the grid from GRID up.
+ZOOMS = (12, 18, 26, 36, 50, 70)
+OPEN_CELL = 26
+NUMBERS = 17
+GRID = 9
+# The chosen number's cells: light accent blue, the same for every colour.
+MARK = (0.66, 0.80, 0.97)
 
 CSS = b"""
 window, .paint-bg { background-color: #e6e6e4; }
@@ -139,15 +145,14 @@ def photo_to_picture(path):
     except OSError:
         return None
     w, h = img.size
-    cols = 32 if w >= h else 24
-    rows = max(8, round(cols * h / w))
-    if rows > 32:
-        rows = 32
-        cols = max(8, round(rows * w / h))
-    small = img.filter(ImageFilter.MedianFilter(5)).resize((cols, rows), Image.LANCZOS)
-    pal_img = small.quantize(colors=10, method=Image.Quantize.MEDIANCUT,
+    if w >= h:
+        cols, rows = 64, max(8, round(64 * h / w))
+    else:
+        rows, cols = 64, max(8, round(64 * w / h))
+    small = img.filter(ImageFilter.MedianFilter(3)).resize((cols, rows), Image.LANCZOS)
+    pal_img = small.quantize(colors=16, method=Image.Quantize.MEDIANCUT,
                              dither=Image.Dither.NONE)
-    raw = pal_img.getpalette()[:30]
+    raw = pal_img.getpalette()[:48]
     used = sorted(set(pal_img.getdata()))
     colours = [tuple(raw[i * 3:i * 3 + 3]) for i in used]
     # Light to dark, so number 1 is the lightest colour.
@@ -186,7 +191,7 @@ def load_pictures():
                 st = os.stat(path)
             except OSError:
                 continue
-            key = hashlib.sha1(("%s|%d|%d" % (path, st.st_size, st.st_mtime)).encode()).hexdigest()[:16]
+            key = hashlib.sha1(("64|%s|%d|%d" % (path, st.st_size, st.st_mtime)).encode()).hexdigest()[:16]
             cached = os.path.join(cache, key + ".json")
             pic = None
             if os.path.exists(cached):
@@ -258,6 +263,31 @@ def hex_rgb(colour):
     return tuple(int(colour[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
 
 
+def surface(pic, colour_of):
+    """A one-pixel-per-cell image; colour_of(x, y) gives (r, g, b) in 0..1."""
+    w, h = pic["w"], pic["h"]
+    stride = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_RGB24, w)
+    buf = bytearray(stride * h)
+    for y in range(h):
+        i = y * stride
+        for x in range(w):
+            r, g, b = colour_of(x, y)
+            buf[i] = int(b * 255)
+            buf[i + 1] = int(g * 255)
+            buf[i + 2] = int(r * 255)
+            i += 4
+    return cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_RGB24, w, h, stride)
+
+
+def paint_scaled(cr, image, cell):
+    cr.save()
+    cr.scale(cell, cell)
+    cr.set_source_surface(image, 0, 0)
+    cr.get_source().set_filter(cairo.FILTER_NEAREST)
+    cr.paint()
+    cr.restore()
+
+
 def text_colour(colour):
     r, g, b = hex_rgb(colour)
     return (0.0, 0.0, 0.0) if 0.299 * r + 0.587 * g + 0.114 * b > 0.55 else (1.0, 1.0, 1.0)
@@ -270,9 +300,18 @@ class Board(Gtk.DrawingArea):
         self.app = app
         self.pic = pic
         self.filled = load_progress(pic)
+        self.pal = [hex_rgb(c) for c in pic["palette"]]
+        # Unpainted cells show a very pale picture, so a zoomed-out view
+        # still shows where things are.
+        self.pale = [(0.82 + 0.18 * r, 0.82 + 0.18 * g, 0.82 + 0.18 * b) for r, g, b in self.pal]
+        self.counts = [0] * len(self.pal)
+        for y in range(pic["h"]):
+            for x in range(pic["w"]):
+                if not self.filled[y][x]:
+                    self.counts[pic["cells"][y][x]] += 1
         self.chosen = 0
-        self.zoom = 0
-        self.cell = MIN_CELL
+        self.cell = OPEN_CELL
+        self.image = None
         self.undo = []  # each entry: the cells one tap painted
         self.wrong = None
         self.by_area = True
@@ -283,58 +322,69 @@ class Board(Gtk.DrawingArea):
         self.tap.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
         self.tap.connect("released", self.on_tap)
 
-    def fit(self, width):
-        base = max(MIN_CELL, int(width / self.pic["w"]))
-        self.cell = int(base * ZOOMS[self.zoom])
-        self.set_size_request(self.cell * self.pic["w"], self.cell * self.pic["h"])
+    def set_cell(self, cell):
+        self.cell = cell
+        self.set_size_request(int(cell * self.pic["w"] + 0.999), int(cell * self.pic["h"] + 0.999))
         self.queue_draw()
 
     def left(self, number):
-        return sum(1 for y in range(self.pic["h"]) for x in range(self.pic["w"])
-                   if self.pic["cells"][y][x] == number and not self.filled[y][x])
+        return self.counts[number]
+
+    def refresh(self):
+        """Rebuild the cell image after the state changed."""
+        cells, filled, chosen = self.pic["cells"], self.filled, self.chosen
+
+        def colour_of(x, y):
+            n = cells[y][x]
+            if filled[y][x]:
+                return self.pal[n]
+            return MARK if n == chosen else self.pale[n]
+
+        self.image = surface(self.pic, colour_of)
+        self.queue_draw()
 
     def on_draw(self, _widget, cr):
         pic, s = self.pic, self.cell
-        pal = [hex_rgb(c) for c in pic["palette"]]
-        cr.select_font_face("Sans", 0, 1)
-        for y in range(pic["h"]):
-            for x in range(pic["w"]):
-                n = pic["cells"][y][x]
-                x0, y0 = x * s, y * s
-                if self.filled[y][x]:
-                    cr.set_source_rgb(*pal[n])
-                    cr.rectangle(x0, y0, s, s)
-                    cr.fill()
-                    continue
-                if n == self.chosen:
-                    # A light tint of the chosen colour marks where to tap.
-                    r, g, b = pal[n]
-                    cr.set_source_rgb(0.62 + 0.38 * r * 0.6, 0.62 + 0.38 * g * 0.6,
-                                      0.62 + 0.38 * b * 0.6)
-                else:
-                    cr.set_source_rgb(0.949, 0.949, 0.941)
-                cr.rectangle(x0, y0, s, s)
-                cr.fill()
-                cr.set_source_rgb(0.75, 0.75, 0.74)
-                cr.set_line_width(1)
-                cr.rectangle(x0 + 0.5, y0 + 0.5, s - 1, s - 1)
-                cr.stroke()
-                if s >= 22:
-                    label = str(n + 1)
-                    cr.set_font_size(s * (0.5 if n == self.chosen else 0.4))
-                    ext = cr.text_extents(label)
-                    if n == self.chosen:
+        if self.image is None:
+            self.refresh()
+        paint_scaled(cr, self.image, s)
+        if s >= GRID:
+            # Only the visible cells: a 96x70 picture is too many to draw.
+            x0, y0, x1, y1 = cr.clip_extents()
+            cx0, cy0 = max(0, int(x0 // s)), max(0, int(y0 // s))
+            cx1, cy1 = min(pic["w"], int(x1 // s) + 1), min(pic["h"], int(y1 // s) + 1)
+            cr.set_source_rgb(0.75, 0.75, 0.74)
+            cr.set_line_width(1)
+            for y in range(cy0, cy1):
+                frow = self.filled[y]
+                for x in range(cx0, cx1):
+                    if not frow[x]:
+                        cr.rectangle(int(x * s) + 0.5, int(y * s) + 0.5, s - 1, s - 1)
+            cr.stroke()
+            if s >= NUMBERS:
+                cr.select_font_face("Sans", 0, 1)
+                for bold in (False, True):
+                    cr.set_font_size(s * (0.5 if bold else 0.4))
+                    if bold:
                         cr.set_source_rgb(0.18, 0.2, 0.21)
                     else:
                         cr.set_source_rgb(0.6, 0.6, 0.6)
-                    cr.move_to(x0 + (s - ext.width) / 2 - ext.x_bearing,
-                               y0 + (s - ext.height) / 2 - ext.y_bearing)
-                    cr.show_text(label)
+                    for y in range(cy0, cy1):
+                        row, frow = pic["cells"][y], self.filled[y]
+                        for x in range(cx0, cx1):
+                            n = row[x]
+                            if frow[x] or (n == self.chosen) != bold:
+                                continue
+                            label = str(n + 1)
+                            ext = cr.text_extents(label)
+                            cr.move_to(x * s + (s - ext.width) / 2 - ext.x_bearing,
+                                       y * s + (s - ext.height) / 2 - ext.y_bearing)
+                            cr.show_text(label)
         if self.wrong:
             wx, wy = self.wrong
             cr.set_source_rgb(0.88, 0.11, 0.14)
-            cr.set_line_width(4)
-            cr.rectangle(wx * s + 2, wy * s + 2, s - 4, s - 4)
+            cr.set_line_width(max(2, s / 8))
+            cr.rectangle(wx * s + 1, wy * s + 1, s - 2, s - 2)
             cr.stroke()
         return False
 
@@ -350,9 +400,10 @@ class Board(Gtk.DrawingArea):
         cells = self.area(x, y) if self.by_area else [(x, y)]
         for cx, cy in cells:
             self.filled[cy][cx] = True
+        self.counts[self.chosen] -= len(cells)
         self.undo.append(cells)
         self.app.buzz()
-        self.queue_draw()
+        self.refresh()
         save_progress(self.pic, self.filled)
         self.app.cell_painted(self.chosen)
 
@@ -382,10 +433,12 @@ class Board(Gtk.DrawingArea):
         cells = self.undo.pop()
         for x, y in cells:
             self.filled[y][x] = False
-        save_progress(self.pic, self.filled)
-        self.queue_draw()
         x, y = cells[0]
-        self.app.cell_painted(self.pic["cells"][y][x])
+        number = self.pic["cells"][y][x]
+        self.counts[number] += len(cells)
+        save_progress(self.pic, self.filled)
+        self.refresh()
+        self.app.cell_painted(number)
 
 
 # --- the program ------------------------------------------------------------
@@ -395,6 +448,8 @@ class Paint:
         self.win = Gtk.Window(title="Раскраска")
         self.win.set_default_size(1160, 800)
         self.win.connect("destroy", Gtk.main_quit)
+        self.full = False
+        self.win.connect("window-state-event", self.on_window_state)
         self.stack = Gtk.Stack()
         self.win.add(self.stack)
         self.board = None
@@ -422,11 +477,11 @@ class Paint:
         bar.pack_start(title, True, True, 0)
         box.pack_start(bar, False, False, 0)
 
-        # One section per level, easiest at the top.
+        # One section per level, easier at the top.
         sections = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pictures = load_pictures()
         for level, heading in LEVELS:
-            pics = sorted((p for p in pictures if p.get("level", 2) == level),
+            pics = sorted((p for p in pictures if p.get("level") == level),
                           key=lambda p: THEMES.index(p["theme"]) if p.get("theme") in THEMES
                           else len(THEMES))
             if not pics:
@@ -480,17 +535,15 @@ class Paint:
         cell = min(tw / pic["w"], th / pic["h"])
         thumb.set_size_request(tw, th)
 
+        pal = [hex_rgb(c) for c in pic["palette"]]
+        # Still to paint: a pale version, so the picture shows.
+        pale = [(0.72 + 0.28 * r, 0.72 + 0.28 * g, 0.72 + 0.28 * b) for r, g, b in pal]
+        image = surface(pic, lambda x, y: (pal if filled[y][x] or done == total else pale)
+                        [pic["cells"][y][x]])
+
         def draw(_w, cr):
             cr.translate((tw - cell * pic["w"]) / 2, (th - cell * pic["h"]) / 2)
-            for y in range(pic["h"]):
-                for x in range(pic["w"]):
-                    r, g, b = hex_rgb(pic["palette"][pic["cells"][y][x]])
-                    if not filled[y][x] and done != total:
-                        # Still to paint: a pale version, so the picture shows.
-                        r, g, b = 0.72 + 0.28 * r, 0.72 + 0.28 * g, 0.72 + 0.28 * b
-                    cr.set_source_rgb(r, g, b)
-                    cr.rectangle(x * cell, y * cell, cell + 0.5, cell + 0.5)
-                    cr.fill()
+            paint_scaled(cr, image, cell)
             return False
 
         thumb.connect("draw", draw)
@@ -548,14 +601,20 @@ class Paint:
         look.connect("pressed", lambda _b: self.preview(True))
         look.connect("released", lambda _b: self.preview(False))
         bar.pack_end(look, False, False, 0)
+        self.full_button = Gtk.Button(label="Окно" if self.full else "Весь экран")
+        self.full_button.connect("clicked", lambda _b: self.toggle_full())
+        bar.pack_end(self.full_button, False, False, 0)
         box.pack_start(bar, False, False, 0)
 
         self.scroll = Gtk.ScrolledWindow()
         self.scroll.set_kinetic_scrolling(True)
+        self.scroll.connect("size-allocate", self.on_view_size)
+        self.view_size = None
+        self.zoom = None
         self.scroll.get_style_context().add_class("paint-bg")
         holder = Gtk.Box()
         holder.set_halign(Gtk.Align.CENTER)
-        holder.set_valign(Gtk.Align.START)
+        holder.set_valign(Gtk.Align.CENTER)
         holder.pack_start(self.board, False, False, 0)
         self.scroll.add(holder)
         box.pack_start(self.scroll, True, True, 0)
@@ -590,29 +649,67 @@ class Paint:
         box.show_all()
         self.stack.add_named(box, "board")
         self.stack.set_visible_child_name("board")
-        GLib.idle_add(self.fit)
         first = next((n for n in range(len(pic["palette"])) if self.board.left(n)), 0)
         self.choose(first)
 
-    def fit(self):
-        width = self.scroll.get_allocated_width() - 8
-        if width > 50:
-            self.board.fit(width)
+    def on_view_size(self, _widget, alloc):
+        size = (alloc.width, alloc.height)
+        if size == self.view_size or alloc.width < 50:
+            return
+        self.view_size = size
+        GLib.idle_add(self.set_zoom, self.zoom)
+
+    def steps(self):
+        """Cell sizes: the whole picture in view, then the fixed ones above."""
+        w, h = self.view_size
+        whole = max(2.0, min((w - 4) / self.board.pic["w"], (h - 4) / self.board.pic["h"]))
+        return [whole] + [z for z in ZOOMS if z > whole * 1.15]
+
+    def set_zoom(self, index):
+        if not self.board or not self.view_size:
+            return False
+        steps = self.steps()
+        if index is None:
+            index = next((i for i, z in enumerate(steps) if z >= OPEN_CELL), len(steps) - 1)
+        index = max(0, min(index, len(steps) - 1))
+        # Keep the middle of the view on the same spot of the picture.
+        h, v = self.scroll.get_hadjustment(), self.scroll.get_vadjustment()
+        fx = (h.get_value() + h.get_page_size() / 2) / max(1, h.get_upper())
+        fy = (v.get_value() + v.get_page_size() / 2) / max(1, v.get_upper())
+        self.zoom = index
+        self.board.set_cell(steps[index])
+
+        def recentre():
+            for adj, f in ((h, fx), (v, fy)):
+                adj.set_value(f * adj.get_upper() - adj.get_page_size() / 2)
+            return False
+
+        GLib.timeout_add(60, recentre)
         return False
 
     def zoom_in(self):
-        if self.board.zoom < len(ZOOMS) - 1:
-            self.board.zoom += 1
-            self.fit()
+        if self.zoom is not None:
+            self.set_zoom(self.zoom + 1)
 
     def zoom_out(self):
-        if self.board.zoom > 0:
-            self.board.zoom -= 1
-            self.fit()
+        if self.zoom is not None and self.zoom > 0:
+            self.set_zoom(self.zoom - 1)
+
+    def toggle_full(self):
+        if self.full:
+            self.win.unfullscreen()
+        else:
+            self.win.fullscreen()
+
+    def on_window_state(self, _win, event):
+        self.full = bool(event.new_window_state & Gdk.WindowState.FULLSCREEN)
+        if self.board:
+            self.full_button.set_label("Окно" if self.full else "Весь экран")
+        return False
 
     def choose(self, number):
         self.board.chosen = number
-        self.board.queue_draw()
+        self.board.refresh()
         self.refresh_swatches()
 
     def refresh_swatches(self):
@@ -646,7 +743,7 @@ class Paint:
         elif getattr(self, "saved_filled", None) is not None:
             self.board.filled = self.saved_filled
             self.saved_filled = None
-        self.board.queue_draw()
+        self.board.refresh()
 
     def finished(self):
         dialog = Gtk.MessageDialog(transient_for=self.win, modal=True,
