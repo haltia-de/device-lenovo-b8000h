@@ -294,6 +294,8 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	# Speaker: hardware gain fixed at the clean top step, software volume.
+	mkdir -p "$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets" \
+		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths" "$ROOT/etc/udev/rules.d"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k.conf" \
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-speaker.conf" \
