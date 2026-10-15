@@ -50,7 +50,7 @@ window#waybar { background: #242424; color: #ffffff; }
   background-color: #3584e4;
   color: #ffffff;
 }
-/* The handle of the brightness and volume drawer (group/system). */
+/* The handle of the brightness, volume and Wi-Fi drawer (group/system). */
 #custom-system {
   min-height: 42px;
   margin: 2px 4px;
@@ -65,6 +65,10 @@ window#waybar { background: #242424; color: #ffffff; }
   background-size: 46px 50px;
   background-image: url("/usr/local/share/b8k/vol-0.svg");
 }
+#custom-system.w0,
+#custom-system.wx { background-size: 45px 34px; }
+#custom-system.w0 { background-image: url("/usr/local/share/b8k/wifi-p0.svg"); }
+#custom-system.wx { background-image: url("/usr/local/share/b8k/wifi-x.svg"); }
 #custom-brightness {
   min-height: 42px;
   margin: 2px 4px;

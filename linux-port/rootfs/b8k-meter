@@ -13,7 +13,7 @@ out() {
 	fi
 }
 
-wifi() {
+wifi_class() {
 	# w0 is disconnected. w1..w4 are four signal bars, same idea as the battery.
 	# wx: associated, but the gateway does not answer (b8k-netwatch).
 	class=w0
@@ -39,7 +39,11 @@ wifi() {
 			[ "$(cat /run/b8k-net/state 2>/dev/null)" = down ] && class=wx
 		fi
 	fi
-	out wifi "$class"
+	echo "$class"
+}
+
+wifi() {
+	out wifi "$(wifi_class)"
 }
 
 battery() {
@@ -94,8 +98,14 @@ volume() {
 }
 
 system() {
-	# The handle of the drawer that holds brightness and volume. It shows a
-	# muted speaker while the sound is off, so that state is never hidden.
+	# The handle of the drawer that holds brightness, volume and Wi-Fi. A
+	# problem in the drawer shows on the handle, so it is never hidden: no
+	# network first (w0, or wx when the gateway does not answer), then a
+	# muted speaker.
+	case $(wifi_class) in
+		w0) out system w0; return ;;
+		wx) out system wx; return ;;
+	esac
 	mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
 	case $mute in
 		yes|да) out system muted ;;
