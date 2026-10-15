@@ -68,7 +68,7 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - Moving waybar to `overlay` blanked the screen.
 - **Dialogs** (`b8k-ask`, `b8k-brightness`) are undecorated dark windows.
   - Once mapped, each asks `b8k-focus activate <app_id>` to raise it. A second launch, which finds the lock taken, raises the open one, because a dialog opened during boot could end up under Firefox.
-  - Their GTK CSS must request `Gdk` 3.0 explicitly: GTK4 is installed too.
+  - Python GTK3 programs must call `gi.require_version("Gdk", "3.0")` as well as `Gtk`: GTK4 is installed too, and gi otherwise loads Gdk 4.
 - **Power key** (`b8k-sleep.py`, root, nice -10).
   - A short press toggles the backlight on release. A one-second hold opens `b8k-ask power`. 30 s after the screen goes off, `b8k-suspend` runs s2idle.
   - BLS latches a new PWM duty only at the start of a frame, so after each change the handler runs `grim` into `/dev/null` to make phoc draw one.
