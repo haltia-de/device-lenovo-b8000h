@@ -6,10 +6,12 @@ A picture is a grid of cells, each with a number; the palette at the
 bottom has one big button per number. Pick a colour, tap its cells.
 - Cells of the chosen number are tinted and their numbers bold, so they
   are easy to find; a cell of another number cannot be painted.
-- "−" goes down to the whole picture on screen, "+" up to large cells;
-  drag to scroll, one finger is enough. "Весь экран" hides the panel.
+- The buttons on the right carry drawn icons, no words: back, zoom in,
+  zoom out (down to the whole picture on screen), "where?" (shows the
+  nearest unpainted cell of the chosen colour), undo, full screen, and
+  "look" (the finished picture while held). Drag to scroll.
 - A tap paints the whole connected area of that number at once (a
-  large sky is one tap); the "Клетка" mode paints one cell per tap.
+  large sky is one tap).
 - Every tap gives a short buzz; there is no timer, no score, no ads.
 - Progress is saved after every tap, so a picture can wait for tomorrow;
   the program starts on the last picture, unless it is finished, and the
@@ -26,6 +28,7 @@ cells along the long side and up to 16 colours the first time it is shown.
 import fcntl
 import hashlib
 import json
+import math
 import os
 import struct
 import sys
@@ -35,8 +38,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-gi.require_version("Pango", "1.0")
-from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 BUILTIN = "/usr/local/share/b8k/paint"
 PHOTOS = os.path.expanduser("~/Раскраски")
@@ -81,6 +83,20 @@ label.section {
   color: #2e3436;
   margin: 24px 16px 12px 20px;
 }
+.tool {
+  min-width: 96px;
+  min-height: 78px;
+  padding: 0;
+  border-radius: 16px;
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+}
+.tool:active { background-color: #d5d5d3; }
+.tool.accent { background-color: #3584e4; border-color: #1c71d8; }
+.tool.accent:active { background-color: #1c71d8; }
+.tools { background-color: #dcdcda; padding: 8px; }
 .swatch {
   min-width: 104px;
   min-height: 96px;
@@ -288,6 +304,75 @@ def paint_scaled(cr, image, cell):
     cr.restore()
 
 
+def draw_icon(cr, name, size, rgb, full=False):
+    """Icons drawn on a 48x48 grid with round 4-unit strokes."""
+    cr.save()
+    cr.scale(size / 48.0, size / 48.0)
+    cr.set_source_rgb(*rgb)
+    cr.set_line_width(4)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.set_line_join(cairo.LINE_JOIN_ROUND)
+    if name == "back":
+        cr.move_to(40, 24)
+        cr.line_to(9, 24)
+        cr.move_to(21, 11)
+        cr.line_to(8, 24)
+        cr.line_to(21, 37)
+        cr.stroke()
+    elif name in ("zoom-in", "zoom-out"):
+        cr.arc(20, 20, 13, 0, 2 * math.pi)
+        cr.move_to(30, 30)
+        cr.line_to(42, 42)
+        cr.move_to(13, 20)
+        cr.line_to(27, 20)
+        if name == "zoom-in":
+            cr.move_to(20, 13)
+            cr.line_to(20, 27)
+        cr.stroke()
+    elif name == "find":
+        cr.arc(24, 24, 14, 0, 2 * math.pi)
+        for x0, y0, x1, y1 in ((24, 3, 24, 12), (24, 36, 24, 45), (3, 24, 12, 24),
+                               (36, 24, 45, 24)):
+            cr.move_to(x0, y0)
+            cr.line_to(x1, y1)
+        cr.stroke()
+        cr.arc(24, 24, 4.5, 0, 2 * math.pi)
+        cr.fill()
+    elif name == "undo":
+        # Most of a circle from the top round to the lower left, with the
+        # arrow head at the top pointing left: "turn back".
+        cr.arc(25, 27, 15, -0.5 * math.pi, 0.85 * math.pi)
+        cr.stroke()
+        cr.move_to(9, 12)
+        cr.line_to(22, 3)
+        cr.line_to(22, 21)
+        cr.close_path()
+        cr.fill()
+    elif name == "full":
+        # Corners point out to go full screen, in to come back.
+        for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+            cx, cy = 24 - sx * 18, 24 - sy * 18
+            if not full:
+                cr.move_to(cx, cy + sy * 11)
+                cr.line_to(cx, cy)
+                cr.line_to(cx + sx * 11, cy)
+            else:
+                ix, iy = cx + sx * 11, cy + sy * 11
+                cr.move_to(cx, iy)
+                cr.line_to(ix, iy)
+                cr.line_to(ix, cy)
+        cr.stroke()
+    elif name == "look":
+        cr.move_to(4, 24)
+        cr.curve_to(14, 9, 34, 9, 44, 24)
+        cr.curve_to(34, 39, 14, 39, 4, 24)
+        cr.close_path()
+        cr.stroke()
+        cr.arc(24, 24, 7, 0, 2 * math.pi)
+        cr.fill()
+    cr.restore()
+
+
 def text_colour(colour):
     r, g, b = hex_rgb(colour)
     return (0.0, 0.0, 0.0) if 0.299 * r + 0.587 * g + 0.114 * b > 0.55 else (1.0, 1.0, 1.0)
@@ -314,7 +399,7 @@ class Board(Gtk.DrawingArea):
         self.image = None
         self.undo = []  # each entry: the cells one tap painted
         self.wrong = None
-        self.by_area = True
+        self.flash = None  # (x, y, on): the "where?" marker
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
                         | Gdk.EventMask.TOUCH_MASK)
         self.connect("draw", self.on_draw)
@@ -380,6 +465,13 @@ class Board(Gtk.DrawingArea):
                             cr.move_to(x * s + (s - ext.width) / 2 - ext.x_bearing,
                                        y * s + (s - ext.height) / 2 - ext.y_bearing)
                             cr.show_text(label)
+        if self.flash and self.flash[2]:
+            fx, fy, _on = self.flash
+            # A ring around the cell, large enough to see when zoomed out.
+            cr.set_source_rgb(0.21, 0.52, 0.89)
+            cr.set_line_width(max(4, s / 5))
+            cr.arc((fx + 0.5) * s, (fy + 0.5) * s, max(24, s * 1.4), 0, 2 * math.pi)
+            cr.stroke()
         if self.wrong:
             wx, wy = self.wrong
             cr.set_source_rgb(0.88, 0.11, 0.14)
@@ -397,7 +489,7 @@ class Board(Gtk.DrawingArea):
             self.queue_draw()
             GLib.timeout_add(400, self.clear_wrong)
             return
-        cells = self.area(x, y) if self.by_area else [(x, y)]
+        cells = self.area(x, y)
         for cx, cy in cells:
             self.filled[cy][cx] = True
         self.counts[self.chosen] -= len(cells)
@@ -421,6 +513,18 @@ class Board(Gtk.DrawingArea):
                     seen.add((nx, ny))
                     todo.append((nx, ny))
         return sorted(seen)
+
+    def nearest(self, fx, fy):
+        """The unpainted cell of the chosen number closest to (fx, fy)."""
+        best, where = None, None
+        for y in range(self.pic["h"]):
+            row, frow = self.pic["cells"][y], self.filled[y]
+            for x in range(self.pic["w"]):
+                if row[x] == self.chosen and not frow[x]:
+                    d = (x - fx) ** 2 + (y - fy) ** 2
+                    if best is None or d < best:
+                        best, where = d, (x, y)
+        return where
 
     def clear_wrong(self):
         self.wrong = None
@@ -577,34 +681,22 @@ class Paint:
             self.stack.remove(old)
         self.board = Board(self, pic)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        middle = Gtk.Box()
+        box.pack_start(middle, True, True, 0)
 
-        bar = Gtk.Box(spacing=10)
-        bar.get_style_context().add_class("bar")
-        for text, action in (("← Назад", self.back), ("−", self.zoom_out),
-                             ("+", self.zoom_in), ("Отменить", self.board.undo_last)):
-            b = Gtk.Button(label=text)
-            b.connect("clicked", lambda _b, a=action: a())
-            bar.pack_start(b, False, False, 0)
-        mode = Gtk.Button(label="Область")
-
-        def toggle(_b):
-            self.board.by_area = not self.board.by_area
-            mode.set_label("Область" if self.board.by_area else "Клетка")
-
-        mode.connect("clicked", toggle)
-        bar.pack_start(mode, False, False, 0)
-        name = Gtk.Label(label=pic["name"])
-        name.get_style_context().add_class("title")
-        name.set_ellipsize(Pango.EllipsizeMode.END)
-        bar.pack_start(name, True, True, 0)
-        look = Gtk.Button(label="Картинка")
-        look.connect("pressed", lambda _b: self.preview(True))
-        look.connect("released", lambda _b: self.preview(False))
-        bar.pack_end(look, False, False, 0)
-        self.full_button = Gtk.Button(label="Окно" if self.full else "Весь экран")
-        self.full_button.connect("clicked", lambda _b: self.toggle_full())
-        bar.pack_end(self.full_button, False, False, 0)
-        box.pack_start(bar, False, False, 0)
+        # Icon buttons on the right, in groups: leave; zoom; find and undo;
+        # how the screen looks.
+        tools = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        tools.get_style_context().add_class("tools")
+        self.full_icon = None
+        for name, action, gap in (("back", self.back, True), ("zoom-in", self.zoom_in, False),
+                                  ("zoom-out", self.zoom_out, True), ("find", self.find, False),
+                                  ("undo", self.board.undo_last, True),
+                                  ("full", self.toggle_full, False), ("look", None, False)):
+            tools.pack_start(self.tool(name, action), False, False, 0)
+            if gap:
+                tools.pack_start(Gtk.Box(), True, True, 0)
+        middle.pack_end(tools, False, False, 0)
 
         self.scroll = Gtk.ScrolledWindow()
         self.scroll.set_kinetic_scrolling(True)
@@ -617,7 +709,7 @@ class Paint:
         holder.set_valign(Gtk.Align.CENTER)
         holder.pack_start(self.board, False, False, 0)
         self.scroll.add(holder)
-        box.pack_start(self.scroll, True, True, 0)
+        middle.pack_start(self.scroll, True, True, 0)
 
         pal_scroll = Gtk.ScrolledWindow()
         pal_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
@@ -652,6 +744,62 @@ class Paint:
         first = next((n for n in range(len(pic["palette"])) if self.board.left(n)), 0)
         self.choose(first)
 
+    def tool(self, name, action):
+        """A button with a drawn icon; "look" works while it is held."""
+        b = Gtk.Button()
+        b.get_style_context().add_class("tool")
+        if name == "find":
+            b.get_style_context().add_class("accent")
+        icon = Gtk.DrawingArea()
+        icon.set_size_request(48, 48)
+        rgb = (1.0, 1.0, 1.0) if name == "find" else (0.18, 0.2, 0.21)
+        def draw(widget, cr):
+            cr.translate((widget.get_allocated_width() - 48) / 2,
+                         (widget.get_allocated_height() - 48) / 2)
+            draw_icon(cr, name, 48, rgb, self.full)
+            return False
+
+        icon.connect("draw", draw)
+        b.add(icon)
+        if name == "full":
+            self.full_icon = icon
+        if action:
+            b.connect("clicked", lambda _b: (self.buzz(), action()))
+        else:
+            b.connect("pressed", lambda _b: (self.buzz(), self.preview(True)))
+            b.connect("released", lambda _b: self.preview(False))
+        return b
+
+    def find(self):
+        """Show the nearest unpainted cell of the chosen colour, and flash it."""
+        h, v = self.scroll.get_hadjustment(), self.scroll.get_vadjustment()
+        s = self.board.cell
+        cx = (h.get_value() + h.get_page_size() / 2) / s
+        cy = (v.get_value() + v.get_page_size() / 2) / s
+        where = self.board.nearest(cx, cy)
+        if not where or not self.view_size:
+            return
+        x, y = where
+        steps = self.steps()
+        index = max(self.zoom or 0,
+                    next((i for i, z in enumerate(steps) if z >= OPEN_CELL), len(steps) - 1))
+        self.set_zoom(index, ((x + 0.5) / self.board.pic["w"], (y + 0.5) / self.board.pic["h"]))
+        count = [0]
+
+        def blink():
+            count[0] += 1
+            done = count[0] >= 8
+            self.board.flash = None if done else (x, y, count[0] % 2 == 1)
+            self.board.queue_draw()
+            if done:
+                self.flash_timer = None
+            return not done
+
+        if getattr(self, "flash_timer", None):
+            GLib.source_remove(self.flash_timer)
+        self.flash_timer = GLib.timeout_add(260, blink)
+        blink()
+
     def on_view_size(self, _widget, alloc):
         size = (alloc.width, alloc.height)
         if size == self.view_size or alloc.width < 50:
@@ -665,7 +813,7 @@ class Paint:
         whole = max(2.0, min((w - 4) / self.board.pic["w"], (h - 4) / self.board.pic["h"]))
         return [whole] + [z for z in ZOOMS if z > whole * 1.15]
 
-    def set_zoom(self, index):
+    def set_zoom(self, index, focus=None):
         if not self.board or not self.view_size:
             return False
         steps = self.steps()
@@ -674,8 +822,11 @@ class Paint:
         index = max(0, min(index, len(steps) - 1))
         # Keep the middle of the view on the same spot of the picture.
         h, v = self.scroll.get_hadjustment(), self.scroll.get_vadjustment()
-        fx = (h.get_value() + h.get_page_size() / 2) / max(1, h.get_upper())
-        fy = (v.get_value() + v.get_page_size() / 2) / max(1, v.get_upper())
+        if focus:
+            fx, fy = focus
+        else:
+            fx = (h.get_value() + h.get_page_size() / 2) / max(1, h.get_upper())
+            fy = (v.get_value() + v.get_page_size() / 2) / max(1, v.get_upper())
         self.zoom = index
         self.board.set_cell(steps[index])
 
@@ -703,8 +854,8 @@ class Paint:
 
     def on_window_state(self, _win, event):
         self.full = bool(event.new_window_state & Gdk.WindowState.FULLSCREEN)
-        if self.board:
-            self.full_button.set_label("Окно" if self.full else "Весь экран")
+        if self.board and self.full_icon:
+            self.full_icon.queue_draw()
         return False
 
     def choose(self, number):
@@ -734,7 +885,7 @@ class Paint:
         self.refresh_swatches()
 
     def preview(self, on):
-        # While "Картинка" is held, the board shows the finished picture.
+        # While "look" is held, the board shows the finished picture.
         if not self.board:
             return
         if on:
