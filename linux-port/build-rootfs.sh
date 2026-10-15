@@ -1,6 +1,7 @@
 #!/bin/sh
 # Build an Alpine armv7 root filesystem for the B8000-H microSD card.
-# UI_PROFILE=labwc (known-good rescue desktop) or phosh (target mobile shell).
+# UI_PROFILE=labwc (known-good rescue desktop) or phosh (the tablet shell on
+# phoc; the name is historical, Phosh itself is not installed).
 # Runs inside WSL B8000Build. Output: artifacts/linux-port/b8000h-sd.img
 set -eu
 
@@ -13,7 +14,8 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
-	phosh) UI_PACKAGES="phosh phoc waybar gnome-session gnome-control-center dbus elogind polkit upower networkmanager networkmanager-openrc
+	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit upower networkmanager networkmanager-openrc
+		pulseaudio pulseaudio-alsa alsa-plugins-pulse alsa-utils alsa-ucm-conf
 		galculator galculator-lang phosh-wallpapers swaybg
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
@@ -326,6 +328,7 @@ EOF
 	install -d -m 755 "$ROOT/usr/local/share/b8k"
 	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
 	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
+	install -m 644 "$REPO/linux-port/rootfs/phoc.ini" "$ROOT/usr/local/share/b8k/phoc.ini"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
 	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
@@ -383,9 +386,9 @@ export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
 export XDG_SESSION_DESKTOP=phosh LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# b8k-session opens a PAM session (pam_elogind) so Phosh has a logind
-# session: brightness goes through login1.Session.SetBrightness.
-# Restart the session if Phosh crashes instead of leaving a dead screen.
+# b8k-session opens a PAM session (pam_elogind) so the session has a
+# logind session: brightness goes through login1.Session.SetBrightness.
+# Restart the session if phoc crashes instead of leaving a dead screen.
 # The session user is read from /etc/b8k/session-user on every start (root
 # when the file or the user is missing), so switching needs no reboot.
 # pipewire-launcher's own cleanup (pkill -u "$USER" -fx) misses under
@@ -394,7 +397,7 @@ chmod 700 "$XDG_RUNTIME_DIR"
 ( while :; do
 	u=$(cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
-	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -v -C /usr/share/phosh/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
+	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -v -C /usr/local/share/b8k/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
 done & ) >/dev/null 2>&1
@@ -428,8 +431,6 @@ picture-uri-dark='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 [org.gnome.desktop.screensaver]
 picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 
-[sm.puri.phosh.lockscreen]
-require-unlock=false
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
 
