@@ -33,6 +33,7 @@ patch -p1 < "$REPO/linux-port/wvkbd/0001-hide-key.patch"
 patch -p1 < "$REPO/linux-port/wvkbd/0002-no-cover-popup.patch"
 patch -p1 < "$REPO/linux-port/wvkbd/0003-enter-shape.patch"
 patch -p1 < "$REPO/linux-port/wvkbd/0004-shift-lock.patch"
+patch -p1 < "$REPO/linux-port/wvkbd/0005-haptic.patch"
 cp "$REPO/linux-port/wvkbd/layout.b8k.h" \
 	"$REPO/linux-port/wvkbd/config.b8k.h" \
 	"$REPO/linux-port/wvkbd/keymap.b8k.h" .

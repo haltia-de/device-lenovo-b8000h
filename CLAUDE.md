@@ -82,6 +82,7 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - Every panel `on-click` starts with `b8k-press <id> <signal>` (`tools-arm/b8k-press.c`, built by `build-b8k-press.sh`). It marks `$XDG_RUNTIME_DIR/b8k-press/<id>` for 300 ms, which `b8k-launch status` and `b8k-meter` turn into the `pressed` class, and buzzes the motor for 70 ms.
   - waybar ignores `:active` on touch. Panel signals: programs 1–7, volume 8, brightness 9, Wi-Fi 10, battery 11.
   - The motor is the `regulator-haptic` input device on the MT6320 VIBR LDO (patch 0039). Pulses shorter than about 50 ms are not felt.
+  - The keyboard buzzes on every key press too (`wvkbd/0005-haptic.patch`, same 70 ms).
 - **Palette.** The frame is dark and the content light, in GNOME/libadwaita colours with the accent `#3584e4`. The palette table in `docs/shell.md` lists every file that repeats it. The keyboard colours are compiled into `wvkbd/config.b8k.h`.
 
 ## Architecture constraints that span files
