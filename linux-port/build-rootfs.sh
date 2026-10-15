@@ -14,7 +14,7 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
 	phosh) UI_PACKAGES="phosh phoc waybar gnome-session gnome-control-center dbus elogind polkit upower networkmanager networkmanager-openrc
-		galculator galculator-lang phosh-wallpapers swaybg iio-sensor-proxy iio-sensor-proxy-openrc
+		galculator galculator-lang phosh-wallpapers swaybg
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
 		foot
@@ -62,7 +62,7 @@ for s in seatd local; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 done
 if [ "$UI_PROFILE" = phosh ]; then
-	for s in dbus elogind polkit openrc-settingsd networkmanager iio-sensor-proxy; do
+	for s in dbus elogind polkit openrc-settingsd networkmanager; do
 		[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 	done
 fi
@@ -133,6 +133,9 @@ echo "B8000-H microSD system shell ready" > /dev/ttyGS0
 exec sh -c 'cat /dev/ttyGS0 | sh >/dev/ttyGS0 2>&1'
 EOF
 chmod +x "$ROOT/usr/local/bin/acm-shell"
+# The compositor owns the panel, so tty2-6 are never seen; tty1 stays as
+# the rescue console.
+sed -i -E 's/^(tty[2-6]::)/#\1/' "$ROOT/etc/inittab"
 grep -q acm-shell "$ROOT/etc/inittab" ||
 	echo 'ttyGS0::respawn:/usr/local/bin/acm-shell' >> "$ROOT/etc/inittab"
 
@@ -430,12 +433,6 @@ require-unlock=false
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
 
-	# The bma255 is mounted rotated (vendor cust_acc direction=3); iio-sensor-
-	# proxy needs this for Phosh auto-rotation (verified on the tablet).
-	mkdir -p "$ROOT/etc/udev/rules.d"
-	cat > "$ROOT/etc/udev/rules.d/61-b8000h-accel.rules" <<'EOF'
-SUBSYSTEM=="iio", ATTR{name}=="bma255", ENV{ACCEL_MOUNT_MATRIX}="0, -1, 0; 1, 0, 0; 0, 0, 1"
-EOF
 else
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh

@@ -5,6 +5,9 @@
 # The keyboard stays hidden until a text field is focused.
 run=${XDG_RUNTIME_DIR:-$HOME/.cache}
 mkdir -p "$run"
+# No screen reader runs here. Without these GTK starts the at-spi bus and
+# its registry for every session.
+export NO_AT_BRIDGE=1 GTK_A11Y=none
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
