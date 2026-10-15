@@ -7,23 +7,11 @@ static const int transparency = 255;
 
 struct clr_scheme schemes[] = {
 {
-  /* letter keys: light face, dark text */
-  .bg = {.bgra = {24, 26, 30, transparency}},
-  .fg = {.bgra = {236, 236, 236, transparency}},
-  .high = {.bgra = {186, 206, 232, transparency}},
-  .swipe = {.bgra = {186, 206, 232, transparency}},
-  .text = {.bgra = {20, 20, 20, transparency}},
-  .text_press = {.bgra = {10, 16, 28, transparency}},
-  .text_swipe = {.bgra = {10, 16, 28, transparency}},
-  .font = DEFAULT_FONT,
-  .rounding = DEFAULT_ROUNDING,
-},
-{
-  /* actions: shift, backspace, enter, layout */
-  .bg = {.bgra = {24, 26, 30, transparency}},
-  .fg = {.bgra = {168, 98, 36, transparency}},
-  .high = {.bgra = {210, 140, 56, transparency}},
-  .swipe = {.bgra = {210, 140, 56, transparency}},
+  /* letter keys: b8k palette, light grey key on the dark frame */
+  .bg = {.bgra = {36, 36, 36, transparency}},
+  .fg = {.bgra = {74, 74, 74, transparency}},
+  .high = {.bgra = {228, 132, 53, transparency}},
+  .swipe = {.bgra = {228, 132, 53, transparency}},
   .text = {.color = UINT32_MAX},
   .text_press = {.color = UINT32_MAX},
   .text_swipe = {.color = UINT32_MAX},
@@ -31,11 +19,23 @@ struct clr_scheme schemes[] = {
   .rounding = DEFAULT_ROUNDING,
 },
 {
-  /* hide key only */
-  .bg = {.bgra = {24, 26, 30, transparency}},
-  .fg = {.bgra = {48, 132, 214, transparency}},
-  .high = {.bgra = {32, 96, 170, transparency}},
-  .swipe = {.bgra = {32, 96, 170, transparency}},
+  /* actions: shift, backspace, enter, layout; a darker key */
+  .bg = {.bgra = {36, 36, 36, transparency}},
+  .fg = {.bgra = {48, 48, 48, transparency}},
+  .high = {.bgra = {228, 132, 53, transparency}},
+  .swipe = {.bgra = {228, 132, 53, transparency}},
+  .text = {.color = UINT32_MAX},
+  .text_press = {.color = UINT32_MAX},
+  .text_swipe = {.color = UINT32_MAX},
+  .font = DEFAULT_FONT,
+  .rounding = DEFAULT_ROUNDING,
+},
+{
+  /* hide key only: the accent */
+  .bg = {.bgra = {36, 36, 36, transparency}},
+  .fg = {.bgra = {228, 132, 53, transparency}},
+  .high = {.bgra = {216, 113, 28, transparency}},
+  .swipe = {.bgra = {216, 113, 28, transparency}},
   .text = {.color = UINT32_MAX},
   .text_press = {.color = UINT32_MAX},
   .text_swipe = {.color = UINT32_MAX},

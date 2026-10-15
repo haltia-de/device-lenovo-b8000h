@@ -18,12 +18,6 @@ fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
-# Phosh default wallpaper, behind every window.
-if [ -x /usr/bin/swaybg ]; then
-	pidof swaybg >/dev/null 2>&1 || \
-		swaybg -i /usr/share/phosh/backgrounds/byzantium-abstract-1920x1080.jpg -m fill \
-			>"$run"/b8k-wallpaper.log 2>&1 &
-fi
 if [ -x /usr/local/bin/b8k-keyboard ]; then
 	pidof wvkbd-b8k >/dev/null 2>&1 || \
 		/usr/local/bin/b8k-keyboard >"$run"/b8k-keyboard.log 2>&1 &

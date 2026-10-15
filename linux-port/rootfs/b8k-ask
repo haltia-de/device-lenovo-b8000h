@@ -32,20 +32,20 @@ ALIASES = {
     "settings": ["org.gnome.Settings", "gnome-control-center"],
 }
 CSS = b"""
-window { background-color: #1e2430; }
-label { color: #f2f2f2; font-size: 36px; }
+window { background-color: #242424; }
+label { color: #ffffff; font-size: 36px; }
 button {
   font-size: 32px;
   min-height: 92px;
   margin: 8px 28px;
   border-radius: 16px;
-  background: #2a3344;
-  color: #f2f2f2;
+  background: #303030;
+  color: #ffffff;
   border: none;
   box-shadow: none;
 }
-button.danger { background: #8d3a32; color: #ffffff; }
-button.plain { background: #3a4660; }
+button.danger { background: #c01c28; color: #ffffff; }
+button.plain { background: #3a3a3a; }
 """
 
 
@@ -88,6 +88,8 @@ def show(title, buttons):
     win = Gtk.Window(title=title)
     win.set_default_size(860, 520)
     win.set_keep_above(True)
+    # No light GTK title bar over the dark question.
+    win.set_decorated(False)
     win.set_position(Gtk.WindowPosition.CENTER)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     box.set_margin_top(36)

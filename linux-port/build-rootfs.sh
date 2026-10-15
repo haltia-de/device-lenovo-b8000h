@@ -16,7 +16,7 @@ case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
 	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit upower networkmanager networkmanager-openrc
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
-		galculator galculator-lang phosh-wallpapers swaybg
+		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
 		foot grim
@@ -448,13 +448,6 @@ sources=[('xkb', 'us'), ('xkb', 'ru')]
 
 [org.gnome.system.locale]
 region='ru_RU.UTF-8'
-
-[org.gnome.desktop.background]
-picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
-picture-uri-dark='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
-
-[org.gnome.desktop.screensaver]
-picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
