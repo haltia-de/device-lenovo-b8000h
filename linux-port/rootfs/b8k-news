@@ -312,6 +312,11 @@ class News(Gtk.Application):
         self.story_scroll = Gtk.ScrolledWindow()
         self.story_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.story_scroll.get_style_context().add_class("story")
+        # One viewport for good: add() would wrap each story in a new one,
+        # and the second story found the first one's still in place.
+        self.story_port = Gtk.Viewport()
+        self.story_port.set_shadow_type(Gtk.ShadowType.NONE)
+        self.story_scroll.add(self.story_port)
         self.stack.add_named(self.story_scroll, "story")
         self.story_box = None
         self.stories = {}  # link -> paragraphs, for this run
@@ -446,7 +451,7 @@ class News(Gtk.Application):
         full.connect("clicked", lambda *_a: self.open_link(link))
         box.pack_start(full, False, False, 8)
         self.story_box = box
-        self.story_scroll.add(box)
+        self.story_port.add(box)
         self.story_scroll.get_vadjustment().set_value(0)
         box.show_all()
         self.back_btn.show()
