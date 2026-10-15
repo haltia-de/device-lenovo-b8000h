@@ -39,6 +39,7 @@ MONTHS = "января февраля марта апреля мая июня и
 WIND = ("штиль", "северный", "северо-восточный", "восточный", "юго-восточный", "южный",
         "юго-западный", "западный", "северо-западный")
 WIND_SHORT = ("", "С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ")
+CLOUDS = ("ясно", "малооблачно", "облачно", "пасмурно")
 GEOMAGNETIC = ("возмущений нет", "небольшие возмущения", "небольшие возмущения",
                "небольшие возмущения", "небольшие возмущения", "слабая буря",
                "умеренная буря", "сильная буря", "шторм", "экстремальный шторм")
@@ -89,6 +90,27 @@ label.day-desc { font-size: 22px; }
 label.day-temp { font-size: 32px; font-weight: bold; }
 label.day-min { font-size: 26px; color: #77767b; }
 label.note { font-size: 22px; color: #a51d2d; margin: 8px; }
+button.dayrow {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 12px;
+  padding: 0;
+}
+button.dayrow:active { background-color: #dcdcda; }
+button.back {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 96px;
+  font-size: 30px;
+  color: #2e3436;
+}
+label.day-hi { font-size: 72px; font-weight: bold; }
 """
 
 
@@ -419,7 +441,8 @@ class Weather(Gtk.Application):
         bar = Gtk.HeaderBar()
         bar.set_show_close_button(False)
         heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        heading.pack_start(label("Погода в Санкт-Петербурге", "title"), False, False, 0)
+        self.title = label("Погода в Санкт-Петербурге", "title")
+        heading.pack_start(self.title, False, False, 0)
         self.when = label("", "when")
         heading.pack_start(self.when, False, False, 0)
         bar.set_custom_title(heading)
@@ -427,12 +450,25 @@ class Weather(Gtk.Application):
         self.button.get_style_context().add_class("refresh")
         self.button.connect("clicked", lambda _b: self.refresh())
         bar.pack_end(self.button)
+        # Back from a day to the whole page; hidden on the whole page.
+        self.back = Gtk.Button(label="←")
+        self.back.get_style_context().add_class("back")
+        self.back.connect("clicked", lambda _b: self.close_day())
+        self.back.set_no_show_all(True)
+        bar.pack_start(self.back)
         self.win.set_titlebar(bar)
 
+        self.stack = Gtk.Stack()
         self.scroll = Gtk.ScrolledWindow()
         self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.scroll.set_kinetic_scrolling(True)
-        self.win.add(self.scroll)
+        self.day_scroll = Gtk.ScrolledWindow()
+        self.day_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.day_scroll.set_kinetic_scrolling(True)
+        self.stack.add_named(self.scroll, "main")
+        self.stack.add_named(self.day_scroll, "day")
+        self.day_index = None
+        self.win.add(self.stack)
         self.win.connect("notify::is-active", self.on_active)
         self.win.show_all()
 
@@ -467,6 +503,8 @@ class Weather(Gtk.Application):
             self.data = data
             save_cache(data)
         self.show_data(error)
+        if self.day_index is not None:
+            self.open_day(self.day_index)
         return False
 
     # building the page
@@ -582,10 +620,98 @@ class Weather(Gtk.Application):
         card.pack_start(area, True, True, 0)
         return card
 
+    # one day
+    def open_day(self, index):
+        days = (self.data or {}).get("days", [])
+        if index >= len(days):
+            self.close_day()
+            return
+        d = days[index]
+        self.day_index = index
+        old = self.day_scroll.get_child()
+        if old:
+            self.day_scroll.remove(old)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        page.set_margin_start(16)
+        page.set_margin_end(16)
+        page.set_margin_bottom(24)
+        top, tiles = self.day_card(d)
+        page.pack_start(top, False, False, 0)
+        page.pack_start(tiles, False, False, 8)
+        if d.get("steps"):
+            page.pack_start(label("По 3 часа", "section", xalign=0), False, False, 0)
+            page.pack_start(self.steps_card(d), False, False, 0)
+            if len(d["steps"]) > 1:
+                page.pack_start(label("Давление, мм рт. ст.", "section", xalign=0), False, False, 0)
+                page.pack_start(self.pressure_card(d["steps"]), False, False, 0)
+        else:
+            page.pack_start(label("Подробно по часам Gismeteo даёт только сегодня и завтра.",
+                                  "dim", xalign=0, wrap=True), False, False, 12)
+        page.show_all()
+        self.day_scroll.add(page)
+        self.title.set_text("%s, %s" % (day_title(d["date"]), day_date(d["date"])))
+        self.back.show()
+        self.stack.set_visible_child_name("day")
+        self.day_scroll.get_vadjustment().set_value(0)
+
+    def close_day(self):
+        self.day_index = None
+        self.title.set_text("Погода в Санкт-Петербурге")
+        self.back.hide()
+        self.stack.set_visible_child_name("main")
+
+    def day_card(self, d):
+        card = Gtk.Box(spacing=24)
+        card.get_style_context().add_class("card")
+        card.set_margin_top(12)
+        card.pack_start(icon(d.get("icon"), 150), False, False, 0)
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        main.set_valign(Gtk.Align.CENTER)
+        main.set_size_request(260, -1)
+        temps = Gtk.Box(spacing=16)
+        temps.pack_start(label(deg(d.get("tmax")), "day-hi"), False, False, 0)
+        lo = label(deg(d.get("tmin")), "day-min")
+        lo.set_valign(Gtk.Align.END)
+        lo.set_margin_bottom(14)
+        temps.pack_start(lo, False, False, 0)
+        main.pack_start(temps, False, False, 0)
+        main.pack_start(label(d.get("descr", ""), "now-desc", xalign=0, wrap=True), False, False, 0)
+        card.pack_start(main, False, False, 0)
+
+        wd = int(d.get("wd") or 0)
+        wind_extra = WIND[wd] if wd < len(WIND) else ""
+        if d.get("gust_speed"):
+            wind_extra += ", порывы до %d" % d["gust_speed"]
+        rain = precip_text(d) or "без осадков"
+        if d.get("ts"):
+            rain += ", гроза"
+        cl = int(d.get("cl") or 0)
+        tiles = [
+            ("Ветер", "%d–%d м/с" % (d.get("wsmin") or 0, d.get("wsmax") or 0), wind_extra),
+            ("Давление", "%d–%d мм" % (d.get("pmin") or 0, d.get("pmax") or 0), "рт. ст."),
+            ("Влажность", "%d–%d %%" % (d.get("hummin") or 0, d.get("hummax") or 0), ""),
+            ("Осадки", rain.capitalize(), ""),
+            ("Облачность", CLOUDS[min(3, cl)].capitalize(), ""),
+            ("Солнце", "%s – %s" % (hm(d.get("risem")), hm(d.get("setm"))),
+             "день %d ч %d мин" % divmod(int(d.get("durm") or 0), 60)),
+            ("Магнитное поле", GEOMAGNETIC[min(9, int(d.get("grademax") or 0))].capitalize(), ""),
+        ]
+        # All the values in a card of their own, four to a row.
+        grid = Gtk.Grid(column_spacing=28, row_spacing=18, column_homogeneous=True)
+        grid.get_style_context().add_class("card")
+        for k, (title, value, extra) in enumerate(tiles):
+            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            tile.pack_start(label(title, "tile-title", xalign=0), False, False, 0)
+            tile.pack_start(label(value, "tile-value", xalign=0, wrap=True), False, False, 0)
+            if extra:
+                tile.pack_start(label(extra, "tile-extra", xalign=0, wrap=True), False, False, 0)
+            grid.attach(tile, k % 4, k // 4, 1, 1)
+        return card, grid
+
     def week_card(self, days):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.get_style_context().add_class("card")
-        for d in days:
+        for index, d in enumerate(days):
             row = Gtk.Box(spacing=18)
             row.get_style_context().add_class("day")
             name = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -613,7 +739,12 @@ class Weather(Gtk.Application):
             temps.pack_start(label(deg(d.get("tmax")), "day-temp"), False, False, 0)
             temps.pack_start(label(deg(d.get("tmin")), "day-min"), False, False, 0)
             row.pack_end(temps, False, False, 0)
-            card.pack_start(row, False, False, 0)
+            # The whole row is a button: a tap opens that day.
+            button = Gtk.Button()
+            button.get_style_context().add_class("dayrow")
+            button.add(row)
+            button.connect("clicked", lambda _b, i=index: self.open_day(i))
+            card.pack_start(button, False, False, 0)
         return card
 
 
