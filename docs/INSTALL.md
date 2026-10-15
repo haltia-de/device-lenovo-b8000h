@@ -35,7 +35,7 @@
    `/opt/b8000h/out/wvkbd-b8k`; без него в системе не будет экранной клавиатуры.
 7. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
    armv7. Профиль называется `phosh` по старой памяти, но сессия запускает свою
-   оболочку — верхнюю панель waybar на phoc ([shell.md](shell.md)). Скрипт ставит
+   оболочку — панель waybar слева на phoc ([shell.md](shell.md)). Скрипт ставит
    собранный wpa_supplicant, конфиг NetworkManager, повторную загрузку MT6628 после
    появления прошивки (с постоянным MAC из `/etc/machine-id`), службы
    `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку,

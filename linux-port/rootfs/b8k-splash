@@ -10,7 +10,7 @@ import struct
 import sys
 import time
 
-BAR = 96
+BAR = 120  # width of the panel on the left edge
 ANCHOR_ALL = 15
 LAYER_TOP = 2
 # XRGB8888
@@ -231,11 +231,11 @@ def main():
         + put_string("b8k-splash"),
     )
     # Cover the area under the bar. Zone -1 uses the full output, then the
-    # top margin keeps the 96px bar free.
+    # left margin keeps the panel free.
     conn.send(layer, 0, struct.pack("<II", 0, 0))
     conn.send(layer, 1, struct.pack("<I", ANCHOR_ALL))
     conn.send(layer, 2, struct.pack("<i", -1))
-    conn.send(layer, 3, struct.pack("<iiii", BAR, 0, 0, 0))
+    conn.send(layer, 3, struct.pack("<iiii", 0, 0, 0, BAR))
     conn.send(surface, 6)
     serial = None
     width = height = 0

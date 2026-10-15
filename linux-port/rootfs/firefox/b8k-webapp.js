@@ -278,8 +278,8 @@
       "resource:///modules/URILoadingHelper.sys.mjs"
     );
     helper.URILoadingHelper.openWebLinkIn(opener, url, "chromeless", {
-      width: 1280,
-      height: 704,
+      width: 1160,
+      height: 800,
     });
     watchNew(prefix);
     log("open " + url);

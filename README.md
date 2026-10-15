@@ -4,7 +4,7 @@
 kernel + ~38 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
 **B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi, speakers and charging
 work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
-stock Android 4.4 blobs; a small touch shell (a waybar top bar with large program
+stock Android 4.4 blobs; a small touch shell (a waybar panel on the left with large program
 buttons) runs on it. The platform still crashes every 10–40 minutes.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
 
@@ -26,7 +26,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Загрузка с eMMC, ядро 7.1 | работает (BOOT прошивается fastboot'ом, система — в разделе USRDATA) |
 | Экран 1280×800, подсветка, яркость, гашение при блокировке | работает (mediatek-drm, DSI) |
 | GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
-| Оболочка: верхняя панель с крупными кнопками программ, Wi-Fi, батарея, часы | работает ([shell.md](docs/shell.md)) |
+| Оболочка: панель слева с крупными кнопками программ, громкость, Wi-Fi, батарея, часы | работает ([shell.md](docs/shell.md)) |
 | Firefox, калькулятор, погода, новости, MAX, терминал | работает; приложения рисуются процессором |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | одно касание; мультитач не доходит |
@@ -49,7 +49,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 ## Скриншоты
 
 <p>
-<img src="docs/img/shell-firefox.png" width="32%" alt="Верхняя панель и Firefox">
+<img src="docs/img/shell-firefox.png" width="32%" alt="Панель слева и Firefox">
 <img src="docs/img/shell-calc.png" width="32%" alt="Калькулятор">
 <img src="docs/img/shell-power.png" width="32%" alt="Меню питания">
 </p>

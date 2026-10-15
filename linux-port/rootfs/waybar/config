@@ -1,7 +1,7 @@
 {
   "layer": "top",
-  "position": "top",
-  "height": 96,
+  "position": "left",
+  "width": 120,
   "spacing": 4,
   "modules-left": [
     "custom/firefox",
