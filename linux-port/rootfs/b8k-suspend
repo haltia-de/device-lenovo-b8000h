@@ -1,0 +1,17 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# One system sleep (s2idle). b8k-sleep.py runs this when the screen has
+# been off for a while. The power key wakes the tablet: its PMIC IRQ is a
+# wake source (wakeup-source in mt6320.dtsi). wlan_mt6628 does not survive
+# a sleep, so the Wi-Fi drivers leave before it and come back after.
+set -u
+exec 9>/run/b8k-suspend.lock
+flock -n 9 || exit 0
+
+logger -t b8k-suspend "sleep"
+rmmod wlan_mt6628 2>/dev/null
+rmmod wmt 2>/dev/null
+sync
+echo freeze > /sys/power/state
+logger -t b8k-suspend "awake ($?)"
+sh /etc/local.d/00-b8k-modules.start >/dev/null 2>&1 &

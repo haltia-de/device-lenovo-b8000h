@@ -329,10 +329,11 @@ start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
 	--pidfile /run/b8k-netwatch.pid --make-pidfile
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-netwatch.start"
-	# The power key sleeps the backlight. elogind's default powers the
-	# tablet off, and kernel suspend does not resume this panel or Wi-Fi.
+	# The power key turns the screen off; 30 s later b8k-suspend puts the
+	# system into s2idle. elogind's default would power the tablet off.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep-loop" "$ROOT/usr/local/sbin/b8k-sleep-loop"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-suspend" "$ROOT/usr/local/sbin/b8k-suspend"
 	cat > "$ROOT/etc/local.d/b8k-sleep.start" <<'EOF'
 #!/bin/sh
 start-stop-daemon --start --background \

@@ -1,11 +1,13 @@
 #!/usr/bin/python3
-"""Toggle the backlight from the power key.
+"""Power key: screen off and on, the power menu, and system sleep.
 
-Kernel suspend is not used. The DSI panel is left in the bootloader video
-mode and the Wi-Fi driver's suspend path does nothing, so a real sleep
-does not come back. A short press of the power key turns the lamp off or
-on when the key is released; holding it for two seconds opens the power
-menu (b8k-ask power) in the user's session instead.
+A short press of the power key turns the lamp off or on when the key is
+released; holding it for two seconds opens the power menu (b8k-ask power)
+in the user's session instead. Thirty seconds after the lamp goes off,
+b8k-suspend puts the system to sleep. There is no deep sleep on this
+kernel, only s2idle; the power key wakes it, and the same press turns the
+lamp back on. wlan_mt6628 does not survive a sleep, so b8k-suspend moves
+the Wi-Fi drivers out of the way.
 
 The key shares its input device with Home. The device is grabbed so
 elogind cannot power the tablet off, and Home is passed through.
@@ -28,6 +30,8 @@ BUS_VIRTUAL = 0x06
 
 LEVEL_PATH = "/run/b8k-sleep/level"
 LONG_PRESS = 2.0  # seconds held before the power menu opens
+SUSPEND_AFTER = 30.0  # seconds with the screen off before a system sleep
+SUSPEND = "/usr/local/sbin/b8k-suspend"
 
 
 class Timeval(ctypes.Structure):
@@ -155,6 +159,8 @@ class Lamp:
         self.path = backlight_path()
         self.touch = []
         self.asleep = read_level(self.path) <= 0
+        self.since = time.monotonic()
+        self.suspender = None
         if self.asleep:
             self._grab_touch()
 
@@ -172,6 +178,7 @@ class Lamp:
         write_level(self.path, 0)
         kick_frame()
         self.asleep = True
+        self.since = time.monotonic()
         log("SLEEP")
 
     def wake(self):
@@ -180,6 +187,27 @@ class Lamp:
         self._ungrab_touch()
         self.asleep = False
         log("WAKE")
+
+    def suspend_due(self):
+        """Seconds until the screen-off timer asks for a system sleep."""
+        if not self.asleep or not os.access(SUSPEND, os.X_OK):
+            return None
+        if self.suspender is not None:
+            if self.suspender.poll() is None:
+                return None  # asleep or just woken; it is still running
+            self.suspender = None
+            self.since = time.monotonic()  # woke without a key: wait again
+        return max(0.0, self.since + SUSPEND_AFTER - time.monotonic())
+
+    def suspend(self):
+        # A child does the sleep, so this loop is ready for the key that
+        # wakes the tablet.
+        try:
+            self.suspender = subprocess.Popen([SUSPEND])
+            log("SUSPEND")
+        except OSError as exc:
+            log("SUSPEND_FAIL %s" % exc.errno)
+            self.since = time.monotonic()
 
     def _grab_touch(self):
         self._ungrab_touch()
@@ -379,6 +407,10 @@ def listen():
     down = None  # press time while the key is held and not yet handled
     log("LISTEN asleep=%s" % int(lamp.asleep))
     while True:
+        due = lamp.suspend_due() if down is None else None
+        if due is not None and not select.select([power], [], [], due)[0]:
+            lamp.suspend()
+            continue
         if down is not None:
             # Held: wait for the release, or open the menu at LONG_PRESS.
             left = LONG_PRESS - (time.monotonic() - down)
