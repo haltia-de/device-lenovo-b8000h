@@ -28,6 +28,9 @@ MONTHS = "янв фев мар апр май июн июл авг сен окт 
 CSS = b"""
 window { background-color: #e6e6e4; }
 list, row { background-color: #f2f2f0; }
+/* The plain colour above hides Adwaita's states; give the press back. */
+row:hover { background-color: #e8e8e6; }
+row:active, row:selected, row:selected:hover { background-color: #99c1f1; }
 headerbar {
   background-color: #dcdcda;
   background-image: none;
