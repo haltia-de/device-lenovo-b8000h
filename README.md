@@ -1,10 +1,11 @@
-# Linux (Alpine + Phosh) для Lenovo YOGA Tablet 10 B8000-H
+# Linux (Alpine) для Lenovo YOGA Tablet 10 B8000-H
 
 *English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
-kernel + ~37 device patches) with Alpine Linux and the Phosh mobile shell to the
-Lenovo YOGA Tablet 10 **B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi,
-speakers, charging and a GPU-composited Phosh (PowerVR SGX544 via libhybris and
-the stock Android 4.4 blobs) work; the platform still crashes every 10–40 minutes.
+kernel + ~37 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
+**B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi, speakers and charging
+work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
+stock Android 4.4 blobs; a small touch shell (a waybar top bar with large program
+buttons) runs on it. The platform still crashes every 10–40 minutes.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 > **Статус: альфа для энтузиастов. Работа над портом приостановлена.**
@@ -25,7 +26,9 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Загрузка с eMMC, ядро 7.1 | работает (BOOT прошивается fastboot'ом, система — в разделе USRDATA) |
 | Экран 1280×800, подсветка, яркость, гашение при блокировке | работает (mediatek-drm, DSI) |
 | GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
-| Оболочка Phosh, Firefox, приложения GNOME | работает; приложения рисуются процессором |
+| Оболочка: верхняя панель с крупными кнопками программ, Wi-Fi, батарея, часы | работает ([shell.md](docs/shell.md)) |
+| Firefox, калькулятор, календарь, погода, новости, MAX | работает; приложения рисуются процессором |
+| Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | одно касание; мультитач не доходит |
 | Wi-Fi (MT6628) | работает |
 | Звук через динамики | работает |
@@ -34,20 +37,20 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Наушники, микрофон | нет |
 | Bluetooth | нет (не портирован) |
 | 3G-модем, GPS, камеры | нет |
-| Сон (suspend) | нет |
-| Центр приложений (GNOME Software) | падает — ошибка самого GNOME Software на 32-битном ARM |
+| Сон (suspend) | нет: кнопка Power только гасит и зажигает экран |
 | GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
 | Аппаратное декодирование видео | нет |
-| Стабильность | **случайные падения ядра раз в 10–40 минут**; `reboot` иногда зависает — держать Power 15–20 с |
+| Перезагрузка и выключение | работает (меню на значке батареи) |
+| Стабильность | **случайные падения ядра раз в 10–40 минут**; если планшет завис — держать Power 15–20 с |
 
 Подробности по узлам — в `docs/`.
 
 ## Скриншоты
 
 <p>
-<img src="docs/img/phosh-home.png" width="32%" alt="Домашний экран Phosh">
-<img src="docs/img/phosh-about.png" width="32%" alt="Настройки: о системе">
-<img src="docs/img/phosh-console.png" width="32%" alt="Консоль: ядро, GPU, память">
+<img src="docs/img/shell-firefox.png" width="32%" alt="Верхняя панель и Firefox">
+<img src="docs/img/shell-calc.png" width="32%" alt="Калькулятор">
+<img src="docs/img/shell-power.png" width="32%" alt="Меню питания">
 </p>
 
 ## Установка
@@ -62,7 +65,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 3. Соберите `boot.img` (ядро с установщиком) и образ установщика для microSD.
 4. Прошейте ядро: `fastboot flash boot <файл>`.
 5. Включите планшет с картой: установщик сам скопирует систему в раздел USRDATA
-   (прогресс на экране) и загрузит Phosh.
+   (прогресс на экране) и загрузит рабочий стол.
 
 Возврат на Android — [docs/RETURN-TO-ANDROID.md](docs/RETURN-TO-ANDROID.md).
 
@@ -73,7 +76,9 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
   плюс патчи из `linux-port/patches/`.
 - Внешние модули: GPU (`linux-port/drivers/pvrsrvkm`, `dc_nohw`, `ion-legacy`),
   Wi-Fi (`linux-port/drivers/mt6628`), звук.
-- Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7, `UI_PROFILE=phosh`).
+- Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7, `UI_PROFILE=phosh`:
+  профиль по-прежнему так называется, но вместо Phosh запускает свою оболочку).
+- Экранная клавиатура — `linux-port/wvkbd/build.sh` (wvkbd 0.21 с патчами).
 - GPU-стек: Debian armhf «островок» с libhybris (`linux-port/hybris/build-hybris.sh`) и phoc
   0.55.1 с патчем wlroots под Android EGL (`linux-port/hybris/build-phoc.sh`,
   `wlroots-0.20-hybris.patch`); устройство и замеры — [docs/g4-hybris.md](docs/g4-hybris.md).
@@ -86,7 +91,9 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | `linux-port/drivers/` | внешние модули: PowerVR KM (DDK 1.12), ION, MT6628, звук |
 | `linux-port/hybris/` | libhybris, phoc-gpu, патч wlroots, тесты GPU |
 | `linux-port/gpu/` | запуск Services PowerVR, служба `b8k-gpu`, демо |
-| `linux-port/initramfs/` | init с установщиком с microSD |
+| `linux-port/initramfs/` | init с установщиком с microSD и заставкой |
+| `linux-port/rootfs/` | оболочка (`b8k-*`), waybar, тема Firefox, сборка чистого образа |
+| `linux-port/wvkbd/` | патчи и раскладка экранной клавиатуры |
 | `tools/` | SP Flash Tool readback/download-конфиги, сборка образов |
 | `docs/` | заметки по узлам (GPU, звук, Wi-Fi, батарея…) |
 
@@ -99,7 +106,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 - [TeamYogaBlade2](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1) — ядро для семейства Yoga Tablet (blade);
 - [lenovo-b8000_postmarketos_files](https://github.com/TeamYogaBlade2/lenovo-b8000_postmarketos_files) — материалы postmarketOS по B8000;
-- [libhybris](https://github.com/libhybris/libhybris), Phosh/phoc, wlroots, Alpine Linux, Debian;
+- [libhybris](https://github.com/libhybris/libhybris), phoc, wlroots, waybar, wvkbd, Alpine Linux, Debian;
 - исходники PowerVR DDK 1.12 для MT6589 (bq Aquaris 5 HD, GPL/MIT);
 - участники темы B8000 на 4pda — стоковая прошивка.
 

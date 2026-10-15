@@ -1,103 +1,37 @@
-# Lenovo B8000-H initial Linux bring-up
+# linux-port
 
-This directory contains the first device-specific work for the Lenovo YOGA
-Tablet 10 B8000-H (machine type 60047, board `blade10_row_3gdata`). It targets
-the TeamYogaBlade2 near-mainline kernel at commit
-`7dd245445adf6eaa27018cf92fbd5a92ec0b118e`.
+Device work for the Lenovo YOGA Tablet 10 B8000-H (machine type 60047, board
+`blade10_row_3gdata`) on the TeamYogaBlade2 kernel `blade/v7.1` at
+`7dd245445adf6eaa27018cf92fbd5a92ec0b118e`. The build and install steps are in
+[../docs/INSTALL.md](../docs/INSTALL.md) (Russian); this file maps the directory.
 
-## Safety model
+| Path | Contents |
+|---|---|
+| `patches/` | Kernel patches, applied in numeric order: `*.patch` with `git apply`, `*.py` are idempotent edit scripts run against the kernel tree, `*.txt` are whole DTS files |
+| `build-safe-image.sh` | `boot.img`: zImage + DTB, initramfs, MTK headers, stock boot header values. `DTB_VARIANT` = `safe`, `sd`, `install`, `install2` or `emmc` |
+| `initramfs/` | `init` (mounts, microSD installer, boot splash with `splash=1`) and `splash.py` |
+| `drivers/` | Out-of-tree modules: PowerVR `pvrsrvkm` (DDK 1.12), `dc_nohw`, `ion-legacy`, MT6628 Wi-Fi, audio, battery |
+| `wifi/` | wpa_supplicant 2.11 without PMF/SAE, NetworkManager config |
+| `gpu/`, `hybris/` | PowerVR services, libhybris and the phoc/wlroots GLES2 build in the Debian armhf chroot |
+| `build-rootfs.sh` | Alpine 3.24 armv7 root file system; `UI_PROFILE=phosh` installs the tablet shell (see [../docs/shell.md](../docs/shell.md)), `labwc` a rescue desktop |
+| `rootfs/` | Shell scripts (`b8k-*`), waybar, Firefox theme and web-app script, galculator theme, icons; `make-release-rootfs.sh` builds the public image from a tar of a working tablet |
+| `wvkbd/` | On-screen keyboard: patches and layout for wvkbd 0.21, `build.sh` |
+| `build-emmc-root-image.sh`, `install-root-to-emmc.sh` | eMMC root image and the guarded USRDATA writer |
 
-- The first test must use `fastboot boot`; never `fastboot flash`.
-- `mt6589-lenovo-b8000-h-safe.dtb` disables both internal eMMC and removable
-  SD controllers. The test kernel therefore cannot access Android storage.
-- The initramfs does not mount any Android partition.
-- The development H DTS contains the live B8000-H partition geometry, but all
-  20 fixed partitions are marked `read-only`.
-- Keep the verified stock/identity backup before any later write experiment.
+## Safety
+
+- Only USRDATA is ever written, after checking the installer DTB, the SD root
+  device and the exact partition size (27589888 sectors). BOOT is flashed
+  separately with `fastboot flash boot`. NVRAM, PRO_INFO, PROTECT_F/S and the
+  partition table are never touched; back them up first.
+- Android blobs are not shipped. The tablet's own stock `system` partition is
+  mounted read-only at boot (`rootfs/b8k-android-system.initd`).
 - Do not test below 60% battery charge.
 
-## Contents
+## Stock boot header values
 
-- `patches/0001-lenovo-b8000-h-initial-dts.patch` adds the H and H-safe DTBs.
-- `patches/0002-lenovo-blade-defconfig-appended-dtb.patch` enables
-  `ARM_APPENDED_DTB`; LK 0.5 passes only ATAGs, so the DTB must be appended.
-- `build-safe-image.sh` rebuilds the whole image inside WSL `B8000Build`.
-- `initramfs/init` mounts only virtual filesystems and attempts to expose a USB
-  ACM serial shell as `B8000H-LINUX`.
-- `../tools/mkmtkimage.py` creates the legacy 512-byte MediaTek `KERNEL` and
-  `ROOTFS` component headers required by the stock bootloader.
-
-Generated build artifacts are under `artifacts/linux-port/` and are ignored by
-Git. The first-boot image is `b8000h-linux-firstboot-safe.img`.
-
-## Current boot and rootfs profiles
-
-- `DTB_VARIANT=sd`: proven rescue/development boot; internal eMMC is disabled,
-  root is `/dev/mmcblk0p1` on microSD.
-- `DTB_VARIANT=install IMAGE_SUFFIX=-install`: exposes microSD as `mmcblk0` and
-  eMMC as `mmcblk1`, and boots the SD root as `mmcblk0p1`. Use it only to
-  validate the live geometry
-  and run `install-root-to-emmc.sh` after explicit confirmation.
-- `DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc`: final boot profile; root is the
-  existing USRDATA logical partition `/dev/mmcblk0p20`.
-- `UI_PROFILE=labwc` builds the known-good lightweight desktop.
-- `UI_PROFILE=phosh` builds the target Phosh/Phoc mobile desktop with
-  Squeekboard, NetworkManager and GNOME Settings.
-
-Examples (run from PowerShell):
-
-```powershell
-wsl.exe -d B8000Build -- env UI_PROFILE=phosh sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-rootfs.sh"
-wsl.exe -d B8000Build -- env DTB_VARIANT=emmc IMAGE_SUFFIX=-emmc sh "/mnt/c/Users/<user>/src/lenovo-b8000h-linux/linux-port/build-safe-image.sh"
-```
-
-The installer formats only `/dev/mmcblk1p20`, after checking the installer DTB,
-the SD root device and the exact live size (27589888 sectors). Alternatively,
-`../tools/stream-emmc-acm.ps1` streams the verified gzip-compressed ext4 image
-through the recovery ACM shell, applies the same exact target/size guard and
-checks a read-back SHA-256. Neither path writes BOOT, RECOVERY, NVRAM or the
-partition table. The final BOOT image is written separately only after the eMMC
-root has been verified.
-
-## Verified build
-
-- Kernel branch: `blade/v7.1`
-- Kernel commit: `7dd245445adf6eaa27018cf92fbd5a92ec0b118e`
-- Compiler: Alpine Linux 3.24.2, LLVM/Clang 22
-- Boot image size: 4,184,064 bytes
-- v2 boot image SHA-256 (appended DTB, `second_addr` restored, not yet tested):
-  `7EFBD36BD66B26CEB8CEC06B4C25898AC7A62393A31ABCD56DCEC5A0DA1F9ADA`
-- v1 SHA-256 `B0BA8051E62355B9E90929588B43ABAF8375FF02667BB15CBD22A0B80C281F1B`
-  failed: `Booting OKAY`, but LK stayed on its screen and in fastboot.
-- Safe DTB SHA-256:
-  `DD8E28E8AB668149265D8984716CA7B280D37F469C761AECFD53678BE0C82CD5`
-
-The boot image was unpacked after creation. Its extracted kernel and ramdisk
-matched the exact inputs byte-for-byte. The patch also passed `git apply
---check` against the clean pinned kernel commit.
-
-## Stock boot header values retained
-
-- page size: 2048
-- kernel address: `0x10008000`
-- ramdisk address: `0x11000000`
-- second address: `0x10f00000`
-- tags address: `0x10000100`
-- board name: `39`
-
-The kernel payload is `zImage + DTB`, wrapped with an MTK `KERNEL` header. The
-compressed initramfs is wrapped with an MTK `ROOTFS` header.
-
-## First test gate
-
-Before executing the temporary boot:
-
-1. Charge the tablet to at least 60% on a wall charger.
-2. Confirm Android still boots and the verified backup is present.
-3. Enter fastboot without flashing anything.
-4. Recheck the boot image SHA-256.
-5. Run only `fastboot boot b8000h-linux-firstboot-safe.img`.
-
-If the kernel does not boot, hold Power to return to the untouched stock
-Android boot image. A successful first milestone is framebuffer kernel output
-or enumeration of the USB ACM console; it is not yet a full Linux tablet OS.
+page size 2048, kernel `0x10008000`, ramdisk `0x11000000`, second
+`0x10f00000`, tags `0x10000100`, board `39`. The kernel payload is
+`zImage + DTB` (LK 0.5 passes only ATAGs, so `ARM_APPENDED_DTB` is required),
+wrapped with an MTK `KERNEL` header; the ramdisk has an MTK `ROOTFS` (BOOT) or
+`RECOVERY` header.
