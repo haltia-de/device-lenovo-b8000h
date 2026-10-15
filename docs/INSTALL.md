@@ -43,6 +43,23 @@
    (phoc 0.55.1 с `wlroots-0.20-hybris.patch`). GLES 2.0 использует только этот
    композитор; приложения остаются на процессоре. Как всё устроено —
    [g4-hybris.md](g4-hybris.md).
+
+   После сборки компиляторы, `-dev`-пакеты, perl и python острову не нужны
+   (около 320 МБ). Оставить только то, что использует phoc:
+   ```
+   D=/opt/debian; L=$D/usr/lib/arm-linux-gnueabihf
+   $L/ld-linux-armhf.so.3 --library-path $D/usr/local/hybris/lib:$D/usr/local/lib/arm-linux-gnueabihf:$L \
+       --list $D/usr/local/bin/phoc | awk '$3 ~ "^/opt/debian/usr/lib" {sub("/opt/debian","",$3); print $3}' > $D/tmp/phoc-libs
+   sh linux-port/hybris/debian-enter.sh sh -c '
+       apt-mark showmanual > /tmp/manual.orig
+       apt-mark auto $(cat /tmp/manual.orig)
+       apt-mark manual apt $(while read f; do dpkg -S "$f" | cut -d: -f1; done < /tmp/phoc-libs | sort -u)
+       mkdir -p /var/cache/apt/archives/partial /var/log/apt
+       apt-get -y -o APT::AutoRemove::RecommendsImportant=false \
+           -o APT::AutoRemove::SuggestsImportant=false autoremove --purge'
+   ```
+   Сохраните `/opt/debian/tmp/manual.orig`: чтобы снова собирать, верните
+   пакеты командой `apt-get install $(cat /tmp/manual.orig)` внутри острова.
 9. **Образ установщика для microSD** из ext4-образа системы и `boot.img`:
    ```
    python3 tools/mk-sd-installer.py root.ext4 boot.img b8000h-sd-installer.img
