@@ -3,8 +3,11 @@
 # Wi-Fi watchdog. wlan_mt6628 sometimes stops passing traffic, mostly
 # during a large transfer, while the link still looks connected. Every
 # 15 s ping the gateway. After two misses in a row, mark the network down
-# and reload the driver once. Another reload waits until the gateway has
-# answered again, so a router that is really gone does not cause a loop.
+# and reload the driver once. The driver also does not survive a system
+# sleep: the link is simply gone. So when the network was up and the link
+# stays down for a minute while Wi-Fi is switched on, reload once as well.
+# Another reload waits until the gateway has answered again, so a router
+# that is really gone does not cause a loop.
 # State for the panel icon: /run/b8k-net/state = up | down | off.
 set -u
 dir=/run/b8k-net
@@ -18,30 +21,43 @@ state() {
 	logger -t b8k-netwatch "network $1"
 }
 
+reload() {
+	reloaded=1
+	logger -t b8k-netwatch "$1, reloading wlan_mt6628"
+	sh /etc/local.d/00-b8k-modules.start
+	misses=0
+	gone=0
+	sleep 30
+}
+
 misses=0
+gone=0
 reloaded=0
+was_up=0
 while :; do
 	sleep 15
 	gw=$(ip route show default dev wlan0 2>/dev/null | awk '{ print $3; exit }')
 	if [ "$(cat /sys/class/net/wlan0/carrier 2>/dev/null)" != 1 ] || [ -z "$gw" ]; then
 		misses=0
 		state off
+		# Only a link that was up and vanished; Wi-Fi switched off is left alone.
+		if [ "$was_up" = 1 ] && [ "$reloaded" = 0 ] &&
+		   [ "$(nmcli radio wifi 2>/dev/null)" = enabled ]; then
+			gone=$((gone + 1))
+			[ "$gone" -ge 4 ] && reload "link gone for a minute"
+		fi
 		continue
 	fi
+	gone=0
 	if ping -c 1 -W 3 "$gw" >/dev/null 2>&1; then
 		misses=0
 		reloaded=0
+		was_up=1
 		state up
 		continue
 	fi
 	misses=$((misses + 1))
 	[ "$misses" -ge 2 ] || continue
 	state down
-	if [ "$reloaded" = 0 ]; then
-		reloaded=1
-		logger -t b8k-netwatch "gateway $gw silent, reloading wlan_mt6628"
-		sh /etc/local.d/00-b8k-modules.start
-		misses=0
-		sleep 30
-	fi
+	[ "$reloaded" = 0 ] && reload "gateway $gw silent"
 done
