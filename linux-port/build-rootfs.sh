@@ -303,6 +303,27 @@ EOF
 HandlePowerKey=ignore
 HandlePowerKeyLongPress=ignore
 EOF
+	install -d -m 755 "$ROOT/usr/local/share/b8k"
+	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
+	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
+	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
+		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.cfg" \
+			"$ROOT/usr/lib/firefox/b8k-webapp.cfg"
+		install -m 644 "$REPO/linux-port/rootfs/firefox/zz-b8k-webapp.js" \
+			"$ROOT/usr/lib/firefox/defaults/pref/zz-b8k-webapp.js"
+		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-ram.js" \
+			"$ROOT/usr/lib/firefox/defaults/pref/b8k-ram.js"
+		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
+		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
+			cat >> "$mc" <<'EOF'
+try {
+  Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
+    .getService(Components.interfaces.mozIJSSubScriptLoader)
+    .loadSubScript("file:///usr/local/share/b8k/b8k-webapp.js");
+} catch (e) {}
+EOF
+		fi
+	fi
 	ln -sfn /etc/init.d/b8k-android-system "$ROOT/etc/runlevels/default/b8k-android-system"
 	ln -sfn /etc/init.d/b8k-gpu "$ROOT/etc/runlevels/default/b8k-gpu"
 	ln -sfn /opt/debian/usr/lib/arm-linux-gnueabihf "$ROOT/usr/lib/arm-linux-gnueabihf"
