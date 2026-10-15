@@ -1,5 +1,5 @@
 #!/bin/sh
-# Waybar status for the Wi-Fi icon and the 4-bar battery.
+# Waybar status for the volume, the Wi-Fi icon and the 4-bar battery.
 # Always prints one JSON line and exits 0, so the icon cannot disappear.
 set -u
 
@@ -64,7 +64,28 @@ battery() {
 	printf '{"text":" ","class":"%s"}\n' "$class"
 }
 
+volume() {
+	# v0 is muted or 0%, v1..v3 are thirds of the range. The text is the
+	# percentage, so the level is visible while the keys change it.
+	vol=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk -F/ '/Volume/ { gsub(/[ %]/, "", $2); print $2; exit }')
+	mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
+	case $vol in
+		''|*[!0-9]*) printf '{"text":"--","class":"v0"}\n'; return ;;
+	esac
+	if [ "$vol" -eq 0 ] || [ "$mute" = yes ] || [ "$mute" = да ]; then
+		class=v0
+	elif [ "$vol" -le 33 ]; then
+		class=v1
+	elif [ "$vol" -le 66 ]; then
+		class=v2
+	else
+		class=v3
+	fi
+	printf '{"text":"%s%%","class":"%s"}\n' "$vol" "$class"
+}
+
 case ${1:-} in
+	volume) volume ;;
 	wifi) wifi ;;
 	battery) battery ;;
 	*) printf '{"text":" ","class":"w0"}\n' ;;

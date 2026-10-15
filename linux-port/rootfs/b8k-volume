@@ -7,6 +7,7 @@ be muted at 0% with no way back. Runs in the session as the user, who is
 in the input group. The keypad is only read, not grabbed.
 """
 import os
+import signal
 import struct
 import subprocess
 import sys
@@ -16,7 +17,7 @@ KEY_VOLUMEDOWN = 114
 KEY_VOLUMEUP = 115
 EV_KEY = 1
 EVENT = struct.Struct("llHHi")  # struct input_event on 32-bit ARM
-STEP = "5%"
+STEP = 5  # percent; up stops at 100, past which PulseAudio would overdrive
 
 
 def find_keypad():
@@ -42,6 +43,36 @@ def pactl(*args):
                     stderr=subprocess.DEVNULL)
 
 
+def volume():
+    # Current default-sink volume in percent, rounded to the step grid.
+    out = subprocess.run(["pactl", "get-sink-volume", "@DEFAULT_SINK@"],
+                         capture_output=True, text=True).stdout
+    try:
+        pct = int(out.split("/")[1].strip().rstrip("%"))
+    except (IndexError, ValueError):
+        return 50
+    return int(round(pct / STEP)) * STEP
+
+
+def refresh_bar():
+    # The panel's volume module listens on SIGRTMIN+8. Signal only a bar
+    # that catches it: an uncaught real-time signal would kill the bar.
+    signum = signal.SIGRTMIN + 8
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/comm" % pid) as fh:
+                if fh.read().strip() != "waybar":
+                    continue
+            with open("/proc/%s/status" % pid) as fh:
+                cgt = next(l for l in fh if l.startswith("SigCgt:"))
+            if int(cgt.split()[1], 16) >> (signum - 1) & 1:
+                os.kill(int(pid), signum)
+        except (OSError, StopIteration, ValueError):
+            pass
+
+
 def main():
     path = find_keypad()
     if not path:
@@ -58,9 +89,14 @@ def main():
                 continue
             if code == KEY_VOLUMEUP:
                 pactl("set-sink-mute", "@DEFAULT_SINK@", "0")
-                pactl("set-sink-volume", "@DEFAULT_SINK@", "+" + STEP)
+                pactl("set-sink-volume", "@DEFAULT_SINK@",
+                      "%d%%" % min(100, volume() + STEP))
             elif code == KEY_VOLUMEDOWN:
-                pactl("set-sink-volume", "@DEFAULT_SINK@", "-" + STEP)
+                pactl("set-sink-volume", "@DEFAULT_SINK@",
+                      "%d%%" % max(0, volume() - STEP))
+            else:
+                continue
+            refresh_bar()
 
 
 if __name__ == "__main__":

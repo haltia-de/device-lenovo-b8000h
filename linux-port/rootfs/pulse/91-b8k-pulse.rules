@@ -1,0 +1,3 @@
+# B8000-H speaker: hardware gain at the clean top step, software volume in
+# PulseAudio (see /usr/share/pulseaudio/alsa-mixer/profile-sets/b8k.conf).
+SUBSYSTEM=="sound", KERNEL=="card*", ATTR{id}=="B8000", ENV{PULSE_PROFILE_SET}="b8k.conf", RUN+="/usr/bin/amixer -q -c B8000 sset Speaker 7"

@@ -293,6 +293,13 @@ if [ "$UI_PROFILE" = phosh ]; then
 	fi
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
+	# Speaker: hardware gain fixed at the clean top step, software volume.
+	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k.conf" \
+		"$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets/b8k.conf"
+	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-speaker.conf" \
+		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths/b8k-speaker.conf"
+	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
+		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-splash" "$ROOT/usr/local/bin/b8k-splash"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
