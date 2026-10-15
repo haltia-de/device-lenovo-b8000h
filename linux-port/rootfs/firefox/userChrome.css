@@ -1,5 +1,6 @@
-/* Bigger tabs and a close mark that stays visible on a touch screen.
-   Gallery themes only recolor Firefox, so the size lives here. */
+/* Bigger tabs, buttons and menus, and a close mark that stays visible on
+   a touch screen. Gallery themes only recolor Firefox, so the size lives
+   here. */
 
 :root {
   --tab-min-height: 62px !important;
@@ -84,16 +85,66 @@
   font-size: 18px !important;
 }
 
-#nav-bar .toolbarbutton-1 > .toolbarbutton-icon,
-#nav-bar .toolbarbutton-1 > .toolbarbutton-badge-stack > .toolbarbutton-icon {
+/* One size for every toolbar button, in the tab row and the row below:
+   a 30px picture in a 46px target. The account picture and the tab-count
+   badge draw their own image, so they are listed by name. */
+.toolbarbutton-1 > .toolbarbutton-icon,
+.toolbarbutton-1 > .toolbarbutton-badge-stack {
   width: 46px !important;
   height: 46px !important;
   padding: 8px !important;
 }
 
-#nav-bar .urlbar-icon {
-  width: 22px !important;
-  height: 22px !important;
+.toolbarbutton-1 > .toolbarbutton-badge-stack > .toolbarbutton-icon,
+#fxa-avatar-image {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+}
+
+#TabsToolbar .toolbarbutton-1 {
+  --toolbarbutton-inner-padding: 6px !important;
+  margin-block: auto !important;
+}
+
+#nav-bar .urlbar-icon,
+#urlbar-input-container image,
+#trust-icon,
+#identity-icon,
+#tracking-protection-icon {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+/* mobile-config-firefox draws the tab count as 10px text. */
+#alltabs-button > .toolbarbutton-badge-stack::before,
+#sidebar-button > .toolbarbutton-badge-stack::before {
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  padding: 1px 8px !important;
+  border-width: 2px !important;
+  border-radius: 6px !important;
+  font-size: 18px !important;
+}
+
+.tab-icon-image {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* Menus and panels: the same text size and touch height as the rows. */
+menupopup,
+panelview,
+.panel-subview-body {
+  font-size: 18px !important;
+}
+
+menupopup > menuitem,
+menupopup > menu,
+.subviewbutton {
+  min-height: 48px !important;
 }
 
 #urlbar,
