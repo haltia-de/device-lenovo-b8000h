@@ -64,6 +64,7 @@ window#waybar { background: #1e2430; color: #f2f2f2; }
 #custom-wifi3.w2 { background-image: url("/usr/local/share/b8k/wifi-p2.svg"); }
 #custom-wifi3.w3 { background-image: url("/usr/local/share/b8k/wifi-p3.svg"); }
 #custom-wifi3.w4 { background-image: url("/usr/local/share/b8k/wifi-p4.svg"); }
+#custom-wifi3.wx { background-image: url("/usr/local/share/b8k/wifi-x.svg"); }
 #custom-battery.b0 { background-image: url("/usr/local/share/b8k/bat-b0.svg"); }
 #custom-battery.b1 { background-image: url("/usr/local/share/b8k/bat-b1.svg"); }
 #custom-battery.b2 { background-image: url("/usr/local/share/b8k/bat-b2.svg"); }

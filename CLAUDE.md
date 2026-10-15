@@ -24,7 +24,7 @@ The build is not fully automated. `docs/INSTALL.md` §0 is the authoritative ste
    - `*.py`: idempotent string-replace scripts run against the kernel tree. They hardcode `K = '/opt/b8000h/linux-drm/...'`, assert that each anchor occurs exactly once, and print `already` when the change is present.
    - `*.txt`: whole DTS files or snapshots, e.g. `0011-b8000-h-install2-dts.txt` is the `install2` DTS. `*.patch.current.txt` holds the current state of an evolving patch.
 
-   Config: `lenovo-blade_defconfig` (from the patches) with `CONFIG_LOCALVERSION="-b8000h22"`. `CONFIG_ARM_APPENDED_DTB=y` is mandatory, because LK 0.5 passes only ATAGs.
+   Config: `lenovo-blade_defconfig` (from the patches) with `CONFIG_LOCALVERSION="-b8000h23"` (patch 0038 enables zram). The build number in the release selects the GPU module directory (`/usr/lib/b8k/kN`, parsed by `b8k-gpu` from `-b8000hN-`), so bump it whenever the kernel config changes, and install the new modules next to the old ones so that the previous `boot.img` still boots. The release must end in `-g<sha>-dirty`: in Docker, run `git config --global --add safe.directory <tree>` first, or `setlocalversion` drops the suffix. `CONFIG_ARM_APPENDED_DTB=y` is mandatory, because LK 0.5 passes only ATAGs.
 2. **boot.img**:
    ```
    K=<kernel tree> DTB_VARIANT=install2 IMAGE_SUFFIX=-my sh linux-port/build-safe-image.sh
@@ -66,6 +66,7 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu ... -E b8k-launcher` 
 - **Display path.** The display uses mediatek-drm over DSI and takes over the LK-initialized pipeline (patches 0017–0036: OVL/RDMA FIFO, BLS backlight, CRTC kept on across DPMS, cached dumb buffers). Runtime tuning such as the RDMA FIFO threshold lives in `linux-port/rootfs/b8k-rdma-fifo.py`. `docs/scroll-tear.md` explains why.
 - **Stability workaround.** The CPU is pinned to 806 MHz by `/etc/local.d/00-b8k-stability.start` on the device.
 - **Reboot.** `mtk_wdt_restart` resets through TOPRGU (`0x10000000`), leaving `WDT_MODE` as LK set it (`0x79`). Without `EXRST_EN` (bit 2) the preloader keeps the tablet off. `rootfs/b8k-wdt-exrst` sets the bit at boot, and a successful reboot shows `boot_reason=4` in `/proc/cmdline`. Access `/dev/mem` there with 32-bit reads and writes only: a byte store raises a bus error.
+- **Wi-Fi hangs.** `wlan_mt6628` sometimes stops passing traffic during large transfers (an scp of a few MB) while the link stays up. `rootfs/b8k-netwatch` pings the gateway and reloads the driver once; the panel shows `wifi-x.svg`. Copy big files to the tablet over SSH in pieces of about 128 KB with pauses. Pushing base64 through the ACM shell lost data.
 - **Wi-Fi MAC.** Without Android NVRAM, `wlan_mt6628` builds its MAC from the timer, and the MAC cannot be changed after the module loads. The module takes a `mac=` parameter, which the boot script derives from `/etc/machine-id`.
 - GPU module sets are keyed by kernel build number (`/root/kN`, e.g. `K=k22` in `make-release-rootfs.sh`). `g3-run.sh` picks the set that matches the running kernel.
 

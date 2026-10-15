@@ -5,6 +5,7 @@ set -u
 
 wifi() {
 	# w0 is disconnected. w1..w4 are four signal bars, same idea as the battery.
+	# wx: associated, but the gateway does not answer (b8k-netwatch).
 	class=w0
 	if [ -r /sys/class/net/wlan0/operstate ] && [ -r /sys/class/net/wlan0/carrier ]; then
 		op=$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo down)
@@ -25,6 +26,7 @@ wifi() {
 					;;
 			esac
 			class=w$bars
+			[ "$(cat /run/b8k-net/state 2>/dev/null)" = down ] && class=wx
 		fi
 	fi
 	printf '{"text":" ","class":"%s"}\n' "$class"

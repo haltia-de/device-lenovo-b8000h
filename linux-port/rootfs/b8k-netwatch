@@ -1,0 +1,47 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Wi-Fi watchdog. wlan_mt6628 sometimes stops passing traffic, mostly
+# during a large transfer, while the link still looks connected. Every
+# 15 s ping the gateway. After two misses in a row, mark the network down
+# and reload the driver once. Another reload waits until the gateway has
+# answered again, so a router that is really gone does not cause a loop.
+# State for the panel icon: /run/b8k-net/state = up | down | off.
+set -u
+dir=/run/b8k-net
+mkdir -p "$dir"
+exec 9>"$dir/lock"
+flock -n 9 || exit 0
+
+state() {
+	[ "$(cat "$dir/state" 2>/dev/null)" = "$1" ] && return
+	echo "$1" > "$dir/state.new" && mv "$dir/state.new" "$dir/state"
+	logger -t b8k-netwatch "network $1"
+}
+
+misses=0
+reloaded=0
+while :; do
+	sleep 15
+	gw=$(ip route show default dev wlan0 2>/dev/null | awk '{ print $3; exit }')
+	if [ "$(cat /sys/class/net/wlan0/carrier 2>/dev/null)" != 1 ] || [ -z "$gw" ]; then
+		misses=0
+		state off
+		continue
+	fi
+	if ping -c 1 -W 3 "$gw" >/dev/null 2>&1; then
+		misses=0
+		reloaded=0
+		state up
+		continue
+	fi
+	misses=$((misses + 1))
+	[ "$misses" -ge 2 ] || continue
+	state down
+	if [ "$reloaded" = 0 ]; then
+		reloaded=1
+		logger -t b8k-netwatch "gateway $gw silent, reloading wlan_mt6628"
+		sh /etc/local.d/00-b8k-modules.start
+		misses=0
+		sleep 30
+	fi
+done
