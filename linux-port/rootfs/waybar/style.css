@@ -50,6 +50,21 @@ window#waybar { background: #242424; color: #ffffff; }
   background-color: #3584e4;
   color: #ffffff;
 }
+/* The handle of the brightness and volume drawer (group/system). */
+#custom-system {
+  min-height: 42px;
+  margin: 2px 4px;
+  padding: 0;
+  background-color: #242424;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 40px 40px;
+  background-image: url("/usr/local/share/b8k/system.svg");
+}
+#custom-system.muted {
+  background-size: 46px 50px;
+  background-image: url("/usr/local/share/b8k/vol-0.svg");
+}
 #custom-brightness {
   min-height: 42px;
   margin: 2px 4px;
@@ -117,6 +132,7 @@ window#waybar { background: #242424; color: #ffffff; }
   background-color: #3584e4;
   color: #ffffff;
 }
+#custom-system.pressed,
 #custom-brightness.pressed,
 #custom-volume.pressed,
 #custom-wifi3.pressed,

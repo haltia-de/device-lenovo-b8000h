@@ -1,5 +1,6 @@
 #!/bin/sh
-# Waybar status for the volume, the Wi-Fi icon and the 4-bar battery.
+# Waybar status for the volume, the drawer handle, the Wi-Fi icon and the
+# 4-bar battery.
 # Always prints one JSON line and exits 0, so the icon cannot disappear.
 set -u
 
@@ -92,9 +93,20 @@ volume() {
 	out volume "$class"
 }
 
+system() {
+	# The handle of the drawer that holds brightness and volume. It shows a
+	# muted speaker while the sound is off, so that state is never hidden.
+	mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
+	case $mute in
+		yes|да) out system muted ;;
+		*) out system idle ;;
+	esac
+}
+
 case ${1:-} in
 	brightness) out brightness idle ;;
 	volume) volume ;;
+	system) system ;;
 	wifi) wifi ;;
 	battery) battery ;;
 	*) printf '{"text":" ","class":"w0"}\n' ;;
