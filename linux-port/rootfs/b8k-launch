@@ -18,6 +18,7 @@ label_of() {
 		weather) echo Погода ;;
 		news) echo Новости ;;
 		max) echo MAX ;;
+		term) echo Терминал ;;
 		settings) echo Настройки ;;
 		*) return 1 ;;
 	esac
@@ -38,6 +39,7 @@ bin_of() {
 		calc) echo galculator ;;
 		calendar) echo gnome-calendar ;;
 		news) echo b8k-news ;;
+		term) echo foot ;;
 		settings) echo gnome-control-center ;;
 		*) return 1 ;;
 	esac
@@ -49,6 +51,7 @@ aliases_of() {
 		calc) echo galculator Galculator ;;
 		calendar) echo org.gnome.Calendar gnome-calendar ;;
 		news) echo b8k.News b8k-news ;;
+		term) echo foot ;;
 		settings) echo org.gnome.Settings gnome-control-center ;;
 		*) return 1 ;;
 	esac
@@ -209,7 +212,12 @@ open)
 	if [ "$id" = calc ]; then
 		export GTK_THEME=b8k-galculator
 	fi
-	"$bin" >"$run"/b8k-app-"$id".log 2>&1 9>&- &
+	if [ "$id" = term ]; then
+		set -- -c /usr/local/share/b8k/foot.ini
+	else
+		set --
+	fi
+	"$bin" "$@" >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 	i=0
 	while [ "$i" -lt 40 ]; do
 		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
@@ -220,7 +228,7 @@ open)
 	done
 	;;
 *)
-	echo "usage: b8k-launch start|tap <firefox|calc|calendar|weather|news|max|settings>" >&2
+	echo "usage: b8k-launch start|tap <firefox|calc|calendar|weather|news|max|term|settings>" >&2
 	exit 2
 	;;
 esac

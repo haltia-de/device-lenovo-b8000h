@@ -20,6 +20,7 @@ NAMES = {
     "weather": "Погода",
     "news": "Новости",
     "max": "MAX",
+    "term": "Терминал",
     "settings": "Настройки",
 }
 ALIASES = {
@@ -29,6 +30,7 @@ ALIASES = {
     "calendar": ["org.gnome.Calendar", "gnome-calendar"],
     "weather": ["org.gnome.Weather", "gnome-weather"],
     "news": ["b8k.News", "b8k-news"],
+    "term": ["foot"],
     "settings": ["org.gnome.Settings", "gnome-control-center"],
 }
 CSS = b"""

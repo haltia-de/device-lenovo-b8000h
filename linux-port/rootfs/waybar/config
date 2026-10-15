@@ -9,7 +9,8 @@
     "custom/calendar",
     "custom/weather",
     "custom/news",
-    "custom/max"
+    "custom/max",
+    "custom/term"
   ],
   "modules-right": ["custom/wifi3", "custom/battery", "custom/clock"],
   "custom/firefox": {
@@ -64,6 +65,15 @@
     "signal": 7,
     "exec-on-event": false,
     "on-click": "/usr/local/bin/b8k-launch tap max",
+    "tooltip": false
+  },
+  "custom/term": {
+    "exec": "/usr/local/bin/b8k-launch status term",
+    "return-type": "json",
+    "format": "{text}",
+    "signal": 3,
+    "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-launch tap term",
     "tooltip": false
   },
   "custom/wifi3": {

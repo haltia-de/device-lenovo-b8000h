@@ -49,7 +49,7 @@ The build is not fully automated. `docs/INSTALL.md` §0 is the authoritative ste
 The session in `/etc/local.d/desktop.start` runs `phoc-gpu ... -E b8k-launcher` in a restart loop. `b8k-launcher` starts the wallpaper, the keyboard (`b8k-keyboard` → `wvkbd-b8k`), `b8k-focus watch` and finally `exec waybar`. If waybar dies, the whole session restarts. `docs/shell.md` (Russian) describes the shell in full. The parts that span files:
 
 - **Buttons and state.**
-  - Program button ids (`firefox calc calendar weather news max settings`) are repeated in `waybar/config`, `b8k-launch` (`label_of`/`url_of`/`bin_of`/`aliases_of`), `b8k-focus` (`BUTTONS` with signal numbers) and `b8k-ask` (`NAMES`/`ALIASES`). Change all of them together.
+  - Program button ids (`firefox calc calendar weather news max term settings`) are repeated in `waybar/config`, `b8k-launch` (`label_of`/`url_of`/`bin_of`/`aliases_of`), `b8k-focus` (`BUTTONS` with signal numbers) and `b8k-ask` (`NAMES`/`ALIASES`). Change all of them together.
   - `b8k-focus watch` writes `$XDG_RUNTIME_DIR/b8k-launch/state` and signals waybar with `SIGRTMIN+N`. It signals only when `/proc/<pid>/status` `SigCgt` shows that waybar catches that signal. An early signal killed waybar and caused the boot flashing.
 - **Web-app windows.**
   - `firefox/b8k-webapp.js` runs in Firefox through autoconfig. It picks up URLs that `b8k-launch` writes to `$XDG_RUNTIME_DIR/b8k-webapp.d/` and opens them in chromeless windows.

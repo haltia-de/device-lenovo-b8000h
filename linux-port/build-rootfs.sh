@@ -17,7 +17,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang phosh-wallpapers swaybg iio-sensor-proxy iio-sensor-proxy-openrc
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		gnome-calendar gnome-calendar-lang
+		gnome-calendar gnome-calendar-lang foot
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
@@ -322,6 +322,7 @@ EOF
 	install -m 755 "$REPO/linux-port/rootfs/b8k-news" "$ROOT/usr/local/bin/b8k-news"
 	install -d -m 755 "$ROOT/usr/local/share/b8k"
 	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
+	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
 	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
