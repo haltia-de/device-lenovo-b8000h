@@ -2,7 +2,6 @@
 window#waybar { background: #1e2430; color: #f2f2f2; }
 #custom-firefox,
 #custom-calc,
-#custom-calendar,
 #custom-weather,
 #custom-news,
 #custom-max,
@@ -18,14 +17,12 @@ window#waybar { background: #1e2430; color: #f2f2f2; }
 }
 #custom-firefox { background-image: url("/usr/share/icons/hicolor/64x64/apps/firefox.png"); }
 #custom-calc { background-image: url("/usr/share/icons/hicolor/scalable/apps/galculator.svg"); }
-#custom-calendar { background-image: url("/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"); }
 #custom-weather { background-image: url("/usr/local/share/b8k/weather.svg"); }
 #custom-news { background-image: url("/usr/local/share/b8k/news.svg"); }
 #custom-max { background-image: url("/usr/local/share/b8k/max.png"); }
 #custom-term { background-image: url("/usr/share/icons/hicolor/scalable/apps/foot.svg"); }
 #custom-firefox.running,
 #custom-calc.running,
-#custom-calendar.running,
 #custom-weather.running,
 #custom-news.running,
 #custom-max.running,
@@ -35,7 +32,6 @@ window#waybar { background: #1e2430; color: #f2f2f2; }
 }
 #custom-firefox.active,
 #custom-calc.active,
-#custom-calendar.active,
 #custom-weather.active,
 #custom-news.active,
 #custom-max.active,
@@ -46,7 +42,6 @@ window#waybar { background: #1e2430; color: #f2f2f2; }
 }
 #custom-firefox:active,
 #custom-calc:active,
-#custom-calendar:active,
 #custom-weather:active,
 #custom-news:active,
 #custom-max:active,

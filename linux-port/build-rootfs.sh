@@ -17,7 +17,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang phosh-wallpapers swaybg iio-sensor-proxy iio-sensor-proxy-openrc
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		gnome-calendar gnome-calendar-lang foot
+		foot
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac

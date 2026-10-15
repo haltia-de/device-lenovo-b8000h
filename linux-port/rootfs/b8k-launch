@@ -14,7 +14,6 @@ label_of() {
 	case $1 in
 		firefox) echo Firefox ;;
 		calc) echo Калькулятор ;;
-		calendar) echo Календарь ;;
 		weather) echo Погода ;;
 		news) echo Новости ;;
 		max) echo MAX ;;
@@ -37,7 +36,6 @@ bin_of() {
 	case $1 in
 		firefox) echo firefox ;;
 		calc) echo galculator ;;
-		calendar) echo gnome-calendar ;;
 		news) echo b8k-news ;;
 		term) echo foot ;;
 		settings) echo gnome-control-center ;;
@@ -49,7 +47,6 @@ aliases_of() {
 	case $1 in
 		firefox) echo firefox Firefox org.mozilla.firefox ;;
 		calc) echo galculator Galculator ;;
-		calendar) echo org.gnome.Calendar gnome-calendar ;;
 		news) echo b8k.News b8k-news ;;
 		term) echo foot ;;
 		settings) echo org.gnome.Settings gnome-control-center ;;
@@ -228,7 +225,7 @@ open)
 	done
 	;;
 *)
-	echo "usage: b8k-launch start|tap <firefox|calc|calendar|weather|news|max|term|settings>" >&2
+	echo "usage: b8k-launch start|tap <firefox|calc|weather|news|max|term|settings>" >&2
 	exit 2
 	;;
 esac

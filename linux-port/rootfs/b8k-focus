@@ -20,7 +20,6 @@ ACTIVATED, MINIMIZED = 2, 1
 BUTTONS = (
     ("firefox", 1, ("firefox", "Firefox", "org.mozilla.firefox")),
     ("calc", 2, ("galculator", "Galculator")),
-    ("calendar", 4, ("org.gnome.Calendar", "gnome-calendar")),
     ("weather", 5, ()),
     ("news", 6, ("b8k.News", "b8k-news")),
     ("max", 7, ()),
