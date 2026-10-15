@@ -279,6 +279,25 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
 		"$ROOT/etc/init.d/b8k-android-system"
 	install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$ROOT/usr/local/bin/phoc-gpu"
+	install -d -m 755 "$ROOT/usr/local/sbin"
+	# The power key sleeps the backlight. elogind's default powers the
+	# tablet off, and kernel suspend does not resume this panel or Wi-Fi.
+	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep-loop" "$ROOT/usr/local/sbin/b8k-sleep-loop"
+	cat > "$ROOT/etc/local.d/b8k-sleep.start" <<'EOF'
+#!/bin/sh
+start-stop-daemon --start --background \
+	--exec /usr/local/sbin/b8k-sleep-loop \
+	--pidfile /run/b8k-sleep.pid --make-pidfile \
+	--stdout /var/log/b8k-sleep.log --stderr /var/log/b8k-sleep.log
+EOF
+	chmod +x "$ROOT/etc/local.d/b8k-sleep.start"
+	install -d -m 755 "$ROOT/etc/elogind/logind.conf.d"
+	cat > "$ROOT/etc/elogind/logind.conf.d/b8k-power-key.conf" <<'EOF'
+[Login]
+HandlePowerKey=ignore
+HandlePowerKeyLongPress=ignore
+EOF
 	ln -sfn /etc/init.d/b8k-android-system "$ROOT/etc/runlevels/default/b8k-android-system"
 	ln -sfn /etc/init.d/b8k-gpu "$ROOT/etc/runlevels/default/b8k-gpu"
 	ln -sfn /opt/debian/usr/lib/arm-linux-gnueabihf "$ROOT/usr/lib/arm-linux-gnueabihf"
