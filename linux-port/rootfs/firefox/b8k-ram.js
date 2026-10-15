@@ -6,3 +6,8 @@ pref("dom.ipc.keepProcessesAlive.web", 0);
 // The default Firefox home page. Old tabs are not restored.
 pref("browser.sessionstore.resume_from_crash", false);
 pref("browser.startup.page", 1);
+// Unload background tabs when memory runs low instead of letting the
+// system run out. Linux defaults: off, at 5% free, tabs idle 10 minutes.
+pref("browser.tabs.unloadOnLowMemory", true);
+pref("browser.low_commit_space_threshold_percent", 10);
+pref("browser.tabs.min_inactive_duration_before_unload", 60000);
