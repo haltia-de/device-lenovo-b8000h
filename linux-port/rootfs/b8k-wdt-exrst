@@ -1,0 +1,34 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-2.0
+"""Let a watchdog reset restart the tablet instead of turning it off.
+
+The kernel reboots the MT6589 through the watchdog (mtk_wdt_restart),
+but leaves WDT_MODE as LK set it: 0x79, without EXRST_EN. Then the
+preloader sees a reset that did not go through the PMIC and keeps the
+tablet off. With EXRST_EN, as the stock MediaTek kernel sets it, the
+preloader reports boot_reason=4 (watchdog, power key bypassed) and boots.
+mtk_wdt_restart only clears IRQ_EN, so the bit set here holds until the
+reset. Run as root at boot and again right before reboot.
+"""
+import mmap
+import os
+import sys
+import time
+
+TOPRGU = 0x10000000
+WDT_MODE = 0
+WDT_MODE_EXRST_EN = 1 << 2
+WDT_MODE_KEY = 0x22000000
+
+fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
+mem = mmap.mmap(fd, 4096, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=TOPRGU)
+# 32-bit accesses only: a byte store to this block is a bus error.
+regs = memoryview(mem).cast("I")
+# The first write after boot sometimes does not stick, so check and retry.
+for _ in range(10):
+    mode = regs[WDT_MODE]
+    if mode & WDT_MODE_EXRST_EN:
+        sys.exit(0)
+    regs[WDT_MODE] = (mode & 0xffff) | WDT_MODE_EXRST_EN | WDT_MODE_KEY
+    time.sleep(0.05)
+sys.exit("b8k-wdt-exrst: WDT_MODE stays %#x" % regs[WDT_MODE])

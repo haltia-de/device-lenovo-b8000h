@@ -291,6 +291,13 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
+	# Without this, reboot turns the tablet off (see the script).
+	install -m 755 "$REPO/linux-port/rootfs/b8k-wdt-exrst" "$ROOT/usr/local/sbin/b8k-wdt-exrst"
+	cat > "$ROOT/etc/local.d/b8k-wdt-exrst.start" <<'EOF'
+#!/bin/sh
+/usr/local/sbin/b8k-wdt-exrst
+EOF
+	chmod +x "$ROOT/etc/local.d/b8k-wdt-exrst.start"
 	# The power key sleeps the backlight. elogind's default powers the
 	# tablet off, and kernel suspend does not resume this panel or Wi-Fi.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
