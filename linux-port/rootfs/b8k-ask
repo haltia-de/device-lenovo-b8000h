@@ -144,7 +144,7 @@ def main():
         app_id = sys.argv[2]
         name = NAMES.get(app_id, app_id)
         show(
-            "Закрыть %s?" % name,
+            "Закрыть «%s»?" % name,
             [
                 ("Закрыть", "danger", lambda: close_app(app_id)),
                 ("Отмена", "", None),
@@ -159,7 +159,7 @@ def main():
             subprocess.call(["/usr/local/bin/b8k-focus", "close-webapp", app_id])
 
         show(
-            "Закрыть %s?" % name,
+            "Закрыть «%s»?" % name,
             [
                 ("Закрыть", "danger", close_webapp),
                 ("Отмена", "", None),

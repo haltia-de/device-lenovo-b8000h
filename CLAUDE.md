@@ -16,6 +16,7 @@ There is no test suite, no linter and no CI. A change is verified by building th
 - **Power:** a failed `reboot` used to leave the tablet off; that is fixed by `b8k-wdt-exrst`. After `poweroff` with USB attached, LK shows the charging animation and stays off. Either way the user must press Power to bring it back, so ask before you power the tablet off.
 - **Gotchas:**
   - The Python helpers run as `python3 /usr/local/bin/<name>`, so `pkill -x <name>` and `killall <name>` miss them. Find the pid with `ps -o pid,args`.
+  - `b8k-focus watch` reads `BUTTONS` only at start. After you change the button ids, restart it, or a new button never shows its state and never asks to close. Its `ps` line starts with `{b8k-focus}`, so the script path is the fourth field, not the third.
   - `pkill -f <pattern>` run over SSH also matches the remote shell that runs it, and kills your own command.
   - Killing `waybar` restarts the whole session and closes all programs. `kill -USR2 $(pidof waybar)` reloads its config and CSS in place.
   - Children of `b8k-launcher` that exit become zombies, because it `exec`s into waybar, which does not reap them. `pidof` still lists them.
