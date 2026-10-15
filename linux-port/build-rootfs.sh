@@ -411,6 +411,12 @@ EOF
 			"$ROOT/usr/lib/firefox/defaults/pref/b8k-ram.js"
 		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-lean.js" \
 			"$ROOT/usr/lib/firefox/defaults/pref/b8k-lean.js"
+		# uBlock Origin Lite in complete mode instead of uBlock Origin, in a
+		# copy of mobile-config-firefox's policies that Firefox reads instead.
+		mkdir -p "$ROOT/etc/firefox/policies"
+		python3 "$REPO/linux-port/rootfs/firefox/b8k-policies.py" \
+			"$ROOT/usr/lib/firefox/distribution/policies.json" \
+			"$ROOT/etc/firefox/policies/policies.json"
 		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
 		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
 			cat >> "$mc" <<'EOF'
