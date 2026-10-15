@@ -1,0 +1,26 @@
+#!/bin/sh
+# Program buttons, a Wi-Fi icon, a battery icon and a clock.
+# A tap on Wi-Fi opens Settings. A tap on the battery opens the power menu.
+# One window watcher updates a button only when its state changes.
+# The keyboard stays hidden until a text field is focused.
+if [ -x /usr/local/bin/b8k-focus ]; then
+	setsid /usr/local/bin/b8k-focus watch >/tmp/b8k-focus-watch.log 2>&1 &
+fi
+# Phosh default wallpaper, behind every window.
+if [ -x /usr/bin/swaybg ]; then
+	pidof swaybg >/dev/null 2>&1 || \
+		swaybg -i /usr/share/phosh/backgrounds/byzantium-abstract-1920x1080.jpg -m fill \
+			>/tmp/b8k-wallpaper.log 2>&1 &
+fi
+if [ -x /usr/local/bin/b8k-keyboard ]; then
+	pidof wvkbd-b8k >/dev/null 2>&1 || \
+		/usr/local/bin/b8k-keyboard >/tmp/b8k-keyboard.log 2>&1 &
+elif [ -x /usr/bin/squeekboard ]; then
+	squeekboard >/tmp/squeekboard.log 2>&1 &
+fi
+# Firefox opens with the shell, on the default Firefox home page.
+if [ -x /usr/local/bin/b8k-launch ]; then
+	pidof firefox >/dev/null 2>&1 || \
+		/usr/local/bin/b8k-launch start firefox
+fi
+exec waybar

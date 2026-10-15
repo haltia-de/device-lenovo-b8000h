@@ -1,0 +1,410 @@
+#!/usr/bin/python3
+# List or focus toplevel windows. phoc publishes
+# wlr-foreign-toplevel-management; activate focuses an existing window.
+# watch keeps one connection and reports button state only when it changes.
+import fcntl
+import os
+import signal
+import socket
+import struct
+import sys
+
+MANAGER = "zwlr_foreign_toplevel_manager_v1"
+EV_TITLE, EV_APP_ID, EV_STATE, EV_DONE, EV_CLOSED = 0, 1, 4, 5, 6
+REQ_ACTIVATE = 4
+REQ_CLOSE = 5
+ACTIVATED, MINIMIZED = 2, 1
+# Waybar adds this number to SIGRTMIN. The label on the button never changes.
+# Signal 0 is tracked for taps, but it is not sent to waybar.
+# SIGRTMIN itself would stop the bar.
+BUTTONS = (
+    ("firefox", 1, ("firefox", "Firefox", "org.mozilla.firefox")),
+    ("calc", 2, ("galculator", "Galculator")),
+    ("calendar", 4, ("org.gnome.Calendar", "gnome-calendar")),
+    ("weather", 5, ()),
+    ("news", 6, ("b8k.News", "b8k-news")),
+    ("max", 7, ()),
+    ("settings", 0, ("org.gnome.Settings", "gnome-control-center")),
+)
+# The same invisible mark is written by b8k-webapp.js onto web-app windows.
+WEBAPP_MARK = "\u2060"
+WEBAPPS = {
+    "weather": "\u2060Погода",
+    "max": "\u2060MAX",
+}
+
+
+def pad(n):
+    return (n + 3) & ~3
+
+
+def put_string(text):
+    raw = text.encode() + b"\x00"
+    return struct.pack("<I", len(raw)) + raw + b"\x00" * (pad(len(raw)) - len(raw))
+
+
+def take_string(body, off):
+    (length,) = struct.unpack_from("<I", body, off)
+    off += 4
+    text = body[off : off + max(0, length - 1)].decode("utf-8", "replace")
+    return text, off + pad(length)
+
+
+def take_array(body, off):
+    (length,) = struct.unpack_from("<I", body, off)
+    off += 4
+    data = body[off : off + length]
+    return data, off + pad(length)
+
+
+def state_path():
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    return os.path.join(base, "b8k-launch", "state")
+
+
+class Conn:
+    def __init__(self, timeout=2):
+        display = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+        if display.startswith("/"):
+            path = display
+        else:
+            path = os.path.join(os.environ["XDG_RUNTIME_DIR"], display)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        if timeout is not None:
+            self.sock.settimeout(timeout)
+        self.sock.connect(path)
+        self.buf = b""
+        self.next_id = 1
+
+    def alloc(self):
+        self.next_id += 1
+        return self.next_id
+
+    def send(self, obj, opcode, payload):
+        size = 8 + len(payload)
+        self.sock.sendall(struct.pack("<IHH", obj, opcode, size) + payload)
+
+    def recv(self):
+        while len(self.buf) < 8:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise EOFError("wayland closed")
+            self.buf += chunk
+        obj, opcode, size = struct.unpack_from("<IHH", self.buf, 0)
+        while len(self.buf) < size:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise EOFError("wayland closed")
+            self.buf += chunk
+        body = self.buf[8:size]
+        self.buf = self.buf[size:]
+        return obj, opcode, body
+
+
+def roundtrip(conn):
+    token = conn.alloc()
+    conn.send(1, 0, struct.pack("<I", token))
+    while True:
+        obj, opcode, body = conn.recv()
+        if obj == token and opcode == 0:
+            return
+        yield obj, opcode, body
+
+
+def display_error(obj, opcode, body):
+    if obj == 1 and opcode == 0 and len(body) >= 8:
+        message, _ = take_string(body, 8)
+        raise RuntimeError(message)
+
+
+def bind_manager(conn):
+    registry = conn.alloc()
+    conn.send(1, 1, struct.pack("<I", registry))
+    globals_ = {}
+    for obj, opcode, body in roundtrip(conn):
+        display_error(obj, opcode, body)
+        if obj == registry and opcode == 0 and len(body) >= 8:
+            name = struct.unpack_from("<I", body, 0)[0]
+            iface, off = take_string(body, 4)
+            version = struct.unpack_from("<I", body, off)[0]
+            globals_[iface] = (name, version)
+    if MANAGER not in globals_:
+        raise RuntimeError("compositor has no foreign toplevel list")
+    seat = None
+    if "wl_seat" in globals_:
+        seat_name, seat_ver = globals_["wl_seat"]
+        seat = conn.alloc()
+        conn.send(
+            registry,
+            0,
+            struct.pack("<I", seat_name)
+            + put_string("wl_seat")
+            + struct.pack("<II", min(seat_ver, 7), seat),
+        )
+    man_name, man_ver = globals_[MANAGER]
+    manager = conn.alloc()
+    conn.send(
+        registry,
+        0,
+        struct.pack("<I", man_name)
+        + put_string(MANAGER)
+        + struct.pack("<II", min(man_ver, 3), manager),
+    )
+    return seat, manager
+
+
+def apply_toplevel(found, manager, obj, opcode, body):
+    """Return True when a window's settled state changed."""
+    if obj == manager and opcode == 0 and len(body) >= 4:
+        handle = struct.unpack_from("<I", body, 0)[0]
+        found[handle] = {
+            "handle": handle,
+            "app_id": "",
+            "title": "",
+            "activated": False,
+        }
+        return False
+    if obj == manager and opcode == 1:
+        raise EOFError("compositor closed the window list")
+    info = found.get(obj)
+    if not info:
+        return False
+    if opcode == EV_APP_ID and len(body) >= 4:
+        info["app_id"], _ = take_string(body, 0)
+    elif opcode == EV_TITLE and len(body) >= 4:
+        info["title"], _ = take_string(body, 0)
+    elif opcode == EV_STATE and len(body) >= 4:
+        data, _ = take_array(body, 0)
+        states = [
+            struct.unpack_from("<I", data, i)[0] for i in range(0, len(data) - 3, 4)
+        ]
+        info["activated"] = ACTIVATED in states
+        info["minimized"] = MINIMIZED in states
+    elif opcode == EV_CLOSED:
+        info["closed"] = True
+        return True
+    elif opcode == EV_DONE:
+        return True
+    return False
+
+
+def live_windows(found):
+    return [w for w in found.values() if not w.get("closed") and w["app_id"]]
+
+
+def is_webapp(win):
+    return win.get("title", "").startswith(WEBAPP_MARK)
+
+
+def matches_button(bid, names, win):
+    if win.get("closed"):
+        return False
+    prefix = WEBAPPS.get(bid)
+    if prefix:
+        return win.get("title", "").startswith(prefix)
+    if win["app_id"] not in names:
+        return False
+    if bid == "firefox" and is_webapp(win):
+        return False
+    return True
+
+
+def button_classes(found):
+    classes = {}
+    for bid, _sig, names in BUTTONS:
+        state = "idle"
+        for win in found.values():
+            if not matches_button(bid, names, win):
+                continue
+            if win.get("activated"):
+                state = "active"
+                break
+            state = "running"
+        classes[bid] = state
+    return classes
+
+
+def load_classes():
+    found = {}
+    try:
+        lines = open(state_path())
+    except OSError:
+        return found
+    with lines as fh:
+        for line in fh:
+            parts = line.split()
+            if len(parts) == 2 and parts[1] in ("idle", "running", "active"):
+                found[parts[0]] = parts[1]
+    return found
+
+
+def waybar_pids():
+    pids = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            comm = open("/proc/%s/comm" % name).read().strip()
+        except OSError:
+            continue
+        if comm == "waybar":
+            pids.append(int(name))
+    return pids
+
+
+def publish(found, prev):
+    cur = button_classes(found)
+    if cur == prev:
+        return prev
+    directory = os.path.dirname(state_path())
+    os.makedirs(directory, exist_ok=True)
+    tmp = state_path() + ".new"
+    with open(tmp, "w") as fh:
+        for bid, _sig, _names in BUTTONS:
+            fh.write("%s %s\n" % (bid, cur[bid]))
+    os.rename(tmp, state_path())
+    changed = [item for item in BUTTONS if cur[item[0]] != prev.get(item[0])]
+    for pid in waybar_pids():
+        for bid, sig, _names in changed:
+            if sig <= 0:
+                continue
+            try:
+                os.kill(pid, signal.SIGRTMIN + sig)
+            except OSError:
+                pass
+    sys.stderr.write(
+        "buttons " + " ".join("%s=%s" % (bid, cur[bid]) for bid, _s, _n in changed) + "\n"
+    )
+    sys.stderr.flush()
+    return cur
+
+
+def drop_closed(found):
+    for handle in [key for key, win in found.items() if win.get("closed")]:
+        del found[handle]
+
+
+def scan():
+    conn = Conn()
+    seat, manager = bind_manager(conn)
+    found = {}
+    for obj, opcode, body in roundtrip(conn):
+        display_error(obj, opcode, body)
+        apply_toplevel(found, manager, obj, opcode, body)
+    return conn, seat, live_windows(found)
+
+
+def watch():
+    directory = os.path.dirname(state_path())
+    os.makedirs(directory, exist_ok=True)
+    lock = open(os.path.join(directory, "watch.lock"), "a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return 0
+    conn = Conn(timeout=None)
+    try:
+        _seat, manager = bind_manager(conn)
+        found = {}
+        for obj, opcode, body in roundtrip(conn):
+            display_error(obj, opcode, body)
+            apply_toplevel(found, manager, obj, opcode, body)
+        prev = publish(found, load_classes())
+        drop_closed(found)
+        while True:
+            obj, opcode, body = conn.recv()
+            display_error(obj, opcode, body)
+            if apply_toplevel(found, manager, obj, opcode, body):
+                prev = publish(found, prev)
+                drop_closed(found)
+    finally:
+        conn.sock.close()
+
+
+def run():
+    if len(sys.argv) < 2 or sys.argv[1] not in (
+        "list",
+        "dump",
+        "has",
+        "activate",
+        "close",
+        "watch",
+        "front-webapp",
+        "raise-webapp",
+        "close-webapp",
+    ):
+        sys.stderr.write(
+            "usage: b8k-focus list|dump|has|activate|close|watch [app_id...]\n"
+        )
+        return 2
+    cmd = sys.argv[1]
+    if cmd == "watch":
+        try:
+            return watch()
+        except (OSError, RuntimeError, EOFError, struct.error) as exc:
+            sys.stderr.write("b8k-focus: %s\n" % exc)
+            return 1
+    wanted = set(sys.argv[2:])
+    try:
+        conn, seat, windows = scan()
+    except (OSError, RuntimeError, EOFError, struct.error) as exc:
+        sys.stderr.write("b8k-focus: %s\n" % exc)
+        return 1
+    try:
+        if cmd == "list":
+            for win in windows:
+                sys.stdout.write(win["app_id"] + "\n")
+            return 0
+        if cmd == "dump":
+            for win in windows:
+                sys.stdout.write("%s\t%s\n" % (win["app_id"], win["title"]))
+            return 0
+        if cmd in ("front-webapp", "raise-webapp", "close-webapp"):
+            prefix = WEBAPPS.get(sys.argv[2] if len(sys.argv) > 2 else "")
+            if not prefix:
+                return 1
+            web = [w for w in windows if w.get("title", "").startswith(prefix)]
+            if cmd == "front-webapp":
+                return 0 if any(w.get("activated") for w in web) else 1
+            if cmd == "close-webapp":
+                if not web:
+                    return 1
+                for win in web:
+                    conn.send(win["handle"], REQ_CLOSE, b"")
+                for obj, opcode, body in roundtrip(conn):
+                    display_error(obj, opcode, body)
+                return 0
+            if not web or seat is None:
+                return 1
+            pending = [w for w in web if not w["activated"]]
+            target = pending[0] if pending else web[0]
+            conn.send(target["handle"], REQ_ACTIVATE, struct.pack("<I", seat))
+            for obj, opcode, body in roundtrip(conn):
+                display_error(obj, opcode, body)
+            return 0
+        matched = [w for w in windows if w["app_id"] in wanted]
+        if cmd == "has":
+            return 0 if matched else 1
+        matched = [w for w in matched if not is_webapp(w)]
+        if cmd == "close":
+            if not matched:
+                return 1
+            for win in matched:
+                conn.send(win["handle"], REQ_CLOSE, b"")
+            for obj, opcode, body in roundtrip(conn):
+                display_error(obj, opcode, body)
+            return 0
+        if not matched or seat is None:
+            return 1
+        pending = [w for w in matched if not w["activated"]]
+        target = pending[0] if pending else matched[0]
+        conn.send(target["handle"], REQ_ACTIVATE, struct.pack("<I", seat))
+        for obj, opcode, body in roundtrip(conn):
+            display_error(obj, opcode, body)
+        return 0
+    finally:
+        conn.sock.close()
+
+
+if __name__ == "__main__":
+    sys.exit(run())

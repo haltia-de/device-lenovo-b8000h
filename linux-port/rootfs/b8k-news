@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+# Large headlines. A tap opens the story in Firefox.
+# The window appears at once. The list fills when the feeds answer.
+# One title only: the header bar. A second "Новости" label used to sit under it.
+import threading
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+
+# Newest stories first, mixed across papers. Each row keeps its own time.
+FEEDS = (
+    ("Интерфакс", "https://www.interfax.ru/rss", "/usr/local/share/b8k/news-interfax.png"),
+    ("Фонтанка", "https://www.fontanka.ru/rss-feeds/rss.xml", "/usr/local/share/b8k/news-fontanka.png"),
+    ("Деловой Петербург", "https://www.dp.ru/news.rss", "/usr/local/share/b8k/news-dp.png"),
+)
+PER_FEED = 20
+SHOW = 24
+REFRESH_SEC = 30 * 60
+MONTHS = "янв фев мар апр май июн июл авг сен окт ноя дек".split()
+CSS = b"""
+window { background-color: #f4f1ea; }
+headerbar {
+  background-color: #f4f1ea;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 16px;
+}
+headerbar label.title { font-size: 34px; font-weight: bold; color: #1a1a1a; }
+button.refresh {
+  background-image: none;
+  background-color: #2457c5;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 72px;
+  padding: 8px;
+}
+button.refresh image { color: #ffffff; }
+button.refresh:disabled {
+  background-color: #9aa7c2;
+}
+label.item { font-size: 26px; color: #1a1a1a; }
+label.when { font-size: 20px; color: #6a6258; }
+row { min-height: 96px; }
+"""
+
+
+def parse_when(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        stamp = parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp
+
+
+def one_feed(name, url):
+    items = []
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "b8k-news"})
+        with urllib.request.urlopen(req, timeout=8) as fh:
+            root = ET.fromstring(fh.read())
+    except (OSError, ET.ParseError):
+        return items
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not title or not link:
+            continue
+        items.append((parse_when(item.findtext("pubDate")), name, title, link))
+        if len(items) >= PER_FEED:
+            break
+    return items
+
+
+def headlines():
+    found = []
+    for name, url, _icon in FEEDS:
+        found.extend(one_feed(name, url))
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    found.sort(key=lambda item: item[0] or epoch, reverse=True)
+    return found[:SHOW]
+
+
+def clock(stamp):
+    if stamp is None:
+        return ""
+    local = stamp.astimezone()
+    return "%d %s, %02d:%02d" % (local.day, MONTHS[local.month - 1], local.hour, local.minute)
+
+
+class News(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="b8k.News")
+        self.icons = {}
+        self.busy = False
+        self.have_items = False
+        self.generation = 0
+
+    def do_activate(self):
+        if self.get_windows():
+            self.get_windows()[0].present()
+            return
+        for name, _url, path in FEEDS:
+            try:
+                self.icons[name] = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 52, 52, True)
+            except GLib.Error:
+                self.icons[name] = None
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        win = Gtk.ApplicationWindow(application=self, title="Новости")
+        win.set_default_size(1180, 680)
+        header = Gtk.HeaderBar()
+        header.set_show_close_button(False)
+        title = Gtk.Label(label="Новости")
+        title.get_style_context().add_class("title")
+        header.set_custom_title(title)
+        self.refresh_btn = Gtk.Button()
+        self.refresh_btn.get_style_context().add_class("refresh")
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                "/usr/local/share/b8k/refresh.png", 48, 48, True
+            )
+            self.refresh_btn.set_image(Gtk.Image.new_from_pixbuf(pix))
+            self.refresh_btn.set_always_show_image(True)
+        except GLib.Error:
+            self.refresh_btn.set_label("↻")
+        self.refresh_btn.connect("clicked", lambda *_a: self.refresh(True))
+        header.pack_end(self.refresh_btn)
+        win.set_titlebar(header)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.listbox.connect("row-activated", self.open_row)
+        self.scroll.add(self.listbox)
+        box.pack_start(self.scroll, True, True, 0)
+        win.add(box)
+        self.note("Загрузка")
+        win.show_all()
+        self.refresh(True)
+        GLib.timeout_add_seconds(REFRESH_SEC, self.auto_refresh)
+
+    def note(self, text):
+        self.listbox.foreach(lambda row: self.listbox.remove(row))
+        row = Gtk.ListBoxRow()
+        label = Gtk.Label(label=text, xalign=0)
+        label.get_style_context().add_class("item")
+        label.set_margin_start(18)
+        label.set_margin_top(16)
+        label.set_margin_bottom(16)
+        row.add(label)
+        row.link = ""
+        self.listbox.add(row)
+        self.listbox.show_all()
+
+    def auto_refresh(self):
+        self.refresh(False)
+        return True
+
+    def refresh(self, jump):
+        if self.busy:
+            return
+        self.busy = True
+        self.refresh_btn.set_sensitive(False)
+        if not self.have_items:
+            self.note("Загрузка")
+        self.generation += 1
+        gen = self.generation
+        threading.Thread(target=self.load, args=(gen, jump), daemon=True).start()
+
+    def load(self, gen, jump):
+        try:
+            items = headlines()
+        except Exception:
+            items = []
+        GLib.idle_add(self.show_items, items, gen, jump)
+
+    def show_items(self, items, gen, jump):
+        if gen != self.generation:
+            return False
+        self.busy = False
+        self.refresh_btn.set_sensitive(True)
+        if not items:
+            if not self.have_items:
+                self.note("Не удалось загрузить новости")
+            return False
+        y = 0
+        if not jump:
+            y = self.scroll.get_vadjustment().get_value()
+        self.have_items = True
+        self.listbox.foreach(lambda row: self.listbox.remove(row))
+        for stamp, name, title, link in items:
+            row = Gtk.ListBoxRow()
+            line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+            icon = Gtk.Image()
+            pix = self.icons.get(name)
+            if pix is not None:
+                icon.set_from_pixbuf(pix)
+            icon.set_valign(Gtk.Align.CENTER)
+            icon.set_margin_start(16)
+            words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            headline = Gtk.Label(label=title, xalign=0)
+            headline.set_line_wrap(True)
+            headline.set_max_width_chars(40)
+            headline.get_style_context().add_class("item")
+            headline.set_margin_end(18)
+            when = Gtk.Label(label=clock(stamp), xalign=0)
+            when.get_style_context().add_class("when")
+            when.set_margin_bottom(8)
+            words.pack_start(headline, False, False, 0)
+            words.pack_start(when, False, False, 0)
+            words.set_margin_top(10)
+            line.pack_start(icon, False, False, 0)
+            line.pack_start(words, True, True, 0)
+            row.add(line)
+            row.link = link
+            self.listbox.add(row)
+        self.listbox.show_all()
+        if not jump:
+            GLib.idle_add(self.keep_place, y)
+        return False
+
+    def keep_place(self, y):
+        self.scroll.get_vadjustment().set_value(y)
+        return False
+
+    def open_row(self, _box, row):
+        link = getattr(row, "link", "")
+        if not link:
+            return
+        subprocess = __import__("subprocess")
+        subprocess.Popen(
+            ["firefox", link],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+if __name__ == "__main__":
+    News().run(None)

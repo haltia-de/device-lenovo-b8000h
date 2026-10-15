@@ -1,0 +1,219 @@
+#!/bin/sh
+# A tap focuses that program's window, or starts one copy.
+# A program that is not open yet shows a blank loading screen until its window appears.
+# status only reads the file the window watcher already wrote.
+# It always prints the same label, so a button cannot disappear.
+set -u
+dir="${XDG_RUNTIME_DIR:-/tmp}/b8k-launch"
+mkdir -p "$dir"
+
+label_of() {
+	case $1 in
+		firefox) echo Firefox ;;
+		calc) echo Калькулятор ;;
+		calendar) echo Календарь ;;
+		weather) echo Погода ;;
+		news) echo Новости ;;
+		max) echo MAX ;;
+		settings) echo Настройки ;;
+		*) return 1 ;;
+	esac
+}
+
+# These buttons open the site in its own Firefox window, without tabs or an address bar.
+url_of() {
+	case $1 in
+		weather) echo https://www.gismeteo.ru/ ;;
+		max) echo https://web.max.ru/ ;;
+		*) return 1 ;;
+	esac
+}
+
+bin_of() {
+	case $1 in
+		firefox) echo firefox ;;
+		calc) echo galculator ;;
+		calendar) echo gnome-calendar ;;
+		news) echo b8k-news ;;
+		settings) echo gnome-control-center ;;
+		*) return 1 ;;
+	esac
+}
+
+aliases_of() {
+	case $1 in
+		firefox) echo firefox Firefox org.mozilla.firefox ;;
+		calc) echo galculator Galculator ;;
+		calendar) echo org.gnome.Calendar gnome-calendar ;;
+		news) echo b8k.News b8k-news ;;
+		settings) echo org.gnome.Settings gnome-control-center ;;
+		*) return 1 ;;
+	esac
+}
+
+# Firefox reads this from the profile. A later launch copies the shared file in.
+install_firefox_chrome() {
+	src=/usr/local/share/b8k/userChrome.css
+	[ -f "$src" ] || return 0
+	home=${HOME:-/home/user}
+	for root in "$home/.config/mozilla/firefox" "$home/.mozilla/firefox"; do
+		[ -d "$root" ] || continue
+		for prof in "$root"/*.*; do
+			[ -f "$prof/prefs.js" ] || continue
+			mkdir -p "$prof/chrome"
+			if ! cmp -s "$src" "$prof/chrome/userChrome.css" 2>/dev/null; then
+				cp "$src" "$prof/chrome/userChrome.css"
+				chmod 644 "$prof/chrome/userChrome.css" 2>/dev/null || true
+			fi
+			js=$prof/user.js
+			touch "$js"
+			line='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("browser.tabs.tabClipWidth", 1);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("browser.tabs.tabMinWidth", 240);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("dom.ipc.processCount", 1);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("dom.ipc.processCount.webIsolated", 1);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("fission.autostart", false);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("dom.ipc.keepProcessesAlive.web", 0);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			line='user_pref("browser.sessionstore.resume_from_crash", false);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+			sed -i 's/user_pref("browser.startup.page", 0);/user_pref("browser.startup.page", 1);/g' "$js"
+			line='user_pref("browser.startup.page", 1);'
+			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
+		done
+	done
+}
+
+case ${1:-} in
+status)
+	id=${2:-}
+	label=$(label_of "$id" || true)
+	[ -n "$label" ] || label="$id"
+	[ -n "$label" ] || label="*"
+	class=idle
+	if [ -f "$dir/state" ]; then
+		found=$(awk -v id="$id" '$1 == id { print $2; exit }' "$dir/state" 2>/dev/null || true)
+		case $found in
+			active|running) class=$found ;;
+		esac
+	fi
+	printf '{"text":"%s","class":"%s"}\n' "$label" "$class"
+	exit 0
+	;;
+start)
+	id=${2:-}
+	if ! url_of "$id" >/dev/null 2>&1; then
+		aliases_of "$id" >/dev/null || exit 1
+	fi
+	setsid "$0" open "$id" </dev/null >/tmp/b8k-launch-"$id".log 2>&1 &
+	exit 0
+	;;
+tap)
+	# The front program asks before it closes. Any other tap still switches or starts.
+	id=${2:-}
+	if url_of "$id" >/dev/null 2>&1; then
+		if /usr/local/bin/b8k-focus front-webapp "$id" >/dev/null 2>&1; then
+			setsid /usr/local/bin/b8k-ask close-webapp "$id" </dev/null >/tmp/b8k-ask.log 2>&1 &
+			exit 0
+		fi
+		setsid "$0" open "$id" </dev/null >/tmp/b8k-launch-"$id".log 2>&1 &
+		exit 0
+	fi
+	aliases_of "$id" >/dev/null || exit 1
+	class=idle
+	if [ -f "$dir/state" ]; then
+		found=$(awk -v id="$id" '$1 == id { print $2; exit }' "$dir/state" 2>/dev/null || true)
+		case $found in
+			active|running) class=$found ;;
+		esac
+	fi
+	if [ "$class" = active ]; then
+		setsid /usr/local/bin/b8k-ask close "$id" </dev/null >/tmp/b8k-ask.log 2>&1 &
+		exit 0
+	fi
+	exec "$0" start "$id"
+	;;
+open)
+	id=${2:-}
+	exec 9>"$dir/$id.lock"
+	if ! flock -n 9; then
+		exit 0
+	fi
+	url=$(url_of "$id" 2>/dev/null || true)
+	if [ -n "$url" ]; then
+		names="firefox Firefox org.mozilla.firefox"
+		splash_pid=
+		stop_splash() {
+			if [ -n "$splash_pid" ]; then
+				kill "$splash_pid" 2>/dev/null || true
+				splash_pid=
+			fi
+		}
+		trap stop_splash EXIT
+		if /usr/local/bin/b8k-focus raise-webapp "$id" >/dev/null 2>&1; then
+			exit 0
+		fi
+		mkdir -p /tmp/b8k-webapp.d
+		printf '%s\n' "$url" > /tmp/b8k-webapp.d/"$id"
+		if ! /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
+			if [ -x /usr/local/bin/b8k-splash ]; then
+				/usr/local/bin/b8k-splash >/tmp/b8k-splash.log 2>&1 9>&- &
+				splash_pid=$!
+			fi
+		fi
+		if ! pidof firefox >/dev/null 2>&1; then
+			firefox >/tmp/b8k-app-"$id".log 2>&1 9>&- &
+		fi
+		i=0
+		while [ "$i" -lt 40 ]; do
+			if /usr/local/bin/b8k-focus raise-webapp "$id" >/dev/null 2>&1; then
+				exit 0
+			fi
+			i=$((i + 1))
+			sleep 0.5
+		done
+		exit 0
+	fi
+	names=$(aliases_of "$id") || exit 0
+	if /usr/local/bin/b8k-focus activate $names >/dev/null 2>&1; then
+		exit 0
+	fi
+	bin=$(bin_of "$id") || exit 0
+	if [ "$id" = firefox ]; then
+		install_firefox_chrome
+	fi
+	# The app must not inherit the lock fd. While it holds that fd,
+	# every later tap fails the lock and the window never switches.
+	splash_pid=
+	stop_splash() {
+		if [ -n "$splash_pid" ]; then
+			kill "$splash_pid" 2>/dev/null || true
+			splash_pid=
+		fi
+	}
+	trap stop_splash EXIT
+	if [ -x /usr/local/bin/b8k-splash ]; then
+		/usr/local/bin/b8k-splash >/tmp/b8k-splash.log 2>&1 9>&- &
+		splash_pid=$!
+	fi
+	"$bin" >/tmp/b8k-app-"$id".log 2>&1 9>&- &
+	i=0
+	while [ "$i" -lt 40 ]; do
+		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
+			exit 0
+		fi
+		i=$((i + 1))
+		sleep 0.5
+	done
+	;;
+*)
+	echo "usage: b8k-launch start|tap <firefox|calc|calendar|weather|news|max|settings>" >&2
+	exit 2
+	;;
+esac

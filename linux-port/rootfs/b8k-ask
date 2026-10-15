@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+# Large questions. A tap on the battery opens the power menu.
+# A tap on the program that is already in front asks before it is closed.
+import fcntl
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, Gtk
+
+NAMES = {
+    "firefox": "Firefox",
+    "calc": "Калькулятор",
+    "notes": "Блокнот",
+    "calendar": "Календарь",
+    "weather": "Погода",
+    "news": "Новости",
+    "max": "MAX",
+    "settings": "Настройки",
+}
+ALIASES = {
+    "firefox": ["firefox", "Firefox", "org.mozilla.firefox"],
+    "calc": ["galculator", "Galculator"],
+    "notes": ["org.gnome.TextEditor", "gnome-text-editor"],
+    "calendar": ["org.gnome.Calendar", "gnome-calendar"],
+    "weather": ["org.gnome.Weather", "gnome-weather"],
+    "news": ["b8k.News", "b8k-news"],
+    "settings": ["org.gnome.Settings", "gnome-control-center"],
+}
+CSS = b"""
+window { background-color: #1e2430; }
+label { color: #f2f2f2; font-size: 36px; }
+button {
+  font-size: 32px;
+  min-height: 92px;
+  margin: 8px 28px;
+  border-radius: 16px;
+  background: #2a3344;
+  color: #f2f2f2;
+  border: none;
+  box-shadow: none;
+}
+button.danger { background: #8d3a32; color: #ffffff; }
+button.plain { background: #3a4660; }
+"""
+
+
+def style():
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+
+
+def lock():
+    fh = open("/tmp/b8k-ask.lock", "a")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit(0)
+    return fh
+
+
+def power(action):
+    # loginctl asks for a password on this tablet, so the menu uses doas.
+    # doas is limited to this one program and never asks.
+    arg = {"off": "off", "reboot": "reboot"}[action]
+    try:
+        subprocess.call(["doas", "-n", "/usr/local/sbin/b8k-poweroff", arg])
+    except OSError:
+        return
+
+
+def close_app(app_id):
+    names = ALIASES.get(app_id) or [app_id]
+    subprocess.call(["/usr/local/bin/b8k-focus", "close"] + names)
+
+
+def show(title, buttons):
+    style()
+    win = Gtk.Window(title=title)
+    win.set_default_size(860, 520)
+    win.set_keep_above(True)
+    win.set_position(Gtk.WindowPosition.CENTER)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    box.set_margin_top(36)
+    box.set_margin_bottom(28)
+    label = Gtk.Label(label=title)
+    label.set_margin_bottom(18)
+    box.pack_start(label, False, False, 0)
+    for text, kind, action in buttons:
+        button = Gtk.Button(label=text)
+        if kind:
+            button.get_style_context().add_class(kind)
+        button.connect("clicked", lambda _b, action=action: done(action))
+        box.pack_start(button, True, True, 0)
+    win.connect("destroy", Gtk.main_quit)
+    win.add(box)
+    win.show_all()
+    Gtk.main()
+
+
+def done(action):
+    Gtk.main_quit()
+    if action:
+        action()
+
+
+def main():
+    try:
+        os.setsid()
+    except OSError:
+        pass
+    held = lock()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "power":
+        show(
+            "Питание",
+            [
+                ("Выключить", "danger", lambda: power("off")),
+                ("Перезагрузить", "plain", lambda: power("reboot")),
+                ("Отмена", "", None),
+            ],
+        )
+        return 0
+    if cmd == "close" and len(sys.argv) > 2:
+        app_id = sys.argv[2]
+        name = NAMES.get(app_id, app_id)
+        show(
+            "Закрыть %s?" % name,
+            [
+                ("Закрыть", "danger", lambda: close_app(app_id)),
+                ("Отмена", "", None),
+            ],
+        )
+        return 0
+    if cmd == "close-webapp" and len(sys.argv) > 2:
+        app_id = sys.argv[2]
+        name = NAMES.get(app_id, app_id)
+
+        def close_webapp(app_id=app_id):
+            subprocess.call(["/usr/local/bin/b8k-focus", "close-webapp", app_id])
+
+        show(
+            "Закрыть %s?" % name,
+            [
+                ("Закрыть", "danger", close_webapp),
+                ("Отмена", "", None),
+            ],
+        )
+        return 0
+    sys.stderr.write("usage: b8k-ask power | b8k-ask close <id>\n")
+    del held
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,42 @@
+#!/bin/sh
+# Two lines: the time, then a short weekday and a short month.
+# Names stay Russian even if the locale is missing.
+set -u
+h=$(date '+%H:%M' 2>/dev/null || echo '--:--')
+day=$(date '+%d' 2>/dev/null || echo '--')
+mon=$(date '+%m' 2>/dev/null || echo 0)
+n=$(date '+%u' 2>/dev/null || echo 0)
+case $n in
+	1) w=пн ;;
+	2) w=вт ;;
+	3) w=ср ;;
+	4) w=чт ;;
+	5) w=пт ;;
+	6) w=сб ;;
+	7) w=вс ;;
+	*) w= ;;
+esac
+case $mon in
+	01) m=янв ;;
+	02) m=фев ;;
+	03) m=мар ;;
+	04) m=апр ;;
+	05) m=май ;;
+	06) m=июн ;;
+	07) m=июл ;;
+	08) m=авг ;;
+	09) m=сен ;;
+	10) m=окт ;;
+	11) m=ноя ;;
+	12) m=дек ;;
+	*) m= ;;
+esac
+# One JSON line. A plain second line would become a tooltip, not the date.
+if [ -n "$w" ] && [ -n "$m" ]; then
+	printf '{"text":"%s\\n%s, %s %s"}\n' "$h" "$w" "$day" "$m"
+elif [ -n "$w" ]; then
+	printf '{"text":"%s\\n%s, %s"}\n' "$h" "$w" "$day"
+else
+	printf '{"text":"%s\\n%s"}\n' "$h" "$day"
+fi
+exit 0

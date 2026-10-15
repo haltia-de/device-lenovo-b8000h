@@ -13,13 +13,12 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
-	phosh) UI_PACKAGES="phosh phoc squeekboard gnome-session gnome-control-center foot pcmanfm dbus elogind polkit upower networkmanager networkmanager-openrc
-		gnome-calculator gnome-text-editor gnome-clocks gnome-console loupe epiphany phosh-wallpapers iio-sensor-proxy iio-sensor-proxy-openrc
+	phosh) UI_PACKAGES="phosh phoc waybar gnome-session gnome-control-center dbus elogind polkit upower networkmanager networkmanager-openrc
+		galculator galculator-lang phosh-wallpapers swaybg iio-sensor-proxy iio-sensor-proxy-openrc
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		nautilus gnome-software gnome-software-plugin-apk gnome-weather gnome-maps gnome-calendar
-		gnome-contacts showtime totem decibels gnome-music evince gnome-disk-utility baobab
-		file-roller gnome-font-viewer gnome-characters snapshot" ;;
+		gnome-calendar gnome-calendar-lang
+		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
@@ -279,10 +278,17 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
 		"$ROOT/etc/init.d/b8k-android-system"
 	install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$ROOT/usr/local/bin/phoc-gpu"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-launcher" "$ROOT/usr/local/bin/b8k-launcher"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-keyboard" "$ROOT/usr/local/bin/b8k-keyboard"
 	if [ -x /opt/b8000h/out/wvkbd-b8k ]; then
 		install -m 755 /opt/b8000h/out/wvkbd-b8k "$ROOT/usr/local/bin/wvkbd-b8k"
 	fi
+	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-splash" "$ROOT/usr/local/bin/b8k-splash"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
 	# The power key sleeps the backlight. elogind's default powers the
@@ -303,7 +309,9 @@ EOF
 HandlePowerKey=ignore
 HandlePowerKeyLongPress=ignore
 EOF
+	install -m 755 "$REPO/linux-port/rootfs/b8k-news" "$ROOT/usr/local/bin/b8k-news"
 	install -d -m 755 "$ROOT/usr/local/share/b8k"
+	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
 	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
@@ -324,6 +332,17 @@ try {
 EOF
 		fi
 	fi
+	install -d -m 755 "$ROOT/etc/skel/.config/galculator"
+	install -m 644 "$REPO/linux-port/rootfs/galculator.conf" \
+		"$ROOT/etc/skel/.config/galculator/galculator.conf"
+	if [ -d "$ROOT/home/user" ]; then
+		install -d -m 755 -o 1000 -g 1000 "$ROOT/home/user/.config/galculator"
+		install -m 644 -o 1000 -g 1000 "$REPO/linux-port/rootfs/galculator.conf" \
+			"$ROOT/home/user/.config/galculator/galculator.conf"
+	fi
+	install -d -m 755 "$ROOT/etc/xdg/waybar"
+	install -m 644 "$REPO/linux-port/rootfs/waybar/config" "$ROOT/etc/xdg/waybar/config"
+	install -m 644 "$REPO/linux-port/rootfs/waybar/style.css" "$ROOT/etc/xdg/waybar/style.css"
 	ln -sfn /etc/init.d/b8k-android-system "$ROOT/etc/runlevels/default/b8k-android-system"
 	ln -sfn /etc/init.d/b8k-gpu "$ROOT/etc/runlevels/default/b8k-gpu"
 	ln -sfn /opt/debian/usr/lib/arm-linux-gnueabihf "$ROOT/usr/lib/arm-linux-gnueabihf"
@@ -358,7 +377,7 @@ chmod 700 "$XDG_RUNTIME_DIR"
 ( while :; do
 	u=$(cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
-	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- phosh-session >>/var/log/phosh.log 2>&1
+	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -v -C /usr/share/phosh/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
 done & ) >/dev/null 2>&1
@@ -391,6 +410,9 @@ picture-uri-dark='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
 
 [org.gnome.desktop.screensaver]
 picture-uri='file:///usr/share/phosh/backgrounds/byzantium-abstract.xml'
+
+[sm.puri.phosh.lockscreen]
+require-unlock=false
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
 

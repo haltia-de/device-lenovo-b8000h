@@ -1,0 +1,70 @@
+#!/bin/sh
+# Waybar status for the Wi-Fi icon and the 4-bar battery.
+# Always prints one JSON line and exits 0, so the icon cannot disappear.
+set -u
+
+wifi() {
+	# w0 is disconnected. w1..w4 are four signal bars, same idea as the battery.
+	class=w0
+	if [ -r /sys/class/net/wlan0/operstate ] && [ -r /sys/class/net/wlan0/carrier ]; then
+		op=$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo down)
+		car=$(cat /sys/class/net/wlan0/carrier 2>/dev/null || echo 0)
+		if [ "$op" = "up" ] && [ "$car" = "1" ]; then
+			bars=1
+			sig=$(iw dev wlan0 link 2>/dev/null | awk '/signal:/ { print $2; exit }')
+			case $sig in
+				''|*[!0-9-]*) ;;
+				*)
+					if [ "$sig" -ge -55 ]; then
+						bars=4
+					elif [ "$sig" -ge -67 ]; then
+						bars=3
+					elif [ "$sig" -ge -75 ]; then
+						bars=2
+					fi
+					;;
+			esac
+			class=w$bars
+		fi
+	fi
+	printf '{"text":" ","class":"%s"}\n' "$class"
+}
+
+battery() {
+	cap=0
+	status=Unknown
+	if [ -r /sys/class/power_supply/battery/capacity ]; then
+		cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 0)
+	fi
+	case $cap in
+		''|*[!0-9]*) cap=0 ;;
+	esac
+	if [ "$cap" -gt 100 ]; then
+		cap=100
+	fi
+	if [ "$cap" -eq 0 ]; then
+		bars=0
+	else
+		# 1-25, 26-50, 51-75, 76-100 -> 1..4 bars. 0 stays empty.
+		bars=$(( (cap * 4 + 99) / 100 ))
+		if [ "$bars" -gt 4 ]; then
+			bars=4
+		fi
+	fi
+	if [ -r /sys/class/power_supply/battery/status ]; then
+		status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo Unknown)
+	fi
+	# bN is the level. cN is the same level while the supply is charging or full.
+	case $status in
+		Charging|Full) class=c$bars ;;
+		*) class=b$bars ;;
+	esac
+	printf '{"text":" ","class":"%s"}\n' "$class"
+}
+
+case ${1:-} in
+	wifi) wifi ;;
+	battery) battery ;;
+	*) printf '{"text":" ","class":"w0"}\n' ;;
+esac
+exit 0
