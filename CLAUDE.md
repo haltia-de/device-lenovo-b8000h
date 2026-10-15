@@ -87,6 +87,7 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - waybar ignores `:active` on touch. Panel signals: programs 1–7, volume 8, brightness 9, Wi-Fi 10, battery 11.
   - The motor is the `regulator-haptic` input device on the MT6320 VIBR LDO (patch 0039). Pulses shorter than about 50 ms are not felt.
   - The keyboard buzzes on every key press too (`wvkbd/0005-haptic.patch`, same 70 ms).
+- **Hiding the panel.** The "‹" button under the clock runs `b8k-tab` (`tools-arm/b8k-tab.c`, built by `build-b8k-tab.sh` against the keyboard's sysroot and wvkbd's `proto/`). It sends waybar `SIGUSR1` (invisible mode, exclusive zone 0) and puts a 120×44 "›" tab on the overlay layer exactly where the button was. A tap on the tab sends `SIGUSR1` again and exits. Keep the `#custom-hide` size (40 px + 2 px margins, 30 px icon) in step with `W`/`H` and the arrow in `b8k-tab.c`. `SIGUSR1` toggles, so never send it to waybar by hand while a tab is up.
 - **Palette.** The frame is dark and the content light, in GNOME/libadwaita colours with the accent `#3584e4`. The palette table in `docs/shell.md` lists every file that repeats it. The keyboard colours are compiled into `wvkbd/config.b8k.h`.
 
 ## Architecture constraints that span files

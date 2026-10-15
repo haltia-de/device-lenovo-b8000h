@@ -14,7 +14,8 @@
   "modules-right": [
     "group/system",
     "custom/battery",
-    "custom/clock"
+    "custom/clock",
+    "custom/hide"
   ],
   "custom/firefox": {
     "exec": "/usr/local/bin/b8k-launch status firefox",
@@ -142,5 +143,13 @@
     "tooltip": false,
     "align": 0.5,
     "justify": "center"
+  },
+  "custom/hide": {
+    "exec": "/usr/local/bin/b8k-meter hide",
+    "return-type": "json",
+    "format": "{text}",
+    "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-press hide 0; /usr/local/bin/b8k-tab",
+    "tooltip": false
   }
 }

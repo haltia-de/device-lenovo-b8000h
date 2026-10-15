@@ -120,6 +120,18 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-battery.c2 { background-image: url("/usr/local/share/b8k/bat-c2.svg"); }
 #custom-battery.c3 { background-image: url("/usr/local/share/b8k/bat-c3.svg"); }
 #custom-battery.c4 { background-image: url("/usr/local/share/b8k/bat-c4.svg"); }
+/* Hides the panel; b8k-tab draws its 120x44 tab in exactly this place, so
+   keep the size (40 px + 2 px margins) and the 30 px icon in step with it. */
+#custom-hide {
+  min-height: 40px;
+  margin: 2px 4px;
+  padding: 0;
+  background-color: #242424;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 30px 30px;
+  background-image: url("/usr/local/share/b8k/hide.svg");
+}
 #custom-clock {
   font-size: 18px;
   font-weight: bold;

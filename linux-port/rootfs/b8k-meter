@@ -117,6 +117,7 @@ case ${1:-} in
 	brightness) out brightness idle ;;
 	volume) volume ;;
 	system) system ;;
+	hide) out hide idle ;;
 	wifi) wifi ;;
 	battery) battery ;;
 	*) printf '{"text":" ","class":"w0"}\n' ;;
