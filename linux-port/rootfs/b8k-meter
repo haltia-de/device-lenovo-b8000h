@@ -65,23 +65,22 @@ battery() {
 }
 
 volume() {
-	# v0 is muted or 0%, v1..v3 are thirds of the range. The text is the
-	# percentage, so the level is visible while the keys change it.
+	# v0 is muted or 0%. v1..v4 are four waves, a quarter of the range each,
+	# same idea as the Wi-Fi bars.
 	vol=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk -F/ '/Volume/ { gsub(/[ %]/, "", $2); print $2; exit }')
 	mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
 	case $vol in
-		''|*[!0-9]*) printf '{"text":"--","class":"v0"}\n'; return ;;
+		''|*[!0-9]*) printf '{"text":" ","class":"v0"}\n'; return ;;
 	esac
 	if [ "$vol" -eq 0 ] || [ "$mute" = yes ] || [ "$mute" = да ]; then
 		class=v0
-	elif [ "$vol" -le 33 ]; then
-		class=v1
-	elif [ "$vol" -le 66 ]; then
-		class=v2
 	else
-		class=v3
+		# 1-25, 26-50, 51-75, 76-100 -> 1..4 waves.
+		w=$(( (vol * 4 + 99) / 100 ))
+		[ "$w" -gt 4 ] && w=4
+		class=v$w
 	fi
-	printf '{"text":"%s%%","class":"%s"}\n' "$vol" "$class"
+	printf '{"text":" ","class":"%s"}\n' "$class"
 }
 
 case ${1:-} in

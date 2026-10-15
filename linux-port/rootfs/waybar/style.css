@@ -50,20 +50,19 @@ window#waybar { background: #1e2430; color: #f2f2f2; }
   color: #ffffff;
 }
 #custom-volume {
-  min-width: 86px;
+  min-width: 60px;
   margin: 8px 4px;
-  padding: 0 0 0 40px;
-  font-size: 18px;
-  font-weight: bold;
+  padding: 24px 0;
   background-color: #1e2430;
   background-repeat: no-repeat;
-  background-position: left center;
-  background-size: 36px 36px;
+  background-position: center;
+  background-size: 46px 50px;
 }
-#custom-volume.v0 { background-image: url("/usr/local/share/b8k/vol-0.svg"); color: #7d8ba3; }
+#custom-volume.v0 { background-image: url("/usr/local/share/b8k/vol-0.svg"); }
 #custom-volume.v1 { background-image: url("/usr/local/share/b8k/vol-1.svg"); }
 #custom-volume.v2 { background-image: url("/usr/local/share/b8k/vol-2.svg"); }
 #custom-volume.v3 { background-image: url("/usr/local/share/b8k/vol-3.svg"); }
+#custom-volume.v4 { background-image: url("/usr/local/share/b8k/vol-4.svg"); }
 #custom-wifi3,
 #custom-battery {
   margin: 8px 4px;
