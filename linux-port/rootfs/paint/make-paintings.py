@@ -7,7 +7,7 @@
 downloads each painting from Wikimedia Commons (800 px wide) into
 CACHE_DIR, then writes pictures/<slug>.json: level 3 at 64 cells along
 the long side and up to 16 colours, level 4 at 96 cells and up to 24
-colours. All
+colours, level 5 at 128 cells and up to 28 colours. All
 works are by artists who died more than 70 years ago, so they are in the
 public domain; PAINTINGS names each Commons file.
 """
@@ -35,7 +35,7 @@ PAINTINGS = [
     ("north", "Arkhip Kuindzhi - North.jpg", "Север", "Северная природа", 4),
     ("swans", "Rylov Blue Expanse.jpg", "В голубом просторе", "Северная природа", 4),
     ("great-wave", "The Great Wave off Kanagawa.jpg", "Большая волна", "Флот", 4),
-    ("ninth-wave", "Aivazovsky, Ivan - The Ninth Wave.jpg", "Девятый вал", "Флот", 4),
+    ("ninth-wave", "Aivazovsky, Ivan - The Ninth Wave.jpg", "Девятый вал", "Флот", 5),
     ("sevastopol", "Ivan Constantinovich Aivazovsky - The Russian Squadron on the Sebastopol Roads.jpg",
      "Эскадра на Севастопольском рейде", "Военный флот", 4),
     ("feodosia", "Aivazovsky - Black Sea Fleet in the Bay of Theodosia.jpg",
@@ -44,11 +44,11 @@ PAINTINGS = [
      "Корабль «Двенадцать апостолов»", "Военный флот", 4),
     ("crow", "Cawing crow by Ohara Koson.jpg", "Ворона", "Животные", 4),
     ("pine-morning", "Shishkin, Ivan - Morning in a Pine Forest.jpg",
-     "Утро в сосновом лесу", "Животные", 4),
+     "Утро в сосновом лесу", "Животные", 5),
     ("monarch", "Monarch of the Glen, Edwin Landseer, 1851.jpg", "Король долины",
-     "Животные", 4),
+     "Животные", 5),
 ]
-LEVELS = {3: (64, 16), 4: (96, 24)}
+LEVELS = {3: (64, 16), 4: (96, 24), 5: (128, 28)}
 
 
 def fetch(cache, name):

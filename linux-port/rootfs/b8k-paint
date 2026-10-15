@@ -18,8 +18,11 @@ bottom has one big button per number. Pick a colour, tap its cells.
   gallery opens at that picture's card.
 
 The gallery runs from easier to harder as it scrolls down: paintings in
-64 cells along the long side with up to 16 colours, then in 96 cells
-with up to 24 colours.
+64, 96 and 128 cells along the long side with up to 16, 24 and 28
+colours. 128 is about the limit for this tablet: a tap there takes some
+200 ms. To stay quick, a tap redraws only the cells it changed, progress
+is written a moment after the last tap, and gallery thumbnails are kept
+as PNG files.
 
 Pictures: the built-in ones in /usr/local/share/b8k/paint/, and any photo
 put into ~/Раскраски (JPEG or PNG), which is turned into a picture of 64
@@ -30,6 +33,7 @@ import hashlib
 import json
 import math
 import os
+import signal
 import struct
 import sys
 
@@ -38,7 +42,8 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+gi.require_version("GLibUnix", "2.0")
+from gi.repository import Gdk, GLib, GLibUnix, Gtk  # noqa: E402
 
 BUILTIN = "/usr/local/share/b8k/paint"
 PHOTOS = os.path.expanduser("~/Раскраски")
@@ -47,7 +52,8 @@ DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 LEVELS = (
     (3, "Сложные"),
     (4, "Очень сложные"),
-    (5, "Мои фотографии"),
+    (5, "Самые сложные"),
+    (9, "Мои фотографии"),
 )
 THEMES = ("Природа", "Северная природа", "Флот", "Военный флот", "Животные")
 # Cell sizes in pixels above "the whole picture on screen"; numbers show
@@ -55,7 +61,7 @@ THEMES = ("Природа", "Северная природа", "Флот", "Во
 ZOOMS = (12, 18, 26, 36, 50, 70)
 OPEN_CELL = 26
 NUMBERS = 17
-GRID = 9
+GRID = 12
 # The chosen number's cells: light accent blue, the same for every colour.
 MARK = (0.66, 0.80, 0.97)
 
@@ -181,7 +187,7 @@ def photo_to_picture(path):
     grid = ["".join(DIGITS[remap[data[y * cols + x]]] for x in range(cols))
             for y in range(rows)]
     name = os.path.splitext(os.path.basename(path))[0]
-    return {"name": name, "level": 5, "w": cols, "h": rows, "palette": palette, "rows": grid}
+    return {"name": name, "level": 9, "w": cols, "h": rows, "palette": palette, "rows": grid}
 
 
 def load_pictures():
@@ -195,6 +201,7 @@ def load_pictures():
                 except (OSError, ValueError):
                     continue
                 pic["id"] = "builtin-" + f[:-5]
+                pic["mtime"] = os.path.getmtime(os.path.join(BUILTIN, f))
                 found.append(pic)
     if os.path.isdir(PHOTOS):
         cache = os.path.join(DATA, "photos")
@@ -223,11 +230,17 @@ def load_pictures():
                 with open(cached, "w") as fh:
                     json.dump(pic, fh, ensure_ascii=False)
             pic["id"] = "photo-" + key
-            pic["level"] = 5
+            pic["level"] = 9
+            pic["mtime"] = os.path.getmtime(cached)
             found.append(pic)
-    for pic in found:
-        pic["cells"] = [[int(ch, 36) for ch in row] for row in pic["rows"]]
     return found
+
+
+def cells_of(pic):
+    """The grid as numbers, parsed only when a picture is drawn."""
+    if "cells" not in pic:
+        pic["cells"] = [[int(ch, 36) for ch in row] for row in pic["rows"]]
+    return pic["cells"]
 
 
 def progress_path(pic):
@@ -238,9 +251,12 @@ def load_progress(pic):
     try:
         with open(progress_path(pic)) as fh:
             rows = json.load(fh)["filled"]
-        return [[ch == "1" for ch in row] for row in rows]
-    except (OSError, ValueError, KeyError):
-        return [[False] * pic["w"] for _ in range(pic["h"])]
+        # A picture redrawn at another size starts again.
+        if len(rows) == pic["h"] and all(len(row) == pic["w"] for row in rows):
+            return [[ch == "1" for ch in row] for row in rows]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return [[False] * pic["w"] for _ in range(pic["h"])]
 
 
 def save_progress(pic, filled):
@@ -279,20 +295,54 @@ def hex_rgb(colour):
     return tuple(int(colour[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
 
 
+def pixel(rgb):
+    """(r, g, b) in 0..1 as the 4 bytes of a cairo RGB24 pixel."""
+    r, g, b = rgb
+    return bytes((int(b * 255), int(g * 255), int(r * 255), 0))
+
+
 def surface(pic, colour_of):
-    """A one-pixel-per-cell image; colour_of(x, y) gives (r, g, b) in 0..1."""
+    """A one-pixel-per-cell image; colour_of(x, y) gives the 4-byte pixel.
+
+    Returns the surface and its buffer, which stays writable: change
+    pixels in it, then call mark_dirty() on the surface."""
     w, h = pic["w"], pic["h"]
     stride = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_RGB24, w)
     buf = bytearray(stride * h)
     for y in range(h):
         i = y * stride
         for x in range(w):
-            r, g, b = colour_of(x, y)
-            buf[i] = int(b * 255)
-            buf[i + 1] = int(g * 255)
-            buf[i + 2] = int(r * 255)
+            buf[i:i + 4] = colour_of(x, y)
             i += 4
-    return cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_RGB24, w, h, stride)
+    return cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_RGB24, w, h, stride), buf
+
+
+def thumbnail(pic, filled, finished):
+    """The gallery picture, kept as a PNG until the progress changes."""
+    path = os.path.join(DATA, "thumbs", pic["id"] + ".png")
+    try:
+        newest = max(pic.get("mtime", 0), os.path.getmtime(progress_path(pic)))
+    except OSError:
+        newest = pic.get("mtime", 0)
+    try:
+        if os.path.getmtime(path) >= newest:
+            return cairo.ImageSurface.create_from_png(path)
+    except (OSError, cairo.Error):
+        pass
+    cells = cells_of(pic)
+    pal = [hex_rgb(c) for c in pic["palette"]]
+    full = [pixel(c) for c in pal]
+    # Still to paint: a pale version, so the picture shows.
+    pale = [pixel((0.72 + 0.28 * r, 0.72 + 0.28 * g, 0.72 + 0.28 * b)) for r, g, b in pal]
+    image, _buf = surface(pic, lambda x, y: (full if filled[y][x] or finished else pale)
+                          [cells[y][x]])
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        image.write_to_png(path + ".new")
+        os.replace(path + ".new", path)
+    except (OSError, cairo.Error):
+        pass
+    return image
 
 
 def paint_scaled(cr, image, cell):
@@ -384,19 +434,30 @@ class Board(Gtk.DrawingArea):
         super().__init__()
         self.app = app
         self.pic = pic
+        cells = cells_of(pic)
         self.filled = load_progress(pic)
-        self.pal = [hex_rgb(c) for c in pic["palette"]]
+        pal = [hex_rgb(c) for c in pic["palette"]]
+        self.full_px = [pixel(c) for c in pal]
         # Unpainted cells show a very pale picture, so a zoomed-out view
         # still shows where things are.
-        self.pale = [(0.82 + 0.18 * r, 0.82 + 0.18 * g, 0.82 + 0.18 * b) for r, g, b in self.pal]
-        self.counts = [0] * len(self.pal)
+        self.pale_px = [pixel((0.82 + 0.18 * r, 0.82 + 0.18 * g, 0.82 + 0.18 * b))
+                        for r, g, b in pal]
+        self.mark_px = pixel(MARK)
+        self.counts = [0] * len(pal)
+        self.where = [[] for _ in pal]  # every cell of each number
         for y in range(pic["h"]):
             for x in range(pic["w"]):
+                n = cells[y][x]
+                self.where[n].append((x, y))
                 if not self.filled[y][x]:
-                    self.counts[pic["cells"][y][x]] += 1
+                    self.counts[n] += 1
         self.chosen = 0
         self.cell = OPEN_CELL
         self.image = None
+        self.full_image = None  # the finished picture, for "look"
+        self.previewing = False
+        self.labels = {}  # (cell size, bold, text) -> where the text starts
+        self.save_timer = None
         self.undo = []  # each entry: the cells one tap painted
         self.wrong = None
         self.flash = None  # (x, y, on): the "where?" marker
@@ -415,23 +476,56 @@ class Board(Gtk.DrawingArea):
     def left(self, number):
         return self.counts[number]
 
-    def refresh(self):
-        """Rebuild the cell image after the state changed."""
-        cells, filled, chosen = self.pic["cells"], self.filled, self.chosen
+    def colour_of(self, x, y):
+        n = self.pic["cells"][y][x]
+        if self.filled[y][x]:
+            return self.full_px[n]
+        return self.mark_px if n == self.chosen else self.pale_px[n]
 
-        def colour_of(x, y):
-            n = cells[y][x]
-            if filled[y][x]:
-                return self.pal[n]
-            return MARK if n == chosen else self.pale[n]
-
-        self.image = surface(self.pic, colour_of)
+    def update(self, cells):
+        """Redraw just these cells in the image."""
+        if self.image is None:
+            return
+        buf, stride = self.buf, self.image.get_stride()
+        for x, y in cells:
+            i = y * stride + x * 4
+            buf[i:i + 4] = self.colour_of(x, y)
+        self.image.mark_dirty()
         self.queue_draw()
+
+    def set_chosen(self, number):
+        old, self.chosen = self.chosen, number
+        if old != number:
+            self.update([c for n in (old, number) for c in self.where[n]
+                         if not self.filled[c[1]][c[0]]])
+
+    def set_preview(self, on):
+        if on and self.full_image is None:
+            self.full_image, _buf = surface(
+                self.pic, lambda x, y: self.full_px[self.pic["cells"][y][x]])
+        self.previewing = on
+        self.queue_draw()
+
+    def save_soon(self):
+        # A tap must not wait for the disk; write a moment after the last.
+        if self.save_timer:
+            GLib.source_remove(self.save_timer)
+        self.save_timer = GLib.timeout_add(800, self.save_now)
+
+    def save_now(self):
+        if self.save_timer:
+            GLib.source_remove(self.save_timer)
+            self.save_timer = None
+            save_progress(self.pic, self.filled)
+        return False
 
     def on_draw(self, _widget, cr):
         pic, s = self.pic, self.cell
+        if self.previewing:
+            paint_scaled(cr, self.full_image, s)
+            return False
         if self.image is None:
-            self.refresh()
+            self.image, self.buf = surface(pic, self.colour_of)
         paint_scaled(cr, self.image, s)
         if s >= GRID:
             # Only the visible cells: a 96x70 picture is too many to draw.
@@ -461,9 +555,13 @@ class Board(Gtk.DrawingArea):
                             if frow[x] or (n == self.chosen) != bold:
                                 continue
                             label = str(n + 1)
-                            ext = cr.text_extents(label)
-                            cr.move_to(x * s + (s - ext.width) / 2 - ext.x_bearing,
-                                       y * s + (s - ext.height) / 2 - ext.y_bearing)
+                            key = (s, bold, label)
+                            at = self.labels.get(key)
+                            if at is None:
+                                ext = cr.text_extents(label)
+                                at = self.labels[key] = ((s - ext.width) / 2 - ext.x_bearing,
+                                                         (s - ext.height) / 2 - ext.y_bearing)
+                            cr.move_to(x * s + at[0], y * s + at[1])
                             cr.show_text(label)
         if self.flash and self.flash[2]:
             fx, fy, _on = self.flash
@@ -495,8 +593,8 @@ class Board(Gtk.DrawingArea):
         self.counts[self.chosen] -= len(cells)
         self.undo.append(cells)
         self.app.buzz()
-        self.refresh()
-        save_progress(self.pic, self.filled)
+        self.update(cells)
+        self.save_soon()
         self.app.cell_painted(self.chosen)
 
     def area(self, x, y):
@@ -517,13 +615,11 @@ class Board(Gtk.DrawingArea):
     def nearest(self, fx, fy):
         """The unpainted cell of the chosen number closest to (fx, fy)."""
         best, where = None, None
-        for y in range(self.pic["h"]):
-            row, frow = self.pic["cells"][y], self.filled[y]
-            for x in range(self.pic["w"]):
-                if row[x] == self.chosen and not frow[x]:
-                    d = (x - fx) ** 2 + (y - fy) ** 2
-                    if best is None or d < best:
-                        best, where = d, (x, y)
+        for x, y in self.where[self.chosen]:
+            if not self.filled[y][x]:
+                d = (x - fx) ** 2 + (y - fy) ** 2
+                if best is None or d < best:
+                    best, where = d, (x, y)
         return where
 
     def clear_wrong(self):
@@ -540,8 +636,8 @@ class Board(Gtk.DrawingArea):
         x, y = cells[0]
         number = self.pic["cells"][y][x]
         self.counts[number] += len(cells)
-        save_progress(self.pic, self.filled)
-        self.refresh()
+        self.update(cells)
+        self.save_soon()
         self.app.cell_painted(number)
 
 
@@ -551,7 +647,9 @@ class Paint:
         self.buzz = Buzz()
         self.win = Gtk.Window(title="Раскраска")
         self.win.set_default_size(1160, 800)
-        self.win.connect("destroy", Gtk.main_quit)
+        self.win.connect("destroy", self.quit)
+        # Progress is written a moment after a tap; write it on the way out.
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self.quit)
         self.full = False
         self.win.connect("window-state-event", self.on_window_state)
         self.stack = Gtk.Stack()
@@ -639,11 +737,7 @@ class Paint:
         cell = min(tw / pic["w"], th / pic["h"])
         thumb.set_size_request(tw, th)
 
-        pal = [hex_rgb(c) for c in pic["palette"]]
-        # Still to paint: a pale version, so the picture shows.
-        pale = [(0.72 + 0.28 * r, 0.72 + 0.28 * g, 0.72 + 0.28 * b) for r, g, b in pal]
-        image = surface(pic, lambda x, y: (pal if filled[y][x] or done == total else pale)
-                        [pic["cells"][y][x]])
+        image = thumbnail(pic, filled, done == total)
 
         def draw(_w, cr):
             cr.translate((tw - cell * pic["w"]) / 2, (th - cell * pic["h"]) / 2)
@@ -859,8 +953,7 @@ class Paint:
         return False
 
     def choose(self, number):
-        self.board.chosen = number
-        self.board.refresh()
+        self.board.set_chosen(number)
         self.refresh_swatches()
 
     def refresh_swatches(self):
@@ -886,17 +979,11 @@ class Paint:
 
     def preview(self, on):
         # While "look" is held, the board shows the finished picture.
-        if not self.board:
-            return
-        if on:
-            self.saved_filled = self.board.filled
-            self.board.filled = [[True] * self.board.pic["w"] for _ in range(self.board.pic["h"])]
-        elif getattr(self, "saved_filled", None) is not None:
-            self.board.filled = self.saved_filled
-            self.saved_filled = None
-        self.board.refresh()
+        if self.board:
+            self.board.set_preview(on)
 
     def finished(self):
+        self.save()
         dialog = Gtk.MessageDialog(transient_for=self.win, modal=True,
                                    message_type=Gtk.MessageType.INFO,
                                    buttons=Gtk.ButtonsType.OK, text="Готово!")
@@ -906,8 +993,18 @@ class Paint:
         self.back()
 
     def back(self):
+        self.save()
         self.board = None
         self.show_gallery()
+
+    def save(self):
+        if self.board:
+            self.board.save_now()
+
+    def quit(self, *_args):
+        self.save()
+        Gtk.main_quit()
+        return False
 
 
 def main():
