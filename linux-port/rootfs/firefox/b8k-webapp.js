@@ -9,7 +9,7 @@
   var Cc = Components.classes;
   var Ci = Components.interfaces;
   var ALLOW = {
-    "https://www.gismeteo.ru/": "\u2060Погода",
+    "https://www.gismeteo.ru/weather-sankt-peterburg-4079/": "\u2060Погода",
     "https://web.max.ru/": "\u2060MAX",
   };
   // Each web app may show its own site and its subdomains. A page on any
@@ -297,7 +297,7 @@
   function prefixFor(spec) {
     spec = String(spec || "");
     if (spec.indexOf("https://www.gismeteo.ru/") === 0) {
-      return ALLOW["https://www.gismeteo.ru/"];
+      return ALLOW["https://www.gismeteo.ru/weather-sankt-peterburg-4079/"];
     }
     if (spec.indexOf("https://web.max.ru/") === 0) {
       return ALLOW["https://web.max.ru/"];

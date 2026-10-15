@@ -26,7 +26,7 @@ label_of() {
 # These buttons open the site in its own Firefox window, without tabs or an address bar.
 url_of() {
 	case $1 in
-		weather) echo https://www.gismeteo.ru/ ;;
+		weather) echo https://www.gismeteo.ru/weather-sankt-peterburg-4079/ ;;
 		max) echo https://web.max.ru/ ;;
 		*) return 1 ;;
 	esac
