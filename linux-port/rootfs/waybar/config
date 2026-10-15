@@ -91,7 +91,7 @@
     "return-type": "json",
     "format": "{text}",
     "signal": 10,
-    "interval": 10,
+    "interval": 30,
     "exec-on-event": false,
     "on-click-release": "/usr/local/bin/b8k-press system 10",
     "tooltip": false
@@ -119,7 +119,7 @@
     "exec": "/usr/local/bin/b8k-meter wifi",
     "return-type": "json",
     "format": "{text}",
-    "interval": 10,
+    "interval": 30,
     "exec-on-event": false,
     "on-click": "/usr/local/bin/b8k-press wifi 10; /usr/local/bin/b8k-launch tap settings",
     "tooltip": false,
@@ -129,7 +129,7 @@
     "exec": "/usr/local/bin/b8k-meter battery",
     "return-type": "json",
     "format": "{text}",
-    "interval": 15,
+    "interval": 30,
     "exec-on-event": false,
     "tooltip": false,
     "signal": 11

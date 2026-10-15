@@ -79,7 +79,8 @@ done
 mkdir -p "$ROOT/etc/local.d" "$ROOT/etc/modprobe.d"
 cat > "$ROOT/etc/modprobe.d/b8000h.conf" <<'EOF'
 options wmt bgf_irq=1 debug_io=0 probe_only=0 wmt_wifi_func_ctrl=0
-options wlan_mt6628 debug=47
+# Errors and warnings only: the default 47 also logs every packet.
+options wlan_mt6628 debug=3
 EOF
 cat > "$ROOT/etc/local.d/00-b8k-modules.start" <<'EOF'
 #!/bin/sh
@@ -341,6 +342,13 @@ start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
 	--pidfile /run/b8k-netwatch.pid --make-pidfile
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-netwatch.start"
+	# The empty microSD slot polls for a card every second; switch it off.
+	install -m 755 "$REPO/linux-port/rootfs/b8k-sdslot" "$ROOT/usr/local/sbin/b8k-sdslot"
+	cat > "$ROOT/etc/local.d/b8k-sdslot.start" <<'EOF'
+#!/bin/sh
+/usr/local/sbin/b8k-sdslot </dev/null >/dev/null 2>&1 &
+EOF
+	chmod +x "$ROOT/etc/local.d/b8k-sdslot.start"
 	# The power key turns the screen off; 30 s later b8k-suspend puts the
 	# system into s2idle. elogind's default would power the tablet off.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
@@ -436,7 +444,7 @@ chmod 700 "$XDG_RUNTIME_DIR"
 ( while :; do
 	u=$(cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
-	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -v -C /usr/local/share/b8k/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
+	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/local/share/b8k/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
 done & ) >/dev/null 2>&1
@@ -502,12 +510,16 @@ cat > "$ROOT/etc/local.d/b8k-charger.start" <<'EOF'
 C=/sys/class/power_supply/bq24190-charger
 L=/var/log/b8k-charger.log
 n=0 last=
+# Every 5 s, so the files are read with the read builtin: no process per round.
+get() { v=; read -r v < "$1" 2>/dev/null; }
 while :; do
 	want=
-	if [ "$(cat $C/online 2>/dev/null)" = 1 ]; then
+	get $C/online
+	if [ "$v" = 1 ]; then
 		host=0 st=
 		for u in /sys/class/udc/*/state; do
-			st="$st$(cat $u 2>/dev/null) "
+			get "$u"
+			st="$st$v "
 			case "$st" in *configured*|*addressed*|*default*|*suspended*) host=1 ;; esac
 		done
 		if [ $host = 1 ]; then
@@ -516,10 +528,12 @@ while :; do
 			n=$((n + 1))
 			[ $n -ge 3 ] && want=2000000
 		fi
-		if [ -n "$want" ] && [ "$(cat $C/input_current_limit)" != $want ]; then
+		get $C/input_current_limit
+		if [ -n "$want" ] && [ "$v" != $want ]; then
 			echo $want > $C/input_current_limit
 		fi
-		cur="udc=${st% } limit=$(cat $C/input_current_limit)"
+		get $C/input_current_limit
+		cur="udc=${st% } limit=$v"
 	else
 		n=0 cur=offline
 	fi

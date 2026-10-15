@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Switch the empty microSD slot off. The slot (MSDC1, 11240000.mmc) has no
+# working card-detect, so the MMC core polls it: every second it sends
+# CMD8 and CMD55 to no card, each fails with an error line in the kernel
+# log, and the controller raises about 20 interrupts a second. With no card
+# in the slot a little after boot, unbind its driver; a card put in later
+# is seen after the next boot. The root file system is on the eMMC
+# (11230000.mmc), which this leaves alone.
+set -u
+DEV=11240000.mmc
+sleep "${1:-20}"  # let the first scan find a card that is there
+host=$(ls -d /sys/bus/platform/devices/$DEV/mmc_host/mmc* 2>/dev/null | head -1)
+[ -n "$host" ] || exit 0
+for card in "$host"/mmc*:*; do
+	[ -e "$card" ] && exit 0  # a card is in: keep the slot
+done
+drv=$(readlink -f /sys/bus/platform/devices/$DEV/driver 2>/dev/null)
+[ -n "$drv" ] || exit 0
+echo "$DEV" > "$drv/unbind" && logger -t b8k-sdslot "empty microSD slot switched off"

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0
 # Wi-Fi watchdog. wlan_mt6628 sometimes stops passing traffic, mostly
 # during a large transfer, while the link still looks connected. Every
-# 15 s ping the gateway. After two misses in a row, mark the network down
-# and reload the driver once. The driver also does not survive a system
+# 30 s ping the gateway (each ping wakes the radio, so not more often).
+# After two misses in a row, mark the network down and reload the driver
+# once. The driver also does not survive a system
 # sleep: the link is simply gone. So when the network was up and the link
 # stays down for a minute while Wi-Fi is switched on, reload once as well.
 # Another reload waits until the gateway has answered again, so a router
@@ -16,7 +17,9 @@ exec 9>"$dir/lock"
 flock -n 9 || exit 0
 
 state() {
-	[ "$(cat "$dir/state" 2>/dev/null)" = "$1" ] && return
+	cur=
+	read -r cur < "$dir/state" 2>/dev/null
+	[ "$cur" = "$1" ] && return
 	echo "$1" > "$dir/state.new" && mv "$dir/state.new" "$dir/state"
 	logger -t b8k-netwatch "network $1"
 }
@@ -35,16 +38,18 @@ gone=0
 reloaded=0
 was_up=0
 while :; do
-	sleep 15
+	sleep 30
 	gw=$(ip route show default dev wlan0 2>/dev/null | awk '{ print $3; exit }')
-	if [ "$(cat /sys/class/net/wlan0/carrier 2>/dev/null)" != 1 ] || [ -z "$gw" ]; then
+	carrier=
+	read -r carrier < /sys/class/net/wlan0/carrier 2>/dev/null
+	if [ "$carrier" != 1 ] || [ -z "$gw" ]; then
 		misses=0
 		state off
 		# Only a link that was up and vanished; Wi-Fi switched off is left alone.
 		if [ "$was_up" = 1 ] && [ "$reloaded" = 0 ] &&
 		   [ "$(nmcli radio wifi 2>/dev/null)" = enabled ]; then
 			gone=$((gone + 1))
-			[ "$gone" -ge 4 ] && reload "link gone for a minute"
+			[ "$gone" -ge 2 ] && reload "link gone for a minute"
 		fi
 		continue
 	fi

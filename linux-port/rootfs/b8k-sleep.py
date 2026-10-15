@@ -3,7 +3,9 @@
 
 A short press of the power key turns the lamp off or on when the key is
 released; holding it for a second opens the power menu (b8k-ask power)
-in the user's session instead. Thirty seconds after the lamp goes off,
+in the user's session instead. Ten minutes without a touch or a key turn
+the lamp off as a short press would, so a tablet left lying on the table
+does not light the room for hours. Thirty seconds after the lamp goes off,
 b8k-suspend puts the system to sleep. There is no deep sleep on this
 kernel, only s2idle; the power key wakes it, and the same press turns the
 lamp back on. wlan_mt6628 does not survive a sleep, so b8k-suspend moves
@@ -31,6 +33,7 @@ BUS_VIRTUAL = 0x06
 LEVEL_PATH = "/run/b8k-sleep/level"
 LONG_PRESS = 1.0  # seconds held before the power menu opens
 SUSPEND_AFTER = 30.0  # seconds with the screen off before a system sleep
+IDLE_OFF = 600.0  # seconds without any input before the screen goes off
 SUSPEND = "/usr/local/sbin/b8k-suspend"
 
 
@@ -130,6 +133,32 @@ def touch_nodes():
         if "synaptics" in name or "touch" in name:
             found.append("/dev/input/" + node)
     return found
+
+
+def activity_nodes(power_path):
+    """Every input device but the power key (read on its own), the
+    vibration motor and our own Home forwarder: touch and buttons alike.
+    They are opened without a grab, so the session still gets each event."""
+    found = []
+    for node in sorted(os.listdir("/sys/class/input")):
+        if not node.startswith("event"):
+            continue
+        path = "/dev/input/" + node
+        if path == power_path or input_name(node) in ("regulator-haptic", "b8k-home"):
+            continue
+        try:
+            found.append(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+        except OSError as exc:
+            log("ACTIVITY_OPEN_FAIL %s %s" % (path, exc.errno))
+    return found
+
+
+def drain(fd):
+    try:
+        while os.read(fd, 4096):
+            pass
+    except OSError:
+        pass
 
 
 def saved_level(path):
@@ -403,14 +432,34 @@ def listen():
     else:
         log("NO_GRAB")
     lamp = Lamp()
+    activity = activity_nodes(path)
+    last_input = time.monotonic()
     last = 0.0
     down = None  # press time while the key is held and not yet handled
-    log("LISTEN asleep=%s" % int(lamp.asleep))
+    log("LISTEN asleep=%s activity=%d" % (int(lamp.asleep), len(activity)))
     while True:
-        due = lamp.suspend_due() if down is None else None
-        if due is not None and not select.select([power], [], [], due)[0]:
-            lamp.suspend()
-            continue
+        if down is None:
+            due = lamp.suspend_due()
+            idle = None
+            if not lamp.asleep:
+                idle = max(0.0, last_input + IDLE_OFF - time.monotonic())
+            waits = [t for t in (due, idle) if t is not None]
+            ready = select.select([power] + activity, [], [],
+                                  min(waits) if waits else None)[0]
+            for fd in ready:
+                if fd != power:
+                    drain(fd)
+                    last_input = time.monotonic()
+            if power not in ready:
+                if ready:
+                    continue
+                if lamp.asleep:
+                    if due is not None:
+                        lamp.suspend()
+                elif time.monotonic() - last_input >= IDLE_OFF:
+                    log("IDLE")
+                    lamp.sleep()
+                continue
         if down is not None:
             # Held: wait for the release, or open the menu at LONG_PRESS.
             left = LONG_PRESS - (time.monotonic() - down)
@@ -421,6 +470,7 @@ def listen():
                 power_menu()
                 continue
         ev = read_event(power)
+        last_input = time.monotonic()
         if ev.type == EV_KEY and ev.code == KEY_POWER:
             now = time.monotonic()
             if ev.value == 1:

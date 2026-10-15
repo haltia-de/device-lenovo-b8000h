@@ -11,5 +11,10 @@ pref("browser.startup.page", 1);
 pref("browser.tabs.unloadOnLowMemory", true);
 pref("browser.low_commit_space_threshold_percent", 10);
 pref("browser.tabs.min_inactive_duration_before_unload", 60000);
+// Battery: no video starts by itself (sites such as the weather page play
+// clips), and pages are asked for less motion, which also stops many
+// CSS animations from redrawing the window all the time.
+pref("media.autoplay.default", 5);
+pref("ui.prefersReducedMotion", 1);
 // No screen reader here; otherwise Firefox starts the at-spi bus itself.
 pref("accessibility.force_disabled", 1);

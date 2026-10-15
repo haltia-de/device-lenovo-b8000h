@@ -2,10 +2,10 @@
 # Two lines: the time, then a short weekday and a short month.
 # Names stay Russian even if the locale is missing.
 set -u
-h=$(date '+%H:%M' 2>/dev/null || echo '--:--')
-day=$(date '+%d' 2>/dev/null || echo '--')
-mon=$(date '+%m' 2>/dev/null || echo 0)
-n=$(date '+%u' 2>/dev/null || echo 0)
+# One date call: waybar runs this every 15 s.
+# shellcheck disable=SC2046
+set -- $(date '+%H:%M %d %m %u' 2>/dev/null) '--:--' '--' 0 0
+h=$1 day=$2 mon=$3 n=$4
 case $n in
 	1) w=пн ;;
 	2) w=вт ;;
