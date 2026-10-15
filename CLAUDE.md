@@ -16,7 +16,8 @@ There is no test suite, no linter and no CI. A change is verified by building th
 - **Power:** a failed `reboot` used to leave the tablet off; that is fixed by `b8k-wdt-exrst`. After `poweroff` with USB attached, LK shows the charging animation and stays off. Either way the user must press Power to bring it back, so ask before you power the tablet off.
 - **Gotchas:**
   - The Python helpers run as `python3 /usr/local/bin/<name>`, so `pkill -x <name>` and `killall <name>` miss them. Find the pid with `ps -o pid,args`.
-  - `b8k-focus watch` reads `BUTTONS` only at start. After you change the button ids, restart it, or a new button never shows its state and never asks to close. Its `ps` line starts with `{b8k-focus}`, so the script path is the fourth field, not the third.
+  - `b8k-focus watch` reads `apps.conf` only at start. After you change it, restart the watcher, or a new program never shows its state and never asks to close. Its `ps` line starts with `{b8k-focus}`, so the script path is the fourth field, not the third.
+  - Firefox reads `apps.conf` (for the web apps) only when it starts.
   - `pkill -f <pattern>` run over SSH also matches the remote shell that runs it, and kills your own command.
   - Killing `waybar` restarts the whole session and closes all programs. `kill -USR2 $(pidof waybar)` reloads its config and CSS in place.
   - Children of `b8k-launcher` that exit become zombies, because it `exec`s into waybar, which does not reap them. `pidof` still lists them.
@@ -57,11 +58,13 @@ The build is not fully automated. `docs/INSTALL.md` §0 is the authoritative ste
 The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b8k/phoc.ini -E b8k-launcher` in a restart loop. `b8k-launcher` sets `NO_AT_BRIDGE`/`GTK_A11Y`, restores the brightness (`b8k-brightness --restore`), and starts the volume keys (`b8k-volume`), the keyboard (`b8k-keyboard` → `wvkbd-b8k`) and `b8k-focus watch`. It ends with `exec waybar`. If waybar dies, the whole session restarts. The panel is 120px wide on the left edge. `docs/shell.md` (Russian) describes the shell in full, including the palette. The parts that span files:
 
 - **Buttons and state.**
-  - Program button ids (`firefox calc weather news max term settings`) are repeated in `waybar/config`, `b8k-launch` (`label_of`/`url_of`/`bin_of`/`aliases_of`), `b8k-focus` (`BUTTONS` with signal numbers) and `b8k-ask` (`NAMES`/`ALIASES`). Change all of them together.
+  - Every program is one section of `rootfs/apps.conf` (installed to `/usr/local/share/b8k/apps.conf`): `label`, panel `signal` (0 = no button), window `app_ids`, `exec` (and `env`), or `url` and `host` for a web app. `b8k-launch` reads it with awk on every call, while `b8k-focus`, `b8k-ask` and `firefox/b8k-webapp.js` read it once at start. A program with a panel button also needs its module in `waybar/config` and `style.css`, with the same signal.
+  - The terminal has no panel button. It sits in the power menu (`b8k-ask power`).
+  - `b8k-launch` tests for a running Firefox with `alive`, not `pidof`. Programs the panel started become zombies when they exit, and `pidof` lists the zombies too.
   - `b8k-focus watch` writes `$XDG_RUNTIME_DIR/b8k-launch/state` and signals waybar with `SIGRTMIN+N`. It signals only when `/proc/<pid>/status` `SigCgt` shows that waybar catches that signal. An early signal killed waybar and caused the boot flashing.
 - **Web-app windows.**
   - `firefox/b8k-webapp.js` runs in Firefox through autoconfig. It picks up URLs that `b8k-launch` writes to `$XDG_RUNTIME_DIR/b8k-webapp.d/` and opens them in chromeless windows.
-  - Its `ALLOW` keys must match `url_of` in `b8k-launch` exactly. `HOSTS` limits each window to its own site; foreign pages move to a normal window.
+  - It builds `ALLOW` (page → title `U+2060 + label`) and `HOSTS` from the `url` and `host` of `apps.conf`. `HOSTS` limits each window to its own site; foreign pages move to a normal window.
 - **Runtime files** go to `$XDG_RUNTIME_DIR`, which `pam_elogind` sets up through `b8k-session`. Never use `/tmp`.
 - **Layers.**
   - waybar stays on the `top` layer. The keyboard runs on `bottom` (`--wayland-layer bottom`). Then phoc arranges the panel first, and the keyboard gets the width right of it.

@@ -1,4 +1,4 @@
-// Opens the two allowed sites in a chromeless browser window.
+// Opens the web apps of apps.conf in chromeless browser windows.
 // A title prefix lets the bar tell these windows from the normal browser.
 (function () {
   if (globalThis.__b8kWebapp) {
@@ -8,17 +8,16 @@
 
   var Cc = Components.classes;
   var Ci = Components.interfaces;
-  var ALLOW = {
-    "https://www.gismeteo.ru/weather-sankt-peterburg-4079/": "\u2060Погода",
-    "https://web.max.ru/": "\u2060MAX",
-  };
+  // The web apps are the apps.conf sections with a url and a host, read
+  // once when Firefox starts. The window title is U+2060 + label, which is
+  // how b8k-focus tells the window apart.
+  var APPS = "/usr/local/share/b8k/apps.conf";
+  var ALLOW = {}; // page -> title prefix
   // Each web app may show its own site and its subdomains. A page on any
   // other host moves to a normal window with an address bar, so it cannot
   // pose under the app's name in a window that hides the address.
-  var HOSTS = {
-    "\u2060Погода": "gismeteo.ru",
-    "\u2060MAX": "max.ru",
-  };
+  var HOSTS = {}; // title prefix -> site
+  var ORIGINS = {}; // "https://host/" of the page -> title prefix
   // Per-user runtime directory, the same one b8k-launch writes to. /tmp is
   // shared, so another user could plant a request there.
   var env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
@@ -296,13 +295,55 @@
 
   function prefixFor(spec) {
     spec = String(spec || "");
-    if (spec.indexOf("https://www.gismeteo.ru/") === 0) {
-      return ALLOW["https://www.gismeteo.ru/weather-sankt-peterburg-4079/"];
-    }
-    if (spec.indexOf("https://web.max.ru/") === 0) {
-      return ALLOW["https://web.max.ru/"];
+    for (var origin in ORIGINS) {
+      if (spec.indexOf(origin) === 0) {
+        return ORIGINS[origin];
+      }
     }
     return "";
+  }
+
+  function loadApps() {
+    var text = "";
+    try {
+      // readText returns the raw bytes; the labels are UTF-8.
+      text = decodeURIComponent(escape(readText(APPS)));
+    } catch (e) {
+      log("apps " + e);
+      return;
+    }
+    var apps = [];
+    var cur = null;
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].replace(/^\s+|\s+$/g, "");
+      if (!line || line[0] === "#" || line[0] === ";") {
+        continue;
+      }
+      var head = /^\[(.+)\]$/.exec(line);
+      if (head) {
+        cur = { id: head[1].replace(/^\s+|\s+$/g, "") };
+        apps.push(cur);
+        continue;
+      }
+      var eq = line.indexOf("=");
+      if (cur && eq > 0) {
+        var key = line.slice(0, eq).replace(/\s+$/, "");
+        cur[key] = line.slice(eq + 1).replace(/^\s+/, "");
+      }
+    }
+    for (var j = 0; j < apps.length; j++) {
+      var app = apps[j];
+      var origin = /^https:\/\/[^\/]+\//.exec(app.url || "");
+      if (!origin || !app.host) {
+        continue;
+      }
+      var prefix = "\u2060" + (app.label || app.id);
+      ALLOW[app.url] = prefix;
+      HOSTS[prefix] = app.host.toLowerCase();
+      ORIGINS[origin[0]] = prefix;
+      log("app " + app.id + " " + app.url);
+    }
   }
 
   function retitle() {
@@ -364,6 +405,7 @@
     }
   }
 
+  loadApps();
   var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   var callback = { notify: poll };
   arms.push(timer);

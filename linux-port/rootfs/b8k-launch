@@ -10,52 +10,45 @@ run=${XDG_RUNTIME_DIR:-$HOME/.cache}
 dir="$run/b8k-launch"
 mkdir -p "$dir"
 
-label_of() {
-	case $1 in
-		firefox) echo Firefox ;;
-		calc) echo Калькулятор ;;
-		weather) echo Погода ;;
-		news) echo Новости ;;
-		max) echo MAX ;;
-		term) echo Терминал ;;
-		paint) echo Раскраска ;;
-		settings) echo Настройки ;;
-		*) return 1 ;;
-	esac
+# Every program and its fields live in apps.conf.
+APPS=/usr/local/share/b8k/apps.conf
+
+# field ID KEY prints that key of the program, or fails when it has none.
+field() {
+	awk -v id="$1" -v key="$2" '
+		/^[ \t]*[#;]/ { next }
+		/^[ \t]*\[/ { sec = $0; gsub(/[][ \t]/, "", sec); next }
+		sec == id {
+			k = $0
+			sub(/[ \t]*=.*/, "", k)
+			gsub(/^[ \t]+/, "", k)
+			if (k == key) {
+				v = $0
+				sub(/^[^=]*=[ \t]*/, "", v)
+				sub(/[ \t]+$/, "", v)
+				if (v != "") { print v; found = 1 }
+				exit
+			}
+		}
+		END { exit !found }' "$APPS"
 }
 
-# These buttons open the site in its own Firefox window, without tabs or an address bar.
-url_of() {
-	case $1 in
-		weather) echo https://www.gismeteo.ru/weather-sankt-peterburg-4079/ ;;
-		max) echo https://web.max.ru/ ;;
-		*) return 1 ;;
-	esac
+# alive NAME: a live process of that name. pidof also lists zombies, and
+# programs the panel started become zombies when they exit, because waybar
+# does not reap them; a zombie Firefox kept web apps from starting it again.
+alive() {
+	for pid in $(pidof "$1" 2>/dev/null); do
+		state=$(awk '/^State:/ { print $2; exit }' /proc/"$pid"/status 2>/dev/null || true)
+		[ -n "$state" ] && [ "$state" != Z ] && return 0
+	done
+	return 1
 }
 
-bin_of() {
-	case $1 in
-		firefox) echo firefox ;;
-		calc) echo galculator ;;
-		news) echo b8k-news ;;
-		term) echo foot ;;
-		paint) echo b8k-paint ;;
-		settings) echo gnome-control-center ;;
-		*) return 1 ;;
-	esac
-}
-
-aliases_of() {
-	case $1 in
-		firefox) echo firefox Firefox org.mozilla.firefox ;;
-		calc) echo galculator Galculator ;;
-		news) echo b8k.News b8k-news ;;
-		term) echo foot ;;
-		paint) echo b8k-paint ;;
-		settings) echo org.gnome.Settings gnome-control-center ;;
-		*) return 1 ;;
-	esac
-}
+label_of() { field "$1" label; }
+# A web app opens the site in its own Firefox window, without tabs or an address bar.
+url_of() { field "$1" url; }
+bin_of() { field "$1" exec; }
+aliases_of() { field "$1" app_ids; }
 
 # Firefox reads these from the profile. A later launch copies the shared files in.
 install_firefox_chrome() {
@@ -158,7 +151,7 @@ open)
 	fi
 	url=$(url_of "$id" 2>/dev/null || true)
 	if [ -n "$url" ]; then
-		names="firefox Firefox org.mozilla.firefox"
+		names=$(aliases_of firefox)
 		splash_pid=
 		stop_splash() {
 			if [ -n "$splash_pid" ]; then
@@ -178,7 +171,7 @@ open)
 				splash_pid=$!
 			fi
 		fi
-		if ! pidof firefox >/dev/null 2>&1; then
+		if ! alive firefox; then
 			firefox >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 		fi
 		i=0
@@ -213,16 +206,13 @@ open)
 		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
 		splash_pid=$!
 	fi
-	# galculator drops its button font on =, ( and ); this theme puts it back.
-	if [ "$id" = calc ]; then
-		export GTK_THEME=b8k-galculator
+	env=$(field "$id" env || true)
+	if [ -n "$env" ]; then
+		export "$env"
 	fi
-	if [ "$id" = term ]; then
-		set -- -c /usr/local/share/b8k/foot.ini
-	else
-		set --
-	fi
-	"$bin" "$@" >"$run"/b8k-app-"$id".log 2>&1 9>&- &
+	# exec may carry arguments; apps.conf has no quoting, so plain splitting.
+	# shellcheck disable=SC2086
+	$bin >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 	i=0
 	while [ "$i" -lt 40 ]; do
 		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
@@ -233,7 +223,8 @@ open)
 	done
 	;;
 *)
-	echo "usage: b8k-launch start|tap <firefox|calc|weather|news|max|term|paint|settings>" >&2
+	ids=$(awk '/^[ \t]*\[/ { s = $0; gsub(/[][ \t]/, "", s); printf "%s%s", sep, s; sep = "|" }' "$APPS")
+	echo "usage: b8k-launch status|start|tap <$ids>" >&2
 	exit 2
 	;;
 esac

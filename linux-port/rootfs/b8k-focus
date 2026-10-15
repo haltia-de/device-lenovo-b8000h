@@ -2,6 +2,7 @@
 # List or focus toplevel windows. phoc publishes
 # wlr-foreign-toplevel-management; activate focuses an existing window.
 # watch keeps one connection and reports button state only when it changes.
+import configparser
 import fcntl
 import os
 import signal
@@ -14,25 +15,34 @@ EV_TITLE, EV_APP_ID, EV_STATE, EV_DONE, EV_CLOSED = 0, 1, 4, 5, 6
 REQ_ACTIVATE = 4
 REQ_CLOSE = 5
 ACTIVATED, MINIMIZED = 2, 1
-# Waybar adds this number to SIGRTMIN. The label on the button never changes.
-# Signal 0 is tracked for taps, but it is not sent to waybar.
-# SIGRTMIN itself would stop the bar.
-BUTTONS = (
-    ("firefox", 1, ("firefox", "Firefox", "org.mozilla.firefox")),
-    ("calc", 2, ("galculator", "Galculator")),
-    ("weather", 5, ()),
-    ("news", 6, ("b8k.News", "b8k-news")),
-    ("max", 7, ()),
-    ("term", 3, ("foot",)),
-    ("paint", 4, ("b8k-paint",)),
-    ("settings", 0, ("org.gnome.Settings", "gnome-control-center")),
-)
+APPS = "/usr/local/share/b8k/apps.conf"
 # The same invisible mark is written by b8k-webapp.js onto web-app windows.
 WEBAPP_MARK = "\u2060"
-WEBAPPS = {
-    "weather": "\u2060Погода",
-    "max": "\u2060MAX",
-}
+
+
+def load_apps():
+    """(BUTTONS, WEBAPPS) from apps.conf.
+
+    BUTTONS holds (id, signal, app_ids). Waybar adds the signal to SIGRTMIN;
+    0 is tracked for taps but never sent, as SIGRTMIN itself would stop the
+    bar. A web app is told by its window title: the mark, then its label."""
+    conf = configparser.ConfigParser(interpolation=None)
+    conf.read(APPS, encoding="utf-8")
+    buttons, webapps = [], {}
+    for bid in conf.sections():
+        sec = conf[bid]
+        try:
+            sig = int(sec.get("signal", "0"))
+        except ValueError:
+            sig = 0
+        buttons.append((bid, sig, tuple(sec.get("app_ids", "").split())))
+        if sec.get("url"):
+            webapps[bid] = WEBAPP_MARK + sec.get("label", bid)
+    return tuple(buttons), webapps
+
+
+# Read once: after a change to apps.conf, restart "b8k-focus watch".
+BUTTONS, WEBAPPS = load_apps()
 
 
 def pad(n):

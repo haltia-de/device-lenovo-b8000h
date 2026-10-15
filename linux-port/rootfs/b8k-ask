@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-# Large questions. A tap on the battery opens the power menu.
-# A tap on the program that is already in front asks before it is closed.
+# Large questions. A tap on the battery opens the power menu, which also
+# holds the terminal. A tap on the program that is already in front asks
+# before it is closed.
+import configparser
 import fcntl
 import os
 import subprocess
@@ -12,27 +14,19 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
-NAMES = {
-    "firefox": "Firefox",
-    "calc": "Калькулятор",
-    "notes": "Блокнот",
-    "weather": "Погода",
-    "news": "Новости",
-    "max": "MAX",
-    "term": "Терминал",
-    "paint": "Раскраска",
-    "settings": "Настройки",
-}
-ALIASES = {
-    "firefox": ["firefox", "Firefox", "org.mozilla.firefox"],
-    "calc": ["galculator", "Galculator"],
-    "notes": ["org.gnome.TextEditor", "gnome-text-editor"],
-    "weather": ["org.gnome.Weather", "gnome-weather"],
-    "news": ["b8k.News", "b8k-news"],
-    "term": ["foot"],
-    "paint": ["b8k-paint"],
-    "settings": ["org.gnome.Settings", "gnome-control-center"],
-}
+APPS = "/usr/local/share/b8k/apps.conf"
+
+
+def load_apps():
+    """Labels and window app_ids of the programs, from apps.conf."""
+    conf = configparser.ConfigParser(interpolation=None)
+    conf.read(APPS, encoding="utf-8")
+    names = {bid: conf[bid].get("label", bid) for bid in conf.sections()}
+    aliases = {bid: conf[bid].get("app_ids", "").split() for bid in conf.sections()}
+    return names, aliases
+
+
+NAMES, ALIASES = load_apps()
 CSS = b"""
 window { background-color: #242424; }
 label { color: #ffffff; font-size: 36px; }
@@ -82,6 +76,12 @@ def power(action):
         return
 
 
+def terminal():
+    # Kept off the panel, where it would only confuse; b8k-launch starts or
+    # raises it as it would from a button.
+    subprocess.Popen(["/usr/local/bin/b8k-launch", "start", "term"])
+
+
 def close_app(app_id):
     names = ALIASES.get(app_id) or [app_id]
     subprocess.call(["/usr/local/bin/b8k-focus", "close"] + names)
@@ -90,7 +90,7 @@ def close_app(app_id):
 def show(title, buttons):
     style()
     win = Gtk.Window(title=title)
-    win.set_default_size(860, 520)
+    win.set_default_size(860, 520 if len(buttons) < 4 else 640)
     win.set_keep_above(True)
     # No light GTK title bar over the dark question.
     win.set_decorated(False)
@@ -136,6 +136,7 @@ def main():
             [
                 ("Выключить", "danger", lambda: power("off")),
                 ("Перезагрузить", "plain", lambda: power("reboot")),
+                ("Терминал", "plain", terminal),
                 ("Отмена", "", None),
             ],
         )
