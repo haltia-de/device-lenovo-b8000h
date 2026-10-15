@@ -15,7 +15,7 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
 	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit upower networkmanager networkmanager-openrc
-		pulseaudio pulseaudio-alsa alsa-plugins-pulse alsa-utils alsa-ucm-conf
+		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
 		galculator galculator-lang phosh-wallpapers swaybg
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
@@ -292,6 +292,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 		install -m 755 /opt/b8000h/out/wvkbd-b8k "$ROOT/usr/local/bin/wvkbd-b8k"
 	fi
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-splash" "$ROOT/usr/local/bin/b8k-splash"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"

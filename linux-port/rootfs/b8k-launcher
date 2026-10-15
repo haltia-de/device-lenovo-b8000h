@@ -10,6 +10,11 @@ mkdir -p "$run"
 export NO_AT_BRIDGE=1 GTK_A11Y=none
 # Settings starts through D-Bus activation and takes the bus environment.
 dbus-update-activation-environment NO_AT_BRIDGE GTK_A11Y 2>/dev/null
+# Volume keys. Without this nothing handles them, and a muted sink at 0%
+# has no way back.
+if [ -x /usr/local/bin/b8k-volume ]; then
+	setsid /usr/local/bin/b8k-volume >"$run"/b8k-volume.log 2>&1 &
+fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
