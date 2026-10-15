@@ -409,6 +409,8 @@ EOF
 			"$ROOT/usr/lib/firefox/defaults/pref/zz-b8k-webapp.js"
 		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-ram.js" \
 			"$ROOT/usr/lib/firefox/defaults/pref/b8k-ram.js"
+		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-lean.js" \
+			"$ROOT/usr/lib/firefox/defaults/pref/b8k-lean.js"
 		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
 		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
 			cat >> "$mc" <<'EOF'
