@@ -60,7 +60,7 @@ LEVELS = (
 THEMES = ("Природа", "Северная природа", "Флот", "Военный флот", "Животные")
 # Cell sizes in pixels above "the whole picture on screen"; numbers show
 # from NUMBERS up, the grid from GRID up.
-ZOOMS = (12, 16, 20, 26, 32, 40, 50, 70)
+ZOOMS = (12, 16, 20, 26, 32, 40, 50, 70, 90, 110)
 OPEN_CELL = 26
 NUMBERS = 17
 GRID = 12
