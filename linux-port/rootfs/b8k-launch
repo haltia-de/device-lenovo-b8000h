@@ -4,7 +4,10 @@
 # status only reads the file the window watcher already wrote.
 # It always prints the same label, so a button cannot disappear.
 set -u
-dir="${XDG_RUNTIME_DIR:-/tmp}/b8k-launch"
+# Per-user runtime files. /tmp is shared, so another user could plant
+# the web-app request or point a log at one of our files.
+run=${XDG_RUNTIME_DIR:-$HOME/.cache}
+dir="$run/b8k-launch"
 mkdir -p "$dir"
 
 label_of() {
@@ -111,7 +114,7 @@ start)
 	if ! url_of "$id" >/dev/null 2>&1; then
 		aliases_of "$id" >/dev/null || exit 1
 	fi
-	setsid "$0" open "$id" </dev/null >/tmp/b8k-launch-"$id".log 2>&1 &
+	setsid "$0" open "$id" </dev/null >"$run"/b8k-launch-"$id".log 2>&1 &
 	exit 0
 	;;
 tap)
@@ -119,10 +122,10 @@ tap)
 	id=${2:-}
 	if url_of "$id" >/dev/null 2>&1; then
 		if /usr/local/bin/b8k-focus front-webapp "$id" >/dev/null 2>&1; then
-			setsid /usr/local/bin/b8k-ask close-webapp "$id" </dev/null >/tmp/b8k-ask.log 2>&1 &
+			setsid /usr/local/bin/b8k-ask close-webapp "$id" </dev/null >"$run"/b8k-ask.log 2>&1 &
 			exit 0
 		fi
-		setsid "$0" open "$id" </dev/null >/tmp/b8k-launch-"$id".log 2>&1 &
+		setsid "$0" open "$id" </dev/null >"$run"/b8k-launch-"$id".log 2>&1 &
 		exit 0
 	fi
 	aliases_of "$id" >/dev/null || exit 1
@@ -134,7 +137,7 @@ tap)
 		esac
 	fi
 	if [ "$class" = active ]; then
-		setsid /usr/local/bin/b8k-ask close "$id" </dev/null >/tmp/b8k-ask.log 2>&1 &
+		setsid /usr/local/bin/b8k-ask close "$id" </dev/null >"$run"/b8k-ask.log 2>&1 &
 		exit 0
 	fi
 	exec "$0" start "$id"
@@ -159,16 +162,16 @@ open)
 		if /usr/local/bin/b8k-focus raise-webapp "$id" >/dev/null 2>&1; then
 			exit 0
 		fi
-		mkdir -p /tmp/b8k-webapp.d
-		printf '%s\n' "$url" > /tmp/b8k-webapp.d/"$id"
+		mkdir -p "$run"/b8k-webapp.d
+		printf '%s\n' "$url" > "$run"/b8k-webapp.d/"$id"
 		if ! /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
 			if [ -x /usr/local/bin/b8k-splash ]; then
-				/usr/local/bin/b8k-splash >/tmp/b8k-splash.log 2>&1 9>&- &
+				/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
 				splash_pid=$!
 			fi
 		fi
 		if ! pidof firefox >/dev/null 2>&1; then
-			firefox >/tmp/b8k-app-"$id".log 2>&1 9>&- &
+			firefox >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 		fi
 		i=0
 		while [ "$i" -lt 40 ]; do
@@ -199,10 +202,10 @@ open)
 	}
 	trap stop_splash EXIT
 	if [ -x /usr/local/bin/b8k-splash ]; then
-		/usr/local/bin/b8k-splash >/tmp/b8k-splash.log 2>&1 9>&- &
+		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
 		splash_pid=$!
 	fi
-	"$bin" >/tmp/b8k-app-"$id".log 2>&1 9>&- &
+	"$bin" >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 	i=0
 	while [ "$i" -lt 40 ]; do
 		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then

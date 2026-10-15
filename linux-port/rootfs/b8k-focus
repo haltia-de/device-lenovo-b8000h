@@ -58,7 +58,7 @@ def take_array(body, off):
 
 
 def state_path():
-    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    base = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
     return os.path.join(base, "b8k-launch", "state")
 
 

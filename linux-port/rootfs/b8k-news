@@ -78,7 +78,8 @@ def one_feed(name, url):
     for item in root.iter("item"):
         title = (item.findtext("title") or "").strip()
         link = (item.findtext("link") or "").strip()
-        if not title or not link:
+        # Only web links: anything else would reach Firefox as an option.
+        if not title or not link.startswith(("https://", "http://")):
             continue
         items.append((parse_when(item.findtext("pubDate")), name, title, link))
         if len(items) >= PER_FEED:

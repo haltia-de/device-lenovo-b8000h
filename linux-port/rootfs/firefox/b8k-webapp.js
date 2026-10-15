@@ -12,8 +12,19 @@
     "https://www.gismeteo.ru/": "\u2060Погода",
     "https://web.max.ru/": "\u2060MAX",
   };
-  var DIR = "/tmp/b8k-webapp.d";
-  var LOG = "/tmp/b8k-webapp.log";
+  // Each web app may show its own site and its subdomains. A page on any
+  // other host moves to a normal window with an address bar, so it cannot
+  // pose under the app's name in a window that hides the address.
+  var HOSTS = {
+    "\u2060Погода": "gismeteo.ru",
+    "\u2060MAX": "max.ru",
+  };
+  // Per-user runtime directory, the same one b8k-launch writes to. /tmp is
+  // shared, so another user could plant a request there.
+  var env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
+  var RUN = env.get("XDG_RUNTIME_DIR") || env.get("HOME") + "/.cache";
+  var DIR = RUN + "/b8k-webapp.d";
+  var LOG = RUN + "/b8k-webapp.log";
   var arms = [];
 
   function log(msg) {
@@ -129,6 +140,66 @@
     return wins.length ? wins[0] : null;
   }
 
+  function currentSpec(win) {
+    try {
+      return String(win.gBrowser.selectedBrowser.currentURI.spec || "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function onSite(spec, prefix) {
+    var base = HOSTS[prefix];
+    if (!base) {
+      return false;
+    }
+    var host = "";
+    try {
+      host = Cc["@mozilla.org/network/io-service;1"]
+        .getService(Ci.nsIIOService)
+        .newURI(spec).host;
+    } catch (e) {
+      return false;
+    }
+    host = String(host || "").toLowerCase();
+    return host === base || host.slice(-(base.length + 1)) === "." + base;
+  }
+
+  // Move a foreign page out of the app window: open it where the address
+  // is visible, then step the app window back, or close it.
+  function moveOut(win, spec) {
+    if (win.__b8kMoved === spec) {
+      return;
+    }
+    win.__b8kMoved = spec;
+    log("move-out " + spec);
+    var helper = ChromeUtils.importESModule(
+      "resource:///modules/URILoadingHelper.sys.mjs"
+    );
+    var target = null;
+    var wins = browserWindows();
+    for (var i = 0; i < wins.length; i++) {
+      if (wins[i] !== win && !chromeless(wins[i])) {
+        target = wins[i];
+        break;
+      }
+    }
+    if (target) {
+      helper.URILoadingHelper.openWebLinkIn(target, spec, "tab");
+    } else {
+      helper.URILoadingHelper.openWebLinkIn(win, spec, "window");
+    }
+    try {
+      if (win.gBrowser.canGoBack) {
+        win.gBrowser.goBack();
+        return;
+      }
+    } catch (e) {}
+    try {
+      win.close();
+    } catch (e2) {}
+  }
+
   function lockTitle(win, prefix) {
     try {
       if (win.__b8kTitle) {
@@ -141,6 +212,10 @@
     var tick = function () {
       try {
         if (win.closed) {
+          return;
+        }
+        // The app's name only while the window shows the app's own site.
+        if (!onSite(currentSpec(win), prefix)) {
           return;
         }
         if (String(win.document.title || "") !== prefix) {
@@ -236,14 +311,20 @@
       if (!chromeless(wins[i])) {
         continue;
       }
-      var spec = "";
+      var spec = currentSpec(wins[i]);
+      var prefix = "";
       try {
-        spec = wins[i].gBrowser.selectedBrowser.currentURI.spec;
+        prefix = wins[i].__b8kTitle || "";
       } catch (e) {}
-      var prefix = prefixFor(spec);
-      if (prefix) {
-        lockTitle(wins[i], prefix);
+      prefix = prefix || prefixFor(spec);
+      if (!prefix) {
+        continue;
       }
+      if (/^https?:/.test(spec) && !onSite(spec, prefix)) {
+        moveOut(wins[i], spec);
+        continue;
+      }
+      lockTitle(wins[i], prefix);
     }
   }
 

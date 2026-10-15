@@ -58,7 +58,9 @@ def style():
 
 
 def lock():
-    fh = open("/tmp/b8k-ask.lock", "a")
+    base = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
+    os.makedirs(base, exist_ok=True)
+    fh = open(os.path.join(base, "b8k-ask.lock"), "a")
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
