@@ -2,7 +2,7 @@
 """Power key: screen off and on, the power menu, and system sleep.
 
 A short press of the power key turns the lamp off or on when the key is
-released; holding it for two seconds opens the power menu (b8k-ask power)
+released; holding it for a second opens the power menu (b8k-ask power)
 in the user's session instead. Thirty seconds after the lamp goes off,
 b8k-suspend puts the system to sleep. There is no deep sleep on this
 kernel, only s2idle; the power key wakes it, and the same press turns the
@@ -29,7 +29,7 @@ KEY_POWER = 116
 BUS_VIRTUAL = 0x06
 
 LEVEL_PATH = "/run/b8k-sleep/level"
-LONG_PRESS = 2.0  # seconds held before the power menu opens
+LONG_PRESS = 1.0  # seconds held before the power menu opens
 SUSPEND_AFTER = 30.0  # seconds with the screen off before a system sleep
 SUSPEND = "/usr/local/sbin/b8k-suspend"
 

@@ -10,7 +10,7 @@ import gi
 
 gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 NAMES = {
     "firefox": "Firefox",
@@ -64,6 +64,8 @@ def lock():
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        # Already open, maybe under a window that mapped later: raise it.
+        subprocess.call(["/usr/local/bin/b8k-focus", "activate", "b8k-ask"])
         sys.exit(0)
     return fh
 
@@ -106,6 +108,10 @@ def show(title, buttons):
     win.connect("destroy", Gtk.main_quit)
     win.add(box)
     win.show_all()
+    # phoc does not always raise a window started from the panel; ask to
+    # be activated once the window is mapped.
+    GLib.timeout_add(300, lambda: subprocess.Popen(
+        ["/usr/local/bin/b8k-focus", "activate", "b8k-ask"]) and False)
     Gtk.main()
 
 

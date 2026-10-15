@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
 # Screen brightness: a large slider opened from the sun on the panel.
+# The chosen level is kept in ~/.config/b8k/brightness; --restore sets it
+# again at session start (b8k-launcher) without opening the window.
 # The level goes through logind (Session.SetBrightness), so no root is
 # needed; the dialog redraws while the slider moves, and that frame is
 # what makes the BLS take the new duty at once.
 import fcntl
 import os
+import subprocess
 import sys
 
 import gi
@@ -17,6 +20,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 BACKLIGHT = "mt6589-bls"
 SYSFS = "/sys/class/backlight/%s" % BACKLIGHT
 LOWEST = 10  # never black: the slider must stay visible
+SAVED = os.path.join(os.path.expanduser("~"), ".config", "b8k", "brightness")
 
 CSS = b"""
 window { background-color: #242424; }
@@ -56,6 +60,17 @@ def read_int(path, default):
         return default
 
 
+def save(level):
+    try:
+        os.makedirs(os.path.dirname(SAVED), exist_ok=True)
+        tmp = SAVED + ".new"
+        with open(tmp, "w") as fh:
+            fh.write("%d\n" % level)
+        os.replace(tmp, SAVED)
+    except OSError as exc:
+        sys.stderr.write("b8k-brightness: cannot save: %s\n" % exc)
+
+
 def session_paths():
     yield "/org/freedesktop/login1/session/auto"
     sid = os.environ.get("XDG_SESSION_ID")
@@ -86,12 +101,24 @@ class Brightness:
                 sys.stderr.write("b8k-brightness: %s: %s\n" % (path, exc.message))
 
 
+def restore():
+    level = read_int(SAVED, 0)
+    if level >= LOWEST:
+        Brightness().set(min(level, read_int(SYSFS + "/max_brightness", 255)))
+    return 0
+
+
 def main():
+    if sys.argv[1:] == ["--restore"]:
+        return restore()
     lock = open(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
                              "b8k-brightness.lock"), "a")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        # Already open, maybe under a window that mapped later (Firefox
+        # starts with the session): raise it instead of doing nothing.
+        subprocess.call(["/usr/local/bin/b8k-focus", "activate", "b8k-brightness"])
         return 0
 
     top = read_int(SYSFS + "/max_brightness", 255)
@@ -121,6 +148,7 @@ def main():
 
     def apply():
         light.set(scale.get_value())
+        save(int(scale.get_value()))
         light.pending = None
         return False
 
@@ -138,6 +166,10 @@ def main():
     win.connect("destroy", Gtk.main_quit)
     win.add(box)
     win.show_all()
+    # phoc does not always raise a window started from the panel; ask to
+    # be activated once the window is mapped.
+    GLib.timeout_add(300, lambda: subprocess.Popen(
+        ["/usr/local/bin/b8k-focus", "activate", "b8k-brightness"]) and False)
     Gtk.main()
     if light.pending is not None:
         apply()
