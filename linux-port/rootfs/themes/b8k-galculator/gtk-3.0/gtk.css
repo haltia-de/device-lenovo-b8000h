@@ -1,0 +1,7 @@
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+
+/* galculator puts new labels on =, ( and ) when it sets the mode, and
+   those labels lose the button font from galculator.conf. */
+button.toggle label {
+  font: bold 34pt Sans;
+}

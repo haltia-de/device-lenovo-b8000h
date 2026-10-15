@@ -205,6 +205,10 @@ open)
 		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
 		splash_pid=$!
 	fi
+	# galculator drops its button font on =, ( and ); this theme puts it back.
+	if [ "$id" = calc ]; then
+		export GTK_THEME=b8k-galculator
+	fi
 	"$bin" >"$run"/b8k-app-"$id".log 2>&1 9>&- &
 	i=0
 	while [ "$i" -lt 40 ]; do

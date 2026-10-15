@@ -332,6 +332,9 @@ try {
 EOF
 		fi
 	fi
+	install -d -m 755 "$ROOT/usr/share/themes/b8k-galculator/gtk-3.0"
+	install -m 644 "$REPO/linux-port/rootfs/themes/b8k-galculator/gtk-3.0/gtk.css" \
+		"$ROOT/usr/share/themes/b8k-galculator/gtk-3.0/gtk.css"
 	install -d -m 755 "$ROOT/etc/skel/.config/galculator"
 	install -m 644 "$REPO/linux-port/rootfs/galculator.conf" \
 		"$ROOT/etc/skel/.config/galculator/galculator.conf"
