@@ -5,12 +5,13 @@ kernel + ~38 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
 **B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi, speakers and charging
 work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
 stock Android 4.4 blobs; a small touch shell (a waybar panel on the left with large program
-buttons) runs on it. Kernels up to 21 crashed every 10–40 minutes; kernel 23
-ran an hour of full load at 1.2 GHz without a crash or a memory error.
+buttons) runs on it. Until early October the kernel crashed every 10–40
+minutes; kernel 23 ran an hour of full load at 1.2 GHz without a crash or a
+memory error.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 > **Статус: альфа для энтузиастов. Работа над портом приостановлена.**
-> Ядра до 21-го падали раз в 10–40 минут. На ядре 23 час полной нагрузки на
+> По замерам до начала октября ядро падало раз в 10–40 минут. На ядре 23 час полной нагрузки на
 > 1,2 ГГц (все четыре ядра и сверка 150 МБ памяти) прошёл без падений и
 > ошибок памяти, но длительной проверки в обычной работе ещё не было. Установка стирает пользовательские
 > данные Android.
