@@ -54,8 +54,6 @@ import math
 import os
 import re
 import signal
-import struct
-import subprocess
 import sys
 import threading
 import urllib.parse
@@ -69,6 +67,20 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GLibUnix", "2.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GLibUnix, GObject, Gtk, Pango  # noqa: E402
+
+# The shell's shared pieces (haptics, header, panel badge, questions):
+# optional, so the program runs on any GTK desktop too.
+sys.path.insert(0, "/usr/local/share/b8k/python")
+try:
+    import b8k_ui
+except ImportError:
+    b8k_ui = None
+
+
+def buzzer():
+    """The vibration motor of the tablet, or nothing elsewhere."""
+    return b8k_ui.Buzz() if b8k_ui else (lambda *_args: True)
+
 
 BUILTIN = "/usr/local/share/b8k/paint"
 PHOTOS = os.path.expanduser("~/Раскраски")
@@ -119,26 +131,7 @@ MARK = (0.66, 0.80, 0.97)
 
 CSS = b"""
 window, .paint-bg { background-color: #e6e6e4; }
-headerbar {
-  background-color: #dcdcda;
-  background-image: none;
-  border: none;
-  box-shadow: none;
-  min-height: 88px;
-  padding: 8px 16px;
-}
 headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
-button.back {
-  background-image: none;
-  background-color: #f2f2f0;
-  border: 1px solid #c0bfbc;
-  box-shadow: none;
-  border-radius: 16px;
-  min-height: 72px;
-  min-width: 96px;
-  font-size: 30px;
-  color: #2e3436;
-}
 .bar { background-color: #dcdcda; padding: 8px; }
 .bar button, .card {
   font-size: 26px;
@@ -253,42 +246,6 @@ button.get {
 button.get label { color: #ffffff; text-shadow: none; }
 button.get:disabled { background-color: #99c1f1; border-color: #99c1f1; }
 """
-
-
-# --- haptics ----------------------------------------------------------------
-class Buzz:
-    """A short pulse on the regulator-haptic motor, set up once."""
-
-    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
-
-    def __init__(self, ms=70):
-        self.fd = -1
-        self.effect = -1
-        try:
-            for node in sorted(os.listdir("/sys/class/input")):
-                if not node.startswith("event"):
-                    continue
-                with open("/sys/class/input/%s/device/name" % node) as fh:
-                    if fh.read().strip() != "regulator-haptic":
-                        continue
-                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
-                # struct ff_effect, 32-bit: type, id, direction, trigger,
-                # replay, then the rumble magnitudes and padding.
-                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
-                                            0xFFFF, 0xFFFF) + bytes(32))
-                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
-                self.effect = struct.unpack_from("<h", buf, 2)[0]
-                break
-        except OSError:
-            self.fd = -1
-
-    def __call__(self):
-        if self.fd >= 0:
-            try:
-                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
-            except OSError:
-                pass
-
 
 # --- pictures -----------------------------------------------------------------
 def photo_to_picture(path):
@@ -976,7 +933,7 @@ class Board(Gtk.DrawingArea):
 # --- the program ------------------------------------------------------------
 class Paint:
     def __init__(self, open_id=None):
-        self.buzz = Buzz()
+        self.buzz = buzzer()
         # Every button buzzes as it goes down, the way the panel does. The
         # signal exists only once the class is set up, hence the throwaway
         # button.
@@ -1176,16 +1133,17 @@ class Paint:
         self.show_gallery()
 
     def confirm(self, question, yes):
-        """A yes/no question in the shell's own style (b8k-ask's fuzzel);
-        True when the first answer is chosen."""
-        try:
-            res = subprocess.run(
-                ["fuzzel", "--config", "/usr/local/share/b8k/fuzzel-ask.ini", "--dmenu",
-                 "--index", "--mesg", question, "--cache", "/dev/null", "--select-index", "1"],
-                input="%s\nОтмена\n" % yes, capture_output=True, text=True, timeout=600)
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return res.stdout.strip() == "0"
+        """A yes/no question in the shell's own style (b8k-ask's fuzzel),
+        or a GTK one elsewhere; True when the first answer is chosen."""
+        answer = b8k_ui.ask(question, yes) if b8k_ui else None
+        if answer is not None:
+            return answer
+        dialog = Gtk.MessageDialog(transient_for=self.win, modal=True,
+                                   message_type=Gtk.MessageType.QUESTION, text=question)
+        dialog.add_buttons("Отмена", Gtk.ResponseType.CANCEL, yes, Gtk.ResponseType.OK)
+        ok = dialog.run() == Gtk.ResponseType.OK
+        dialog.destroy()
+        return ok
 
     # new pictures
     def show_search(self):
@@ -1821,7 +1779,7 @@ def main():
     except BlockingIOError:
         return 0
     provider = Gtk.CssProvider()
-    provider.load_from_data(CSS)
+    provider.load_from_data((b8k_ui.HEADER_CSS if b8k_ui else b"") + CSS)
     Gtk.StyleContext.add_provider_for_screen(
         Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     os.makedirs(PHOTOS, exist_ok=True)

@@ -6,14 +6,17 @@
     b8k-apps reload     write them and apply them to the running session
     b8k-apps list       the ids one can put on the panel
 
-Three sources, later ones winning:
-  /usr/local/share/b8k/apps.conf  the programs that come with the shell
+Four sources, later ones winning:
+  /usr/local/share/b8k/apps.conf  the programs of the shell itself
+  /usr/local/share/b8k/apps.d/    one file per program installed on its
+                                  own (weather.conf, ...), in name order
   ~/.config/b8k/apps.conf         one's own programs and sites, or changes
                                   to the built-in ones (same fields)
   installed programs              any id with a .desktop file, e.g. "gimp"
                                   for /usr/share/applications/gimp.desktop
-and ~/.config/b8k/panel, the buttons from top to bottom, one id per line
-(without it, the built-in programs that have a signal, in file order).
+and the buttons from top to bottom, one id per line: ~/.config/b8k/panel,
+or else /usr/local/share/b8k/panel followed by any program with a signal
+it does not name.
 
 Written to $XDG_RUNTIME_DIR/b8k/:
   apps.conf    every program, with "signal" set from its place on the
@@ -31,6 +34,8 @@ import subprocess
 import sys
 
 SYSTEM = "/usr/local/share/b8k/apps.conf"
+SYSTEM_DIR = "/usr/local/share/b8k/apps.d"
+SYSTEM_PANEL = "/usr/local/share/b8k/panel"
 USER_APPS = os.path.expanduser("~/.config/b8k/apps.conf")
 USER_PANEL = os.path.expanduser("~/.config/b8k/panel")
 WAYBAR_CONFIG = "/etc/xdg/waybar/config"
@@ -112,10 +117,15 @@ def desktop_app(app_id):
 
 
 def programs():
-    """{id: fields} from the system catalogue, then one's own file."""
+    """{id: fields} from the system catalogue, apps.d, then one's own file."""
     apps = {}
     order = []
-    for path in (SYSTEM, USER_APPS):
+    try:
+        dropins = sorted(os.path.join(SYSTEM_DIR, f) for f in os.listdir(SYSTEM_DIR)
+                         if f.endswith(".conf"))
+    except OSError:
+        dropins = []
+    for path in [SYSTEM] + dropins + [USER_APPS]:
         conf = read_conf(path)
         for sec in conf.sections():
             fields = apps.setdefault(sec, {})
@@ -129,16 +139,26 @@ def programs():
     return apps, order
 
 
+def read_panel(path):
+    ids = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            word = line.split("#", 1)[0].strip()
+            if word and word not in ids:
+                ids.append(word)
+    return ids
+
+
 def panel_ids(apps, order):
     if os.path.exists(USER_PANEL):
-        ids = []
-        with open(USER_PANEL, encoding="utf-8") as fh:
-            for line in fh:
-                word = line.split("#", 1)[0].strip()
-                if word and word not in ids:
-                    ids.append(word)
-        return ids
-    return [i for i in order if int(apps[i].get("signal", "0") or 0) > 0]
+        return read_panel(USER_PANEL)
+    # The default panel: the shell's list, where a program not installed
+    # is left out, then programs that want a button and are not on it.
+    ids = []
+    if os.path.exists(SYSTEM_PANEL):
+        ids = [i for i in read_panel(SYSTEM_PANEL) if i in apps]
+    return ids + [i for i in order
+                  if i not in ids and int(apps[i].get("signal", "0") or 0) > 0]
 
 
 def signals():
@@ -185,7 +205,8 @@ def build():
 
 
 def write_apps(path, apps, order):
-    lines = ["# Written by b8k-apps from %s, %s and the panel; do not edit." % (SYSTEM, USER_APPS)]
+    lines = ["# Written by b8k-apps from %s, %s/, %s and the panel; do not edit."
+             % (SYSTEM, SYSTEM_DIR, USER_APPS)]
     for app_id in order:
         lines.append("")
         lines.append("[%s]" % app_id)

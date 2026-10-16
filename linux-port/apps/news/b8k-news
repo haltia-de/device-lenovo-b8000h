@@ -11,12 +11,11 @@
 # <link rel="alternate">). They are kept in ~/.config/b8k/news.conf; the
 # three Petersburg papers until then.
 import configparser
-import fcntl
 import html
 import json
 import os
+import sys
 import re
-import struct
 import threading
 from html.parser import HTMLParser
 from datetime import datetime, timezone
@@ -28,6 +27,20 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
+
+# The shell's shared pieces (haptics, header, panel badge, questions):
+# optional, so the program runs on any GTK desktop too.
+sys.path.insert(0, "/usr/local/share/b8k/python")
+try:
+    import b8k_ui
+except ImportError:
+    b8k_ui = None
+
+
+def buzzer():
+    """The vibration motor of the tablet, or nothing elsewhere."""
+    return b8k_ui.Buzz() if b8k_ui else (lambda *_args: True)
+
 
 # Newest stories first, mixed across papers. Each row keeps its own time.
 DEFAULT_FEEDS = (
@@ -51,14 +64,6 @@ list, row { background-color: #f2f2f0; }
 /* The plain colour above hides Adwaita's states; give the press back. */
 row:hover { background-color: #e8e8e6; }
 row:active, row:selected, row:selected:hover { background-color: #c4dcf7; }
-headerbar {
-  background-color: #dcdcda;
-  background-image: none;
-  border: none;
-  box-shadow: none;
-  min-height: 88px;
-  padding: 8px 16px;
-}
 headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
 button.refresh {
   background-image: none;
@@ -75,17 +80,6 @@ button.refresh:disabled {
   background-color: #99c1f1;
 }
 label.item { font-size: 26px; color: #2e3436; }
-button.back {
-  background-image: none;
-  background-color: #f2f2f0;
-  border: 1px solid #c0bfbc;
-  box-shadow: none;
-  border-radius: 16px;
-  min-height: 72px;
-  min-width: 96px;
-  font-size: 30px;
-  color: #2e3436;
-}
 .story { background-color: #f2f2f0; }
 button.gear {
   background-image: none;
@@ -144,37 +138,6 @@ button.full:disabled { background-color: #99c1f1; }
 label.when { font-size: 20px; color: #77767b; }
 row { min-height: 96px; }
 """
-
-
-class Buzz:
-    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
-
-    def __init__(self, ms=70):
-        self.fd = -1
-        try:
-            for node in sorted(os.listdir("/sys/class/input")):
-                if not node.startswith("event"):
-                    continue
-                with open("/sys/class/input/%s/device/name" % node) as fh:
-                    if fh.read().strip() != "regulator-haptic":
-                        continue
-                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
-                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
-                                            0xFFFF, 0xFFFF) + bytes(32))
-                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
-                self.effect = struct.unpack_from("<h", buf, 2)[0]
-                break
-        except OSError:
-            self.fd = -1
-
-    def __call__(self, *_args):
-        if self.fd >= 0:
-            try:
-                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
-            except OSError:
-                pass
-        return True
-
 
 def parse_when(raw):
     raw = (raw or "").strip()
@@ -566,11 +529,11 @@ class News(Gtk.Application):
         self.feeds = load_feeds()
         self.load_icons()
         # A buzz on every button and every headline, as in the other programs.
-        self.buzz = Buzz()
+        self.buzz = buzzer()
         Gtk.Button()  # the "pressed" signal exists once the class is set up
         GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
         provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
+        provider.load_from_data((b8k_ui.HEADER_CSS if b8k_ui else b"") + CSS)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
@@ -1008,13 +971,8 @@ class News(Gtk.Application):
         # Firefox can take 20 s to start; without a sign that the tap was
         # taken, people tapped again and got the page in several tabs.
         # b8k-launch shows the splash and opens one tab per link.
-        subprocess = __import__("subprocess")
-        subprocess.Popen(
-            ["/usr/local/bin/b8k-launch", "url", link],
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        if not (b8k_ui and b8k_ui.open_url(link)):
+            Gtk.show_uri_on_window(button.get_toplevel(), link, Gtk.get_current_event_time())
         button.set_sensitive(False)
         button.set_label("Открывается в браузере…")
 

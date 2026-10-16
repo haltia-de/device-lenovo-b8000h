@@ -1,0 +1,10 @@
+# The panel's buttons from top to bottom, one program id per line, for
+# whoever has no ~/.config/b8k/panel. Installed as
+# /usr/local/share/b8k/panel. An id that is not installed is skipped.
+firefox
+calc
+weather
+news
+max
+paint
+cards

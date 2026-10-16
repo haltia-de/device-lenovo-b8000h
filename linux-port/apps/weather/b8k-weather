@@ -16,11 +16,10 @@ name through the same service) and kept in ~/.config/b8k/weather.conf;
 Saint Petersburg until then.
 """
 import configparser
-import fcntl
 import json
 import math
 import os
-import struct
+import sys
 import threading
 import time
 from datetime import date, datetime
@@ -30,6 +29,20 @@ import gi
 gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
+
+# The shell's shared pieces (haptics, header, panel badge, questions):
+# optional, so the program runs on any GTK desktop too.
+sys.path.insert(0, "/usr/local/share/b8k/python")
+try:
+    import b8k_ui
+except ImportError:
+    b8k_ui = None
+
+
+def buzzer():
+    """The vibration motor of the tablet, or nothing elsewhere."""
+    return b8k_ui.Buzz() if b8k_ui else (lambda *_args: True)
+
 
 SERVICE = "https://services.gismeteo.ru/inform-service/inf_chrome/"
 CONFIG = os.path.expanduser("~/.config/b8k/weather.conf")
@@ -50,14 +63,6 @@ GEOMAGNETIC = ("возмущений нет", "небольшие возмуще
 
 CSS = b"""
 window { background-color: #e6e6e4; }
-headerbar {
-  background-color: #dcdcda;
-  background-image: none;
-  border: none;
-  box-shadow: none;
-  min-height: 88px;
-  padding: 8px 16px;
-}
 headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
 headerbar label.when { font-size: 20px; color: #77767b; }
 button.refresh {
@@ -103,17 +108,6 @@ button.dayrow {
   padding: 0;
 }
 button.dayrow:active { background-color: #dcdcda; }
-button.back {
-  background-image: none;
-  background-color: #f2f2f0;
-  border: 1px solid #c0bfbc;
-  box-shadow: none;
-  border-radius: 16px;
-  min-height: 72px;
-  min-width: 96px;
-  font-size: 30px;
-  color: #2e3436;
-}
 label.day-hi { font-size: 72px; font-weight: bold; }
 button.gear {
   background-image: none;
@@ -132,38 +126,6 @@ row.city:active { background-color: #c4dcf7; }
 label.city-name { font-size: 28px; }
 label.city-where { font-size: 20px; color: #77767b; }
 """
-
-
-# --- haptics, as in the other b8k programs --------------------------------
-class Buzz:
-    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
-
-    def __init__(self, ms=70):
-        self.fd = -1
-        try:
-            for node in sorted(os.listdir("/sys/class/input")):
-                if not node.startswith("event"):
-                    continue
-                with open("/sys/class/input/%s/device/name" % node) as fh:
-                    if fh.read().strip() != "regulator-haptic":
-                        continue
-                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
-                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
-                                            0xFFFF, 0xFFFF) + bytes(32))
-                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
-                self.effect = struct.unpack_from("<h", buf, 2)[0]
-                break
-        except OSError:
-            self.fd = -1
-
-    def __call__(self, *_args):
-        if self.fd >= 0:
-            try:
-                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
-            except OSError:
-                pass
-        return True
-
 
 # --- data -------------------------------------------------------------------
 def num(v, default=None):
@@ -491,7 +453,7 @@ class Weather(Gtk.Application):
         self.win = None
         self.data = None
         self.loading = False
-        self.buzz = Buzz()
+        self.buzz = buzzer()
         # Nothing is fetched before the window is first drawn: a fetch that
         # came back first rebuilt the whole page before it was ever shown.
         self.drawn = False
@@ -503,7 +465,7 @@ class Weather(Gtk.Application):
             self.win.present()
             return
         provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
+        provider.load_from_data((b8k_ui.HEADER_CSS if b8k_ui else b"") + CSS)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         Gtk.Button()  # the "pressed" signal exists once the class is set up

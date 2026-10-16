@@ -311,20 +311,14 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-paint" "$ROOT/usr/local/bin/b8k-paint"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-weather" "$ROOT/usr/local/bin/b8k-weather"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-max" "$ROOT/usr/local/bin/b8k-max"
-	# PyMax (MIT), MAX's web protocol for b8k-max: the pinned wheel from PyPI,
-	# checked against its sha256 and unpacked next to the program.
-	pymax_whl=/opt/b8000h/out/maxapi_python-2.4.1-py3-none-any.whl
-	[ -f "$pymax_whl" ] || wget -q -O "$pymax_whl" \
-		https://files.pythonhosted.org/packages/py3/m/maxapi-python/maxapi_python-2.4.1-py3-none-any.whl
-	echo "49c996cebebdcd490b8fc1424c84faad3c33d0b75eff4bb86cf1de9d968d76ea  $pymax_whl" | sha256sum -c -
-	rm -rf "$ROOT/usr/local/lib/b8k-max"
-	mkdir -p "$ROOT/usr/local/lib/b8k-max"
-	unzip -q -o "$pymax_whl" -d "$ROOT/usr/local/lib/b8k-max"
-	install -d -m 755 "$ROOT/usr/local/share/b8k/paint"
-	install -m 644 "$REPO"/linux-port/rootfs/paint/pictures/*.json "$ROOT/usr/local/share/b8k/paint/"
+	# The programs on the panel that are not the shell itself: each has its
+	# own install.sh, which adds its section to /usr/local/share/b8k/apps.d/.
+	# They use the shell's shared module b8k_ui when it is there.
+	install -D -m 644 "$REPO/linux-port/rootfs/python/b8k_ui.py" \
+		"$ROOT/usr/local/share/b8k/python/b8k_ui.py"
+	for app in weather news paint max; do
+		B8K_CACHE=/opt/b8000h/out sh "$REPO/linux-port/apps/$app/install.sh" "$ROOT"
+	done
 	# Speaker: hardware gain fixed at the clean top step, software volume.
 	mkdir -p "$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets" \
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths" "$ROOT/etc/udev/rules.d"
@@ -398,7 +392,6 @@ EOF
 HandlePowerKey=ignore
 HandlePowerKeyLongPress=ignore
 EOF
-	install -m 755 "$REPO/linux-port/rootfs/b8k-news" "$ROOT/usr/local/bin/b8k-news"
 	install -d -m 755 "$ROOT/usr/local/share/b8k"
 	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
 	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
@@ -407,6 +400,7 @@ EOF
 	install -m 644 "$REPO/linux-port/rootfs/firefox/userContent.css" "$ROOT/usr/local/share/b8k/userContent.css"
 	# The program registry read by b8k-launch, b8k-focus, b8k-ask and b8k-webapp.js.
 	install -m 644 "$REPO/linux-port/rootfs/apps.conf" "$ROOT/usr/local/share/b8k/apps.conf"
+	install -m 644 "$REPO/linux-port/rootfs/panel" "$ROOT/usr/local/share/b8k/panel"
 	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
 	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
 		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.cfg" \
