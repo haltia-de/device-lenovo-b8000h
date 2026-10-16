@@ -326,16 +326,10 @@ class News(Gtk.Application):
         title = Gtk.Label(label="Новости")
         title.get_style_context().add_class("title")
         header.set_custom_title(title)
-        self.refresh_btn = Gtk.Button()
+        # The same button as in b8k-weather: the symbolic icon, white on blue.
+        self.refresh_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic",
+                                                         Gtk.IconSize.DIALOG)
         self.refresh_btn.get_style_context().add_class("refresh")
-        try:
-            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                "/usr/local/share/b8k/refresh.png", 48, 48, True
-            )
-            self.refresh_btn.set_image(Gtk.Image.new_from_pixbuf(pix))
-            self.refresh_btn.set_always_show_image(True)
-        except GLib.Error:
-            self.refresh_btn.set_label("↻")
         self.refresh_btn.connect("clicked", lambda *_a: self.refresh(True))
         header.pack_end(self.refresh_btn)
         self.back_btn = Gtk.Button(label="←")
