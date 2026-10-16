@@ -19,7 +19,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		foot grim py3-pillow py3-numpy py3-cairo font-noto-emoji
+		foot grim py3-pillow py3-cairo font-noto-emoji
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
