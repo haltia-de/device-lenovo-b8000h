@@ -40,7 +40,8 @@
    `linux-port/tools-arm/build-b8k-splash.sh` (значок и название программы,
    пока она открывается). Результаты — в `/opt/b8000h/tools/`.
 7. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
-   armv7. Профиль называется `phosh` по старой памяти, но сессия запускает свою
+   armv7. Нужны сеть и `git`: программы из своих репозиториев
+   (`linux-port/apps/sources`) скрипт клонирует по тегам. Профиль называется `phosh` по старой памяти, но сессия запускает свою
    оболочку — панель waybar слева на phoc ([shell.md](shell.md)). Скрипт ставит
    собранный wpa_supplicant, конфиг NetworkManager, повторную загрузку MT6628 после
    появления прошивки (с постоянным MAC из `/etc/machine-id`), службы

@@ -1,0 +1,9 @@
+# Programs of the shell that live in repositories of their own.
+# build-rootfs.sh clones each at its tag, checks that the tag is still the
+# commit given here, and runs its install.sh into the image. To build with
+# a local checkout instead (one being worked on), set B8K_APPS_SRC to a
+# folder holding it as <name>/.
+#
+# name     repository                                     tag    commit
+paint      https://github.com/trudenboy/b8k-paint.git     v1.0   68eec731bdd112d34601ae7112fc9e533fb7604b
+weather    https://github.com/trudenboy/b8k-weather.git   v1.0   82e12d89ceaaca8eaefb4a5ad7cc4b0923cae7dd
