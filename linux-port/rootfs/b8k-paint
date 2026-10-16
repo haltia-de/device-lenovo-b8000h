@@ -106,8 +106,11 @@ PAGE = 24
 THUMB, LARGE = 330, 960
 # Cell sizes one can pick: the level in the picture file, the button,
 # cells along the long side and colours, as in make-paintings.py.
-GRADES = ((3, "Крупные клетки", 64, 16), (4, "Средние клетки", 96, 24),
-          (5, "Мелкие клетки", 128, 28))
+# The last, finer than any built-in picture, is for those who want more
+# detail: a tap takes some 140 ms and the whole picture fits the screen
+# only at 6 px cells.
+GRADES = ((3, "Крупные", 64, 16), (4, "Средние", 96, 24),
+          (5, "Мелкие", 128, 28), (6, "Очень мелкие", 160, 32))
 # What a picture may be on Wikidata (painting, print: Hokusai's waves are
 # prints), and the occupations of an artist whose works a search lists.
 KINDS = ("Q3305213", "Q11060274")
@@ -1216,6 +1219,9 @@ class Paint:
         header = Gtk.HeaderBar()
         self.title = Gtk.Label(label="Раскраски")
         self.title.get_style_context().add_class("title")
+        # Downloaded paintings can have long names; the header stays one line.
+        self.title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.title.set_max_width_chars(36)
         header.set_custom_title(self.title)
         self.back_button = Gtk.Button(label="←")
         self.back_button.get_style_context().add_class("back")
@@ -1627,13 +1633,19 @@ class Paint:
         self.natural_button.get_style_context().add_class("grade")
         self.natural_button.connect("clicked", lambda _b: self.set_natural(not self.natural))
         side.pack_start(self.natural_button, False, False, 0)
+        # The cell sizes, two by two.
+        cells = Gtk.Label(label="Клетки:", xalign=0)
+        cells.get_style_context().add_class("pinfo")
+        side.pack_start(cells, False, False, 0)
+        grid = Gtk.Grid(row_spacing=10, column_spacing=10, column_homogeneous=True)
         self.grade_buttons = []
-        for grade in GRADES:
+        for n, grade in enumerate(GRADES):
             b = Gtk.Button(label=grade[1])
             b.get_style_context().add_class("grade")
             b.connect("clicked", lambda _b, g=grade: self.choose_grade(g))
-            side.pack_start(b, False, False, 0)
+            grid.attach(b, n % 2, n // 2, 1, 1)
             self.grade_buttons.append((b, grade))
+        side.pack_start(grid, False, False, 0)
         self.preview_note = Gtk.Label(xalign=0)
         self.preview_note.set_line_wrap(True)
         self.preview_note.get_style_context().add_class("note")
