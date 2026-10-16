@@ -20,13 +20,20 @@ fetch_app() {
 	else
 		dir=/opt/b8000h/out/apps/$1
 		if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" != "$4" ]; then
-			rm -rf "$dir"
-			if ! GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false \
-					clone -q --depth 1 --branch "$3" "$2" "$dir"; then
+			# Three tries: GitHub now and then resets a connection.
+			tries=0
+			until rm -rf "$dir" && GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false \
+					clone -q --depth 1 --branch "$3" "$2" "$dir" 2>/dev/null; do
+				tries=$((tries + 1))
+				[ $tries -lt 3 ] || break
+				sleep 5
+			done
+			if [ ! -d "$dir/.git" ]; then
 				if [ "${5:-}" = private ]; then
 					echo "WARNING: $1 left out: no access to $2" >&2
 					return 0
 				fi
+				echo "$1: cannot clone $2 (tag $3)" >&2
 				exit 1
 			fi
 		fi
@@ -149,6 +156,8 @@ chmod +x "$ROOT/etc/local.d/00-b8k-modules.start"
 # Safety net for an older BOOT image. The FIFO kernel already writes
 # 0x80f000e0. This script rewrites the register only if it still holds
 # the bootloader value 0x00f00010 (256-byte threshold, scroll copies).
+# Alpine's base leaves out the /usr/local folders the files below go to.
+mkdir -p "$ROOT/usr/local/bin" "$ROOT/usr/local/sbin" "$ROOT/usr/local/share/b8k"
 install -m 755 "$REPO/linux-port/rootfs/b8k-rdma-fifo.py" \
 	"$ROOT/usr/local/sbin/b8k-rdma-fifo.py"
 cat > "$ROOT/etc/local.d/zz-rdma-fifo.start" <<'EOF'
@@ -527,7 +536,11 @@ EOF
 	# then keep only the ru catalogs (the full set is ~50 MB).
 	LANGS=$(for p in $(apk --root "$ROOT" --arch armv7 info 2>/dev/null); do
 		case "$p" in *-lang|*-doc|*-dev) continue ;; esac
-		apk --root "$ROOT" --arch armv7 search -x "$p-lang" 2>/dev/null | grep -q . && echo "$p-lang"
+		# An if, not "&&": a last package without -lang would end the loop
+		# false and stop the script under set -e.
+		if apk --root "$ROOT" --arch armv7 search -x "$p-lang" 2>/dev/null | grep -q .; then
+			echo "$p-lang"
+		fi
 	done)
 	apk --root "$ROOT" --arch armv7 add $LANGS
 	find "$ROOT/usr/share/locale" -mindepth 1 -maxdepth 1 -type d \
