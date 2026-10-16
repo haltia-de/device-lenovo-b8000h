@@ -75,7 +75,8 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - Moving waybar to `overlay` blanked the screen.
 - **Dialogs.**
   - `b8k-ask` (the power menu and "close this program?") is a shell script around fuzzel in dmenu mode (`rootfs/fuzzel-ask.ini`): C, Wayland only, on the overlay layer, so it shows in about 0.3 s (the Python GTK version took 2.3 s) and is always on top. fuzzel takes taps. Отмена, the last item, is preselected so that Enter does no harm. A choice buzzes through `b8k-press ask` (no signal).
-  - `b8k-brightness` is an undecorated dark GTK window. Once mapped it asks `b8k-focus activate <app_id>` to raise it; a second launch, which finds the lock taken, raises the open one, because a dialog opened during boot could end up under Firefox.
+  - `b8k-brightness` is a GTK window on the overlay layer through gtk-layer-shell (typelib `GtkLayerShell-0.1`), drawn as the same card as the fuzzel questions. b8k-paint's "start over?" uses the same fuzzel config. Programs share one header (`#dcdcda`, 88 px, title centred, "←" on the left). The palette table in `docs/shell.md` lists every colour, including the two light blues (`#c4dcf7` selected, `#99c1f1` disabled).
+  - Firefox: `b8k-webapp.js` takes the focus off the address bar once per window that opens on the home page, or the keyboard came up unasked. `b8k-ram.js` asks for light pages by default, but a profile's own `layout.css.prefers-color-scheme.content-override` wins.
   - Python GTK3 programs must call `gi.require_version("Gdk", "3.0")` as well as `Gtk`: GTK4 is installed too, and gi otherwise loads Gdk 4.
 - **Power key** (`b8k-sleep.py`, root, nice -10).
   - A short press toggles the backlight on release. A one-second hold opens `b8k-ask power`. Ten minutes without input from any device (read ungrabbed) turn the screen off the same way (`IDLE_OFF`). 30 s after the screen goes off, `b8k-suspend` runs s2idle.

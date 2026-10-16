@@ -40,6 +40,7 @@ import math
 import os
 import signal
 import struct
+import subprocess
 import sys
 
 import cairo
@@ -72,6 +73,26 @@ MARK = (0.66, 0.80, 0.97)
 
 CSS = b"""
 window, .paint-bg { background-color: #e6e6e4; }
+headerbar {
+  background-color: #dcdcda;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 16px;
+}
+headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
+button.back {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 96px;
+  font-size: 30px;
+  color: #2e3436;
+}
 .bar { background-color: #dcdcda; padding: 8px; }
 .bar button, .card {
   font-size: 26px;
@@ -675,6 +696,18 @@ class Paint:
         GObject.add_emission_hook(Gtk.Button, "pressed", self.on_button)
         self.win = Gtk.Window(title="Раскраска")
         self.win.set_default_size(1160, 800)
+        # The same header as Погода, Новости and MAX: the title in the
+        # middle, "←" on the left while a picture is open.
+        header = Gtk.HeaderBar()
+        self.title = Gtk.Label(label="Раскраски")
+        self.title.get_style_context().add_class("title")
+        header.set_custom_title(self.title)
+        self.back_button = Gtk.Button(label="←")
+        self.back_button.get_style_context().add_class("back")
+        self.back_button.connect("clicked", lambda _b: self.back())
+        self.back_button.set_no_show_all(True)
+        header.pack_start(self.back_button)
+        self.win.set_titlebar(header)
         self.win.connect("destroy", self.quit)
         # Progress is written a moment after a tap; write it on the way out.
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self.quit)
@@ -707,13 +740,9 @@ class Paint:
         old = self.stack.get_child_by_name("gallery")
         if old:
             self.stack.remove(old)
+        self.title.set_text("Раскраски")
+        self.back_button.hide()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        bar = Gtk.Box(spacing=12)
-        bar.get_style_context().add_class("bar")
-        title = Gtk.Label(label="Раскраски")
-        title.get_style_context().add_class("title")
-        bar.pack_start(title, True, True, 0)
-        box.pack_start(bar, False, False, 0)
 
         # One section per level, easier at the top.
         sections = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -825,32 +854,22 @@ class Paint:
         self.show_gallery()
 
     def confirm(self, question, yes):
-        """A large yes/no question; True when the first button is pressed."""
-        dialog = Gtk.Dialog(transient_for=self.win, modal=True)
-        dialog.set_decorated(False)
-        dialog.set_default_size(760, 440)
-        area = dialog.get_content_area()
-        area.get_style_context().add_class("confirm")
-        area.set_spacing(16)
-        area.set_border_width(28)
-        label = Gtk.Label(label=question)
-        label.set_justify(Gtk.Justification.CENTER)
-        area.pack_start(label, True, True, 0)
-        answer = []
-        for text, kind, value in ((yes, "danger", True), ("Отмена", "", False)):
-            b = Gtk.Button(label=text)
-            if kind:
-                b.get_style_context().add_class(kind)
-            b.connect("clicked", lambda _b, v=value: (answer.append(v), dialog.response(0)))
-            area.pack_start(b, False, False, 0)
-        area.show_all()
-        dialog.run()
-        dialog.destroy()
-        return bool(answer and answer[0])
+        """A yes/no question in the shell's own style (b8k-ask's fuzzel);
+        True when the first answer is chosen."""
+        try:
+            res = subprocess.run(
+                ["fuzzel", "--config", "/usr/local/share/b8k/fuzzel-ask.ini", "--dmenu",
+                 "--index", "--mesg", question, "--cache", "/dev/null", "--select-index", "1"],
+                input="%s\nОтмена\n" % yes, capture_output=True, text=True, timeout=600)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return res.stdout.strip() == "0"
 
     # board
     def open(self, pic):
         write_last(pic["id"])
+        self.title.set_text(pic["name"])
+        self.back_button.show()
         old = self.stack.get_child_by_name("board")
         if old:
             self.stack.remove(old)
@@ -863,7 +882,7 @@ class Paint:
         # how the screen looks.
         tools = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         tools.get_style_context().add_class("tools")
-        for name, action, gap in (("back", self.back, True), ("zoom-in", self.zoom_in, False),
+        for name, action, gap in (("zoom-in", self.zoom_in, False),
                                   ("zoom-out", self.zoom_out, False),
                                   ("whole", self.whole, True), ("find", self.find, False),
                                   ("undo", self.board.undo_last, True),

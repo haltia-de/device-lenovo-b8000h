@@ -6,16 +6,19 @@
 # The level goes through logind (Session.SetBrightness), so no root is
 # needed; the dialog redraws while the slider moves, and that frame is
 # what makes the BLS take the new duty at once.
+# The dialog is a card on the overlay layer (gtk-layer-shell), drawn like
+# the questions of b8k-ask: always on top, so nothing has to raise it.
 import fcntl
 import os
-import subprocess
+import struct
 import sys
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gdk, Gio, GLib, GObject, Gtk, GtkLayerShell  # noqa: E402
 
 BACKLIGHT = "mt6589-bls"
 SYSFS = "/sys/class/backlight/%s" % BACKLIGHT
@@ -23,8 +26,14 @@ LOWEST = 10  # never black: the slider must stay visible
 SAVED = os.path.join(os.path.expanduser("~"), ".config", "b8k", "brightness")
 
 CSS = b"""
-window { background-color: #242424; }
-label { color: #ffffff; font-size: 36px; }
+window { background-color: transparent; }
+.card {
+  background-color: #242424;
+  border: 2px solid #3a3a3a;
+  border-radius: 16px;
+}
+label { color: #9a9996; font-size: 35px; }
+button label { color: #ffffff; }
 scale trough {
   min-height: 24px;
   border-radius: 12px;
@@ -41,15 +50,45 @@ scale slider {
   box-shadow: none;
 }
 button {
-  font-size: 32px;
-  min-height: 92px;
-  border-radius: 16px;
-  background: #303030;
+  font-size: 35px;
+  min-height: 80px;
+  border-radius: 12px;
+  background: #3a3a3a;
   color: #ffffff;
   border: none;
   box-shadow: none;
 }
 """
+
+
+class Buzz:
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self, *_args):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+        return True
 
 
 def read_int(path, default):
@@ -116,10 +155,7 @@ def main():
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        # Already open, maybe under a window that mapped later (Firefox
-        # starts with the session): raise it instead of doing nothing.
-        subprocess.call(["/usr/local/bin/b8k-focus", "activate", "b8k-brightness"])
-        return 0
+        return 0  # already open, and on top
 
     top = read_int(SYSFS + "/max_brightness", 255)
     now = read_int(SYSFS + "/brightness", top // 2)
@@ -130,21 +166,36 @@ def main():
     Gtk.StyleContext.add_provider_for_screen(
         Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
+    buzz = Buzz()
+    Gtk.Button()  # the "pressed" signal exists once the class is set up
+    GObject.add_emission_hook(Gtk.Button, "pressed", buzz)
+
     win = Gtk.Window(title="Яркость")
-    win.set_decorated(False)
-    win.set_default_size(860, 520)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
-    box.set_margin_top(36)
-    box.set_margin_bottom(28)
-    box.set_margin_start(40)
-    box.set_margin_end(40)
-    title = Gtk.Label(label="Яркость")
-    box.pack_start(title, False, False, 0)
+    visual = win.get_screen().get_rgba_visual()
+    if visual:
+        win.set_visual(visual)  # round corners over whatever is below
+    GtkLayerShell.init_for_window(win)
+    GtkLayerShell.set_layer(win, GtkLayerShell.Layer.OVERLAY)
+    GtkLayerShell.set_namespace(win, "b8k-brightness")
+    win.set_size_request(800, -1)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=28)
+    box.get_style_context().add_class("card")
+    for side in ("start", "end", "top", "bottom"):
+        getattr(box, "set_margin_" + side)(0)
+    inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=28)
+    inner.set_margin_top(28)
+    inner.set_margin_bottom(28)
+    inner.set_margin_start(32)
+    inner.set_margin_end(32)
+    box.pack_start(inner, True, True, 0)
+    title = Gtk.Label(label="Яркость", xalign=0)
+    inner.pack_start(title, False, False, 0)
 
     scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, LOWEST, top, 1)
     scale.set_draw_value(False)
     scale.set_value(max(LOWEST, now))
-    box.pack_start(scale, True, True, 0)
+    scale.connect("button-press-event", lambda *_a: buzz() and False)
+    inner.pack_start(scale, True, True, 0)
 
     def apply():
         light.set(scale.get_value())
@@ -161,15 +212,11 @@ def main():
 
     done = Gtk.Button(label="Готово")
     done.connect("clicked", lambda _b: Gtk.main_quit())
-    box.pack_start(done, False, False, 0)
+    inner.pack_start(done, False, False, 0)
 
     win.connect("destroy", Gtk.main_quit)
     win.add(box)
     win.show_all()
-    # phoc does not always raise a window started from the panel; ask to
-    # be activated once the window is mapped.
-    GLib.timeout_add(300, lambda: subprocess.Popen(
-        ["/usr/local/bin/b8k-focus", "activate", "b8k-brightness"]) and False)
     Gtk.main()
     if light.pending is not None:
         apply()

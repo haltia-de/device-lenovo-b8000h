@@ -46,11 +46,19 @@
   padding: 8px !important;
   margin-inline: 6px !important;
   border-radius: 14px !important;
-  background-color: #f6d7d9 !important;
-  color: #c01c28 !important;
-  fill: #c01c28 !important;
+  /* Neutral like the other buttons; red only while pressed. A red button
+     on every tab read as an alarm. */
+  background-color: #dcdcda !important;
+  color: #2e3436 !important;
+  fill: #2e3436 !important;
   -moz-context-properties: fill, fill-opacity !important;
   list-style-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath fill='context-fill' d='M9 12.2 L12.2 9 L18 14.8 L23.8 9 L27 12.2 L21.2 18 L27 23.8 L23.8 27 L18 21.2 L12.2 27 L9 23.8 L14.8 18 Z'/%3E%3C/svg%3E") !important;
+}
+
+.tab-close-button:hover:active {
+  background-color: #c01c28 !important;
+  color: #ffffff !important;
+  fill: #ffffff !important;
 }
 
 .tab-close-button > .toolbarbutton-icon {

@@ -389,9 +389,30 @@
     }
   }
 
+  // A window that opens on the home page puts the cursor in the address
+  // bar, and the on-screen keyboard came up over half the screen though
+  // nobody had touched a text field. Once per window, take the focus off
+  // it; a tap on the address bar brings the keyboard as usual.
+  function calmStart() {
+    var wins = browserWindows().filter(ready);
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        if (wins[i].__b8kCalm || chromeless(wins[i])) {
+          continue;
+        }
+        wins[i].__b8kCalm = true;
+        if (/^about:(home|newtab|blank)/.test(currentSpec(wins[i]))) {
+          wins[i].gURLBar.blur();
+          wins[i].gBrowser.selectedBrowser.focus();
+        }
+      } catch (e) {}
+    }
+  }
+
   function poll() {
     try {
       retitle();
+      calmStart();
     } catch (e) {}
     var jobs = [];
     try {

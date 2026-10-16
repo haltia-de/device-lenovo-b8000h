@@ -6,9 +6,12 @@
 # A button under the story opens the full page in Firefox.
 # The window appears at once. The list fills when the feeds answer.
 # One title only: the header bar. A second "Новости" label used to sit under it.
+import fcntl
 import html
 import json
+import os
 import re
+import struct
 import threading
 from html.parser import HTMLParser
 from datetime import datetime, timezone
@@ -19,7 +22,7 @@ import gi
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
 
 # Newest stories first, mixed across papers. Each row keeps its own time.
 FEEDS = (
@@ -38,7 +41,7 @@ window { background-color: #e6e6e4; }
 list, row { background-color: #f2f2f0; }
 /* The plain colour above hides Adwaita's states; give the press back. */
 row:hover { background-color: #e8e8e6; }
-row:active, row:selected, row:selected:hover { background-color: #99c1f1; }
+row:active, row:selected, row:selected:hover { background-color: #c4dcf7; }
 headerbar {
   background-color: #dcdcda;
   background-image: none;
@@ -93,6 +96,36 @@ button.full:disabled { background-color: #99c1f1; }
 label.when { font-size: 20px; color: #77767b; }
 row { min-height: 96px; }
 """
+
+
+class Buzz:
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self, *_args):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+        return True
 
 
 def parse_when(raw):
@@ -277,6 +310,10 @@ class News(Gtk.Application):
                 self.icons[name] = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 52, 52, True)
             except GLib.Error:
                 self.icons[name] = None
+        # A buzz on every button and every headline, as in the other programs.
+        self.buzz = Buzz()
+        Gtk.Button()  # the "pressed" signal exists once the class is set up
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(
@@ -428,6 +465,7 @@ class News(Gtk.Application):
         return False
 
     def open_row(self, _box, row):
+        self.buzz()
         item = getattr(row, "item", None)
         if item:
             self.show_story(item)

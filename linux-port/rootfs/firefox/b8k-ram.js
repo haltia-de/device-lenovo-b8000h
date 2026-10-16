@@ -18,3 +18,8 @@ pref("media.autoplay.default", 5);
 pref("ui.prefersReducedMotion", 1);
 // No screen reader here; otherwise Firefox starts the at-spi bus itself.
 pref("accessibility.force_disabled", 1);
+// Light pages, as the rest of the content: the home page and new tabs
+// followed a dark system theme and came out dark.
+pref("layout.css.prefers-color-scheme.content-override", 1);
+pref("browser.theme.content-theme", 1);
+pref("browser.theme.toolbar-theme", 1);
