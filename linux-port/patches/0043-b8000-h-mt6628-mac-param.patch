@@ -1,0 +1,50 @@
+From: Mikhail Nevskiy
+Subject: [PATCH] wlan_mt6628: take a fixed MAC through mac=
+
+The driver source in patch 0033 is a snapshot of linux-port/drivers/mt6628
+from before the mac= parameter. Without it, the MAC comes from the timer
+tick and DHCP hands out a new address on every driver reload.
+
+diff --git a/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/gl_init.c b/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/gl_init.c
+--- a/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/gl_init.c
++++ b/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/gl_init.c
+@@ -644,6 +644,8 @@
+ #include "gl_cfg80211.h"
+ #include "precomp.h"
+ #include "mt6628.h"
++#include <linux/etherdevice.h>
++#include <linux/hex.h>
+ 
+ /*******************************************************************************
+ *                              C O N S T A N T S
+@@ -727,6 +729,13 @@
+ module_param_cb(debug, &mt6628_debug_ops, &debug, 0644);
+ MODULE_PARM_DESC(debug, "gen2 DBG class mask for every module (0..255)");
+ 
++/* Without the Android NVRAM file the driver builds the MAC from the
++ * timer tick, so it changed on every load and DHCP gave a new address
++ * each boot. A fixed MAC can be passed in instead. */
++static char *mac;
++module_param(mac, charp, 0444);
++MODULE_PARM_DESC(mac, "station MAC address, aa:bb:cc:dd:ee:ff");
++
+ static bool wmt_on;
+ 
+ //4 2007/06/26, mikewu, now we don't use this, we just fix the number of wlan device to 1
+@@ -2214,6 +2223,16 @@
+     prGlueInfo->eParamMediaStateIndicated = PARAM_MEDIA_STATE_DISCONNECTED;
+     prGlueInfo->ePowerState = ParamDeviceStateD0;
+     prGlueInfo->fgIsMacAddrOverride = FALSE;
++    if (mac && *mac) {
++        u8 addr[ETH_ALEN];
++
++        if (mac_pton(mac, addr) && is_valid_ether_addr(addr)) {
++            COPY_MAC_ADDR(prGlueInfo->rMacAddrOverride, addr);
++            prGlueInfo->fgIsMacAddrOverride = TRUE;
++        } else {
++            pr_warn("wlan_mt6628: ignoring invalid mac=%s\n", mac);
++        }
++    }
+     prGlueInfo->fgIsRegistered = FALSE;
+     prGlueInfo->prScanRequest = NULL;
+ 
