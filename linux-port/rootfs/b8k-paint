@@ -48,6 +48,7 @@ image hosts are made.
 import fcntl
 import concurrent.futures
 import hashlib
+import importlib.util
 import io
 import json
 import math
@@ -75,6 +76,10 @@ PHOTOS = os.path.expanduser("~/Раскраски")
 DATA = os.path.expanduser("~/.local/share/b8k-paint")
 DOWNLOADED = os.path.join(DATA, "downloaded")
 DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+# numpy does the enhanced conversion of new pictures; looked up, not
+# imported, as importing it costs start-up time.
+HAVE_NUMPY = importlib.util.find_spec("numpy") is not None
+SHADOWS = 0.55
 LEVELS = (
     (8, "Загруженные"),
     (3, "Сложные"),
@@ -378,6 +383,231 @@ def painting_to_picture(data, cols_long, colours):
     return {"w": cols, "h": rows,
             "palette": ["#%02x%02x%02x" % keep[i] for i in order],
             "rows": ["".join(DIGITS[remap[v]] for v in row) for row in grid]}
+
+
+def srgb_to_lab(rgb, np):
+    """sRGB (0..255) to CIE Lab, D65, with the shadows spread out."""
+    c = rgb.astype(np.float32) / 255.0
+    c = np.where(c > 0.04045, ((c + 0.055) / 1.055) ** 2.4, c / 12.92)
+    m = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722],
+                  [0.0193, 0.1192, 0.9505]], dtype=np.float32)
+    xyz = c @ m.T / np.array([0.95047, 1.0, 1.08883], dtype=np.float32)
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    # Lightness is spread out in the shadows (L ** SHADOWS), where Lab packs
+    # dark colours close together: a black hat and a dark red coat must
+    # stay apart.
+    light = 100 * (np.clip(116 * f[..., 1] - 16, 0, 100) / 100) ** SHADOWS
+    return np.stack([light, 500 * (f[..., 0] - f[..., 1]),
+                     200 * (f[..., 1] - f[..., 2])], axis=-1).astype(np.float32)
+
+
+def lab_to_srgb(lab, np):
+    fy = (100 * (np.clip(lab[..., 0], 0, 100) / 100) ** (1 / SHADOWS) + 16) / 116
+    f = np.stack([fy + lab[..., 1] / 500, fy, fy - lab[..., 2] / 200], axis=-1)
+    xyz = np.where(f > 0.206893, f ** 3, (f - 16 / 116) / 7.787) * np.array([0.95047, 1.0, 1.08883])
+    m = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415],
+                  [0.0557, -0.2040, 1.0570]])
+    c = xyz @ m.T
+    c = np.where(c > 0.0031308, 1.055 * np.clip(c, 0, None) ** (1 / 2.4) - 0.055, 12.92 * c)
+    return np.clip(np.round(c * 255), 0, 255).astype(np.uint8)
+
+
+def nearest(data, centres, np):
+    """Index of the nearest centre for each row, and the squared distance."""
+    d = ((data * data).sum(1)[:, None] - 2 * data @ centres.T
+         + (centres * centres).sum(1)[None])
+    idx = d.argmin(1)
+    return idx, np.maximum(d[np.arange(len(data)), idx], 0)
+
+
+def means(data, weights, idx, centres, np):
+    w = np.bincount(idx, weights=weights, minlength=len(centres))
+    out = centres.copy()
+    ok = w > 0
+    for ch in range(3):
+        out[ok, ch] = np.bincount(idx, weights=data[:, ch] * weights, minlength=len(centres))[ok] / w[ok]
+    return out
+
+
+def slic_cells(lab, cols, rows, s, np, compact=12.0, iters=5):
+    """SLIC superpixels seeded on the output grid, as in Gerstner et al.,
+    "Pixelated Image Abstraction" (2012): each cell takes the mean colour
+    of the pixels closest to its centre in colour and place, so a cell on
+    an edge takes one side of it instead of a muddy mix of both."""
+    H, W = rows * s, cols * s
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    hy, hx = (yy // s).astype(np.int32), (xx // s).astype(np.int32)
+    gy, gx = np.mgrid[0:rows, 0:cols].astype(np.float32)
+    gy, gx = (gy + 0.5) * s, (gx + 0.5) * s
+    cy, cx = gy.copy(), gx.copy()
+    cl = lab[gy.astype(int), gx.astype(int)].copy()
+    k = np.float32((compact / s) ** 2)
+    flat = lab.reshape(-1, 3)
+    n_cells = rows * cols
+    for _ in range(iters):
+        best = np.full((H, W), np.inf, dtype=np.float32)
+        owner = np.zeros((H, W), dtype=np.int32)
+        for dy in (-1, 0, 1):
+            ny = np.clip(hy + dy, 0, rows - 1)
+            for dx in (-1, 0, 1):
+                nx = np.clip(hx + dx, 0, cols - 1)
+                diff = lab - cl[ny, nx]
+                d = (diff * diff).sum(-1) + k * ((yy - cy[ny, nx]) ** 2 + (xx - cx[ny, nx]) ** 2)
+                better = d < best
+                best[better] = d[better]
+                owner[better] = (ny * cols + nx)[better]
+        ids = owner.ravel()
+        n = np.bincount(ids, minlength=n_cells)
+        ok = n > 0
+        for ch in range(3):
+            cl[..., ch].flat[ok] = np.bincount(ids, weights=flat[:, ch], minlength=n_cells)[ok] / n[ok]
+        # New centres, pulled back towards their own cell so the grid holds.
+        cy.flat[ok] = 0.6 * np.bincount(ids, weights=yy.ravel(), minlength=n_cells)[ok] / n[ok] \
+            + 0.4 * gy.flat[ok]
+        cx.flat[ok] = 0.6 * np.bincount(ids, weights=xx.ravel(), minlength=n_cells)[ok] / n[ok] \
+            + 0.4 * gx.flat[ok]
+    return cl.reshape(-1, 3)
+
+
+def palette(data, weights, colours, np, grow=5):
+    """k-means in Lab, then grown where it fits worst (Gerstner et al. split
+    the cluster with the largest error), then colours too alike to tell
+    apart on the palette (deltaE under 9) merged."""
+    rng = np.random.default_rng(1)
+    k = max(2, colours - grow)
+    # k-means++ start on a sample, then Lloyd on all cells.
+    sample = data[rng.choice(len(data), min(len(data), 3000), replace=False)]
+    c = sample[[0]]
+    for _ in range(1, k):
+        _i, d = nearest(sample, c, np)
+        if d.sum() <= 0:
+            break
+        c = np.vstack([c, sample[rng.choice(len(sample), p=d / d.sum())]])
+    for _ in range(10):
+        idx, _d = nearest(data, c, np)
+        c = means(data, weights, idx, c, np)
+    for _ in range(grow):
+        idx, d = nearest(data, c, np)
+        cand = np.argsort(d)[-200:]
+        if d[cand].max() < 81:
+            break
+        # The farthest cells, counted by how many cells are like them, so
+        # one odd cell does not win a colour.
+        _i, dd = nearest(data, data[cand], np)
+        like = np.bincount(_i[dd < 100], minlength=len(cand))
+        c = np.vstack([c, data[cand[np.argmax(d[cand] * np.sqrt(like + 1))]]])
+        for _ in range(3):
+            idx, _d = nearest(data, c, np)
+            c = means(data, weights, idx, c, np)
+    centre = list(c)
+    while len(centre) > 2:
+        cc = np.array(centre)
+        dd = np.sqrt(((cc[:, None] - cc[None]) ** 2).sum(-1)) + np.eye(len(cc)) * 1e9
+        i, j = np.unravel_index(np.argmin(dd), dd.shape)
+        if dd[i, j] >= 9 and len(centre) <= colours:
+            break
+        centre[i] = (cc[i] + cc[j]) / 2
+        del centre[j]
+    return np.array(centre, dtype=np.float32)
+
+
+def merge_specks(grid, pal, rows, cols, min_size=3, keep_de=30.0):
+    """Regions under min_size cells join the bordering colour closest to
+    theirs, unless they stand out strongly (an eye, a star). grid is a
+    flat list; works in place."""
+    for _ in range(2):
+        seen = [False] * (rows * cols)
+        changed = False
+        for start in range(rows * cols):
+            if seen[start]:
+                continue
+            v = grid[start]
+            cells, todo = [start], [start]
+            seen[start] = True
+            while todo and len(cells) < min_size:
+                i = todo.pop()
+                y, x = divmod(i, cols)
+                for j in ((i - cols) if y else -1, (i + cols) if y < rows - 1 else -1,
+                          (i - 1) if x else -1, (i + 1) if x < cols - 1 else -1):
+                    if j >= 0 and not seen[j] and grid[j] == v:
+                        seen[j] = True
+                        cells.append(j)
+                        todo.append(j)
+            if len(cells) >= min_size:
+                # Mark the rest of a big region seen without counting it.
+                while todo:
+                    i = todo.pop()
+                    y, x = divmod(i, cols)
+                    for j in ((i - cols) if y else -1, (i + cols) if y < rows - 1 else -1,
+                              (i - 1) if x else -1, (i + 1) if x < cols - 1 else -1):
+                        if j >= 0 and not seen[j] and grid[j] == v:
+                            seen[j] = True
+                            todo.append(j)
+                continue
+            border = {}
+            for i in cells:
+                y, x = divmod(i, cols)
+                for j in ((i - cols) if y else -1, (i + cols) if y < rows - 1 else -1,
+                          (i - 1) if x else -1, (i + 1) if x < cols - 1 else -1):
+                    if j >= 0 and grid[j] != v:
+                        border[grid[j]] = border.get(grid[j], 0) + 1
+            if not border:
+                continue
+            pv = pal[v]
+            best = min(border, key=lambda u: sum((a - b) ** 2 for a, b in zip(pal[u], pv))
+                       - 50 * border[u])
+            if sum((a - b) ** 2 for a, b in zip(pal[best], pv)) < keep_de ** 2:
+                for i in cells:
+                    grid[i] = best
+                changed = True
+        if not changed:
+            break
+    return grid
+
+
+def natural_picture(data, cols_long, colours):
+    """A painting as a grid picture that keeps its look: the default for
+    new pictures. numpy does the work; painting_to_picture() is the plain
+    way, used when this is switched off or numpy is missing."""
+    import numpy as np
+    from PIL import Image, ImageEnhance, ImageOps
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    # Old varnish: stretch each channel (also a white balance), then a
+    # little more colour and contrast.
+    img = ImageOps.autocontrast(img, cutoff=1)
+    img = ImageEnhance.Color(img).enhance(1.3)
+    img = ImageEnhance.Contrast(img).enhance(1.1)
+    w, h = img.size
+    if w >= h:
+        cols, rows = cols_long, max(8, round(cols_long * h / w))
+    else:
+        rows, cols = cols_long, max(8, round(cols_long * w / h))
+    # Four pixels a cell for the superpixels (three for the big grids).
+    s = 4 if cols_long <= 64 else 3
+    lab = srgb_to_lab(np.asarray(img.resize((cols * s, rows * s), Image.LANCZOS)), np)
+    cells = slic_cells(lab, cols, rows, s, np)
+    # Cells at edges count more, so small salient parts (a sail, a face)
+    # get colours of their own.
+    grid3 = cells.reshape(rows, cols, 3)
+    pad = np.pad(grid3, ((1, 1), (1, 1), (0, 0)), mode="edge")
+    contrast = np.zeros((rows, cols), dtype=np.float32)
+    for dy, dx in ((0, 1), (2, 1), (1, 0), (1, 2)):
+        diff = pad[dy:dy + rows, dx:dx + cols] - grid3
+        contrast = np.maximum(contrast, np.sqrt((diff * diff).sum(-1)))
+    weights = (1.0 + 2.0 * np.minimum(contrast.ravel(), 40) / 40).astype(np.float64)
+    pal = palette(cells, weights, colours, np)
+    # Averaging greys colours out a little; give some chroma back.
+    pal[:, 1:] *= 1.1
+    idx, _d = nearest(cells, pal, np)
+    grid = merge_specks(idx.tolist(), pal.tolist(), rows, cols)
+    rgb = lab_to_srgb(pal, np).tolist()
+    used = sorted(set(grid), key=lambda i: -(0.299 * rgb[i][0] + 0.587 * rgb[i][1]
+                                             + 0.114 * rgb[i][2]))
+    remap = {old: n for n, old in enumerate(used)}
+    return {"w": cols, "h": rows,
+            "palette": ["#%02x%02x%02x" % tuple(rgb[i]) for i in used],
+            "rows": ["".join(DIGITS[remap[v]] for v in grid[y * cols:(y + 1) * cols])
+                     for y in range(rows)]}
 
 
 def api(url, params):
@@ -1380,17 +1610,23 @@ class Paint:
         title.set_line_wrap(True)
         title.get_style_context().add_class("ptitle")
         side.pack_start(title, False, False, 0)
-        for text in (item["author"], str(item["year"]) if item["year"] else ""):
-            if text:
-                lab = Gtk.Label(label=text, xalign=0)
-                lab.set_line_wrap(True)
-                lab.get_style_context().add_class("pinfo")
-                side.pack_start(lab, False, False, 0)
+        who = ", ".join(x for x in (item["author"], str(item["year"] or "")) if x)
+        if who:
+            lab = Gtk.Label(label=who, xalign=0)
+            lab.set_line_wrap(True)
+            lab.get_style_context().add_class("pinfo")
+            side.pack_start(lab, False, False, 0)
         self.licence_label = Gtk.Label(xalign=0)
         self.licence_label.set_line_wrap(True)
         self.licence_label.get_style_context().add_class("note")
         side.pack_start(self.licence_label, False, False, 0)
         side.pack_start(Gtk.Box(), True, True, 0)
+        # The enhanced conversion is the default; this switches it off to
+        # compare (both are previewed).
+        self.natural_button = Gtk.Button()
+        self.natural_button.get_style_context().add_class("grade")
+        self.natural_button.connect("clicked", lambda _b: self.set_natural(not self.natural))
+        side.pack_start(self.natural_button, False, False, 0)
         self.grade_buttons = []
         for grade in GRADES:
             b = Gtk.Button(label=grade[1])
@@ -1411,6 +1647,8 @@ class Paint:
         self.stack.add_named(box, "preview")
         self.stack.set_visible_child_name("preview")
         self.grade = GRADES[0]
+        self.natural = HAVE_NUMPY
+        self.natural_button.set_sensitive(HAVE_NUMPY)
         if "data" in item:
             self.convert_grades(item)
         else:
@@ -1438,40 +1676,57 @@ class Paint:
             self.choose_grade(self.grade)
         return False
 
+    def key(self, grade=None):
+        """Which preview: the cell size and whether it is enhanced."""
+        return ((grade or self.grade)[0], self.natural)
+
     def convert_grades(self, item):
         """Make the pictures of every cell size, the chosen one first, in
-        the background; each shows as it is ready."""
-        todo = [g for g in [self.grade] + list(GRADES) if g[0] not in item["pics"]]
-        if not todo or item.get("converting"):
+        the background, the way that is switched on; each shows as it is
+        ready."""
+        if item.get("converting"):
+            return
+        natural = self.natural
+        todo = [g for g in dict.fromkeys([self.grade] + list(GRADES))
+                if (g[0], natural) not in item["pics"]]
+        if not todo:
             return
         item["converting"] = True
+        convert = natural_picture if natural else painting_to_picture
 
         def work():
-            for level, _name, cols, colours in dict.fromkeys(todo):
+            for level, _name, cols, colours in todo:
                 try:
-                    pic = painting_to_picture(item["data"], cols, colours)
+                    pic = convert(item["data"], cols, colours)
                 except Exception as exc:
                     sys.stderr.write("b8k-paint: %s: %s\n" % (item["file"], exc))
                     pic = None
-                GLib.idle_add(self.grade_ready, item, level, pic)
+                GLib.idle_add(self.grade_ready, item, (level, natural), pic)
             item["converting"] = False
+            # The switch may have been flipped meanwhile.
+            GLib.idle_add(lambda: item is self.preview_item and self.convert_grades(item))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def grade_ready(self, item, level, pic):
+    def grade_ready(self, item, key, pic):
         if pic:
             pal = [pixel(hex_rgb(c)) for c in pic["palette"]]
             cells = cells_of(pic)
             pic["image"] = surface(pic, lambda x, y: pal[cells[y][x]])[0]
-        item["pics"][level] = pic
-        if item is self.preview_item and level == self.grade[0]:
+        item["pics"][key] = pic
+        if item is self.preview_item and key == self.key():
             self.choose_grade(self.grade)
         return False
+
+    def set_natural(self, on):
+        self.natural = on
+        self.choose_grade(self.grade)
+        self.convert_grades(self.preview_item)
 
     def draw_preview(self, widget, cr):
         item = self.preview_item
         w, h = widget.get_allocated_width(), widget.get_allocated_height()
-        pic = item["pics"].get(self.grade[0]) if item else None
+        pic = item["pics"].get(self.key()) if item else None
         if pic and not self.show_original:
             cell = min(w / pic["w"], h / pic["h"])
             cr.translate((w - cell * pic["w"]) / 2, (h - cell * pic["h"]) / 2)
@@ -1487,7 +1742,7 @@ class Paint:
         return False
 
     def flip_preview(self):
-        if self.preview_item and self.grade[0] in self.preview_item["pics"]:
+        if self.preview_item and self.preview_item["pics"].get(self.key()):
             self.buzz()
             self.show_original = not self.show_original
             self.choose_grade(self.grade)
@@ -1499,9 +1754,13 @@ class Paint:
         for b, g in self.grade_buttons:
             (b.get_style_context().add_class if g == grade
              else b.get_style_context().remove_class)("on")
-        if grade[0] not in item["pics"]:
+        self.natural_button.set_label(("✓  " if self.natural else "") + "Улучшить картинку")
+        (self.natural_button.get_style_context().add_class if self.natural
+         else self.natural_button.get_style_context().remove_class)("on")
+        key = self.key(grade)
+        if key not in item["pics"]:
             self.show_original = False
-        pic = item["pics"].get(grade[0])
+        pic = item["pics"].get(key)
         have = os.path.exists(downloaded_path(item["qid"], grade[0]))
         if item.get("licence"):
             free = item["licence"].lower() in ("public domain", "cc0", "pd")
@@ -1511,7 +1770,7 @@ class Paint:
             self.view_note.set_text("Не удалось загрузить картину")
         elif "data" not in item:
             self.view_note.set_text("Загружаю картину…")
-        elif grade[0] not in item["pics"]:
+        elif key not in item["pics"]:
             self.view_note.set_text("Готовлю раскраску…")
         elif pic is None:
             self.view_note.set_text("Не получилось сделать раскраску")
@@ -1532,12 +1791,16 @@ class Paint:
 
     def get_picture(self):
         item, level = self.preview_item, self.grade[0]
+        if not os.path.exists(downloaded_path(item["qid"], level)) \
+                and not item["pics"].get(self.key()):
+            return
         pic_id = "wd-%s-%d" % (item["qid"], level)
         path = downloaded_path(item["qid"], level)
         if not os.path.exists(path):
-            pic = {k: v for k, v in item["pics"][level].items() if k in ("w", "h", "palette", "rows")}
+            pic = {k: v for k, v in item["pics"][self.key()].items()
+                   if k in ("w", "h", "palette", "rows")}
             pic.update(name=item["title"], theme=item["author"], level=8, grade=level,
-                       source=item["file"], wikidata=item["qid"])
+                       natural=self.natural, source=item["file"], wikidata=item["qid"])
             try:
                 os.makedirs(DOWNLOADED, exist_ok=True)
                 with open(path + ".new", "w") as fh:
