@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
-"""Weather for Saint Petersburg from Gismeteo, large and in one page.
+"""Weather from Gismeteo, large and in one page, for a city of one's choice.
 
 The data is the XML of Gismeteo's open inform service (the one its
 browser extension used; the paid API needs a token): now, sunrise and
@@ -10,7 +10,12 @@ steps each, then the week. The window shows the last forecast from the
 cache at once and refreshes in the background every 30 minutes, when it
 comes back to the front after a while, and from the button. Icons are
 drawn here from Gismeteo's icon codes; no artwork of theirs is used.
+
+The city is chosen in the program (the gear in the header: a search by
+name through the same service) and kept in ~/.config/b8k/weather.conf;
+Saint Petersburg until then.
 """
+import configparser
 import fcntl
 import json
 import math
@@ -26,8 +31,9 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
 
-CITY = 4079  # Saint Petersburg
-URL = "https://services.gismeteo.ru/inform-service/inf_chrome/forecast/?city=%d&lang=ru" % CITY
+SERVICE = "https://services.gismeteo.ru/inform-service/inf_chrome/"
+CONFIG = os.path.expanduser("~/.config/b8k/weather.conf")
+DEFAULT_CITY = (4079, "Санкт-Петербург")
 CACHE = os.path.expanduser("~/.cache/b8k-weather.json")
 REFRESH_SEC = 30 * 60
 STALE_SEC = 20 * 60  # refresh on coming to the front when older than this
@@ -109,6 +115,22 @@ button.back {
   color: #2e3436;
 }
 label.day-hi { font-size: 72px; font-weight: bold; }
+button.gear {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 72px;
+  padding: 8px;
+}
+entry.search { font-size: 28px; min-height: 72px; border-radius: 14px; }
+list, row.city { background-color: #f2f2f0; }
+row.city { border-bottom: 1px solid #dcdcda; padding: 12px 20px; }
+row.city:active { background-color: #c4dcf7; }
+label.city-name { font-size: 28px; }
+label.city-where { font-size: 20px; color: #77767b; }
 """
 
 
@@ -160,22 +182,63 @@ def values(el):
     return out
 
 
-def fetch():
-    # Imported here, in the fetching thread: urllib alone took 0.3 s of
-    # the start, before the window was drawn.
+def load_city():
+    conf = configparser.ConfigParser(interpolation=None)
+    conf.read(CONFIG, encoding="utf-8")
+    try:
+        return int(conf["city"]["id"]), conf["city"].get("name") or "?"
+    except (KeyError, ValueError):
+        return DEFAULT_CITY
+
+
+def save_city(city_id, name):
+    conf = configparser.ConfigParser(interpolation=None)
+    conf["city"] = {"id": str(city_id), "name": name}
+    try:
+        os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+        with open(CONFIG + ".new", "w", encoding="utf-8") as fh:
+            conf.write(fh)
+        os.replace(CONFIG + ".new", CONFIG)
+    except OSError:
+        pass
+
+
+def get_xml(url):
     import urllib.request
     import xml.etree.ElementTree as ET
 
-    req = urllib.request.Request(URL, headers={"User-Agent": "b8k-weather/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "b8k-weather/1.0"})
     with urllib.request.urlopen(req, timeout=15) as fh:
         raw = fh.read(512 * 1024)
-    # The forecast never has a DOCTYPE; refusing one keeps entity tricks out.
+    # The service never sends a DOCTYPE; refusing one keeps entity tricks out.
     if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
-        raise ValueError("unexpected DOCTYPE in the forecast")
-    root = ET.fromstring(raw)
+        raise ValueError("unexpected DOCTYPE")
+    return ET.fromstring(raw)
+
+
+def find_cities(text):
+    """Cities whose name starts with text: (id, name, where)."""
+    import urllib.parse
+
+    root = get_xml(SERVICE + "cities/?lang=ru&startsWith=" + urllib.parse.quote(text))
+    found = []
+    for item in root.iter("item"):
+        try:
+            cid = int(item.get("id"))
+        except (TypeError, ValueError):
+            continue
+        where = ", ".join(x for x in (item.get("district_name"), item.get("country_name")) if x)
+        found.append((cid, item.get("n") or "?", where))
+    return found[:25]
+
+
+def fetch(city_id):
+    # urllib is imported in get_xml, in the fetching thread: it took 0.3 s
+    # of the start, before the window was drawn.
+    root = get_xml(SERVICE + "forecast/?city=%d&lang=ru" % city_id)
     loc = root.find("location")
     fact = loc.find("fact")
-    data = {"fetched": time.time(), "city": loc.get("name"), "now": values(fact.find("values")),
+    data = {"fetched": time.time(), "city": loc.get("name"), "city_id": city_id, "now": values(fact.find("values")),
             "now_time": fact.get("valid"), "days": []}
     # risem/setm: sunrise and sunset in minutes after local midnight. (The
     # sunrise/sunset stamps count local time as if it were UTC.)
@@ -191,12 +254,14 @@ def fetch():
     return data
 
 
-def load_cache():
+def load_cache(city_id):
     try:
         with open(CACHE) as fh:
-            return json.load(fh)
+            data = json.load(fh)
     except (OSError, ValueError):
         return None
+    # A forecast kept for another city is no forecast for this one.
+    return data if data.get("city_id", DEFAULT_CITY[0]) == city_id else None
 
 
 def save_cache(data):
@@ -449,7 +514,8 @@ class Weather(Gtk.Application):
         bar = Gtk.HeaderBar()
         bar.set_show_close_button(False)
         heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.title = label("Погода в Санкт-Петербурге", "title")
+        self.city_id, self.city_name = load_city()
+        self.title = label(self.city_name, "title")
         heading.pack_start(self.title, False, False, 0)
         self.when = label("", "when")
         heading.pack_start(self.when, False, False, 0)
@@ -458,10 +524,15 @@ class Weather(Gtk.Application):
         self.button.get_style_context().add_class("refresh")
         self.button.connect("clicked", lambda _b: self.refresh())
         bar.pack_end(self.button)
-        # Back from a day to the whole page; hidden on the whole page.
+        self.gear = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.DIALOG)
+        self.gear.get_style_context().add_class("gear")
+        self.gear.connect("clicked", lambda _b: self.open_city())
+        bar.pack_end(self.gear)
+        # Back from a day or the city page to the whole page.
         self.back = Gtk.Button(label="←")
         self.back.get_style_context().add_class("back")
         self.back.connect("clicked", lambda _b: self.close_day())
+        self.search_gen = 0
         self.back.set_no_show_all(True)
         bar.pack_start(self.back)
         self.win.set_titlebar(bar)
@@ -475,13 +546,14 @@ class Weather(Gtk.Application):
         self.day_scroll.set_kinetic_scrolling(True)
         self.stack.add_named(self.scroll, "main")
         self.stack.add_named(self.day_scroll, "day")
+        self.stack.add_named(self.city_page(), "city")
         self.day_index = None
         self.win.add(self.stack)
         self.win.connect("notify::is-active", self.on_active)
         self.first_draw = self.win.connect("draw", self.on_first_draw)
         self.win.show_all()
 
-        self.data = load_cache()
+        self.data = load_cache(self.city_id)
         self.show_data(None)
         if not self.data or time.time() - self.data.get("fetched", 0) > STALE_SEC:
             self.refresh()
@@ -512,7 +584,7 @@ class Weather(Gtk.Application):
 
     def load(self):
         try:
-            data, error = fetch(), None
+            data, error = fetch(self.city_id), None
         except Exception as exc:  # network, HTTP or a changed format
             data, error = None, exc
         GLib.idle_add(self.loaded, data, error)
@@ -520,6 +592,8 @@ class Weather(Gtk.Application):
     def loaded(self, data, error):
         self.loading = False
         self.button.set_sensitive(True)
+        if data and data.get("city_id") != self.city_id:
+            return False  # fetched for the city before the last choice
         if data:
             self.data = data
             save_cache(data)
@@ -689,9 +763,102 @@ class Weather(Gtk.Application):
         self.stack.set_visible_child_name("day")
         self.day_scroll.get_vadjustment().set_value(0)
 
+    # the city
+    def city_page(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, "set_margin_" + side)(16)
+        self.search = Gtk.SearchEntry()
+        self.search.get_style_context().add_class("search")
+        self.search.set_placeholder_text("Название города")
+        self.search.connect("search-changed", self.on_search)
+        box.pack_start(self.search, False, False, 0)
+        self.city_note = label("Начните вводить название, например «Казань»", "dim", xalign=0)
+        box.pack_start(self.city_note, False, False, 0)
+        self.cities = Gtk.ListBox()
+        self.cities.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.cities.connect("row-activated", self.on_city)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(self.cities)
+        box.pack_start(scroll, True, True, 0)
+        return box
+
+    def open_city(self):
+        self.day_index = None
+        self.title.set_text("Город")
+        self.when.hide()
+        self.back.show()
+        self.gear.hide()
+        self.button.hide()
+        self.search.set_text("")
+        for row in self.cities.get_children():
+            row.destroy()
+        self.city_note.set_text("Сейчас: %s. Начните вводить название другого города."
+                                % self.city_name)
+        self.stack.set_visible_child_name("city")
+        self.search.grab_focus()
+
+    def on_search(self, entry):
+        text = entry.get_text().strip()
+        self.search_gen += 1
+        gen = self.search_gen
+        if len(text) < 2:
+            return
+        self.city_note.set_text("Поиск…")
+
+        def work():
+            try:
+                found, err = find_cities(text), None
+            except Exception as exc:
+                found, err = [], exc
+            GLib.idle_add(self.show_cities, gen, found, err)
+
+        # Wait for a pause in typing before asking.
+        GLib.timeout_add(500, lambda: gen == self.search_gen and
+                         threading.Thread(target=work, daemon=True).start() and False)
+
+    def show_cities(self, gen, found, err):
+        if gen != self.search_gen:
+            return False
+        for row in self.cities.get_children():
+            row.destroy()
+        if err:
+            self.city_note.set_text("Нет связи с Gismeteo")
+        elif not found:
+            self.city_note.set_text("Ничего не найдено")
+        else:
+            self.city_note.set_text("Нажмите на свой город")
+        for cid, name, where in found:
+            row = Gtk.ListBoxRow()
+            row.get_style_context().add_class("city")
+            row.city = (cid, name)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            box.pack_start(label(name, "city-name", xalign=0), False, False, 0)
+            if where:
+                box.pack_start(label(where, "city-where", xalign=0), False, False, 0)
+            row.add(box)
+            self.cities.add(row)
+        self.cities.show_all()
+        return False
+
+    def on_city(self, _list, row):
+        self.buzz()
+        cid, name = row.city
+        save_city(cid, name)
+        self.city_id, self.city_name = cid, name
+        self.data = None
+        self.show_data(None)
+        self.close_day()
+        self.loading = False
+        self.refresh()
+
     def close_day(self):
         self.day_index = None
-        self.title.set_text("Погода в Санкт-Петербурге")
+        self.title.set_text(self.city_name)
+        self.when.show()
+        self.gear.show()
+        self.button.show()
         self.back.hide()
         self.stack.set_visible_child_name("main")
 
