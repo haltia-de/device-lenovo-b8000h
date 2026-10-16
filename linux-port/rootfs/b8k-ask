@@ -1,176 +1,69 @@
-#!/usr/bin/env python3
-# Large questions. Holding the power key opens the power menu, which also
-# holds the terminal. A tap on the program that is already in front asks
-# before it is closed.
-import configparser
-import fcntl
-import os
-import subprocess
-import sys
+#!/bin/sh
+# Large questions: the power menu (a one-second hold of the power key) and
+# "close this program?" (a tap on the program already in front).
+#
+#   b8k-ask power
+#   b8k-ask close <id>
+#   b8k-ask close-webapp <id>
+#
+# The question is a fuzzel menu (C, Wayland only) on the overlay layer: it
+# shows in about 0.3 s, where the GTK version in Python took 2.3 s, and it
+# is always on top, so nothing has to raise it. fuzzel takes taps as well
+# as keys. A choice buzzes like the panel (b8k-press without a signal).
+set -u
+APPS=/usr/local/share/b8k/apps.conf
+run=${XDG_RUNTIME_DIR:-$HOME/.cache}
 
-import gi
+# One question at a time; a second tap while one is open does nothing.
+exec 9>"$run/b8k-ask.lock" || exit 1
+flock -n 9 || exit 0
 
-gi.require_version("Gdk", "3.0")
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib, Gtk
-
-APPS = "/usr/local/share/b8k/apps.conf"
-
-
-def load_apps():
-    """Labels and window app_ids of the programs, from apps.conf."""
-    conf = configparser.ConfigParser(interpolation=None)
-    conf.read(APPS, encoding="utf-8")
-    names = {bid: conf[bid].get("label", bid) for bid in conf.sections()}
-    aliases = {bid: conf[bid].get("app_ids", "").split() for bid in conf.sections()}
-    return names, aliases
-
-
-NAMES, ALIASES = load_apps()
-CSS = b"""
-window { background-color: #242424; }
-label { color: #ffffff; font-size: 36px; }
-button {
-  font-size: 32px;
-  min-height: 92px;
-  margin: 8px 28px;
-  border-radius: 16px;
-  background: #303030;
-  color: #ffffff;
-  border: none;
-  box-shadow: none;
+# A value of one section of apps.conf.
+conf() {
+	awk -v sec="[$1]" -v key="$2" '
+		/^\[/ { inside = ($0 == sec); next }
+		inside && $0 ~ "^" key "[ \t]*=" {
+			sub("^[^=]*=[ \t]*", ""); print; exit
+		}' "$APPS"
 }
-button.danger { background: #c01c28; color: #ffffff; }
-button.plain { background: #3a3a3a; }
-"""
 
+# ask TITLE ITEM... -- prints the index of the chosen item, nothing on cancel.
+# The last item, Отмена, is the one highlighted, so Enter never does harm.
+ask() {
+	title=$1
+	shift
+	printf '%s\n' "$@" | fuzzel --config /usr/local/share/b8k/fuzzel-ask.ini \
+		--dmenu --index --mesg "$title" --cache /dev/null --select-index $(($# - 1)) 2>/dev/null
+}
 
-def style():
-    provider = Gtk.CssProvider()
-    provider.load_from_data(CSS)
-    Gtk.StyleContext.add_provider_for_screen(
-        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    )
+chosen() {
+	/usr/local/bin/b8k-press ask >/dev/null 2>&1
+}
 
-
-def lock():
-    base = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
-    os.makedirs(base, exist_ok=True)
-    fh = open(os.path.join(base, "b8k-ask.lock"), "a")
-    try:
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        # Already open, maybe under a window that mapped later: raise it.
-        subprocess.call(["/usr/local/bin/b8k-focus", "activate", "b8k-ask"])
-        sys.exit(0)
-    return fh
-
-
-def power(action):
-    # loginctl asks for a password on this tablet, so the menu uses doas.
-    # doas is limited to this one program and never asks.
-    arg = {"off": "off", "reboot": "reboot"}[action]
-    try:
-        subprocess.call(["doas", "-n", "/usr/local/sbin/b8k-poweroff", arg])
-    except OSError:
-        return
-
-
-def terminal():
-    # Kept off the panel, where it would only confuse; b8k-launch starts or
-    # raises it as it would from a button.
-    subprocess.Popen(["/usr/local/bin/b8k-launch", "start", "term"])
-
-
-def close_app(app_id):
-    names = ALIASES.get(app_id) or [app_id]
-    subprocess.call(["/usr/local/bin/b8k-focus", "close"] + names)
-
-
-def show(title, buttons):
-    style()
-    win = Gtk.Window(title=title)
-    win.set_default_size(860, 520 if len(buttons) < 4 else 640)
-    win.set_keep_above(True)
-    # No light GTK title bar over the dark question.
-    win.set_decorated(False)
-    win.set_position(Gtk.WindowPosition.CENTER)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-    box.set_margin_top(36)
-    box.set_margin_bottom(28)
-    label = Gtk.Label(label=title)
-    label.set_margin_bottom(18)
-    box.pack_start(label, False, False, 0)
-    for text, kind, action in buttons:
-        button = Gtk.Button(label=text)
-        if kind:
-            button.get_style_context().add_class(kind)
-        button.connect("clicked", lambda _b, action=action: done(action))
-        box.pack_start(button, True, True, 0)
-    win.connect("destroy", Gtk.main_quit)
-    win.add(box)
-    win.show_all()
-    # phoc does not always raise a window started from the panel; ask to
-    # be activated once the window is mapped.
-    GLib.timeout_add(300, lambda: subprocess.Popen(
-        ["/usr/local/bin/b8k-focus", "activate", "b8k-ask"]) and False)
-    Gtk.main()
-
-
-def done(action):
-    Gtk.main_quit()
-    if action:
-        action()
-
-
-def main():
-    try:
-        os.setsid()
-    except OSError:
-        pass
-    held = lock()
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "power":
-        show(
-            "Питание",
-            [
-                ("Выключить", "danger", lambda: power("off")),
-                ("Перезагрузить", "plain", lambda: power("reboot")),
-                ("Терминал", "plain", terminal),
-                ("Отмена", "", None),
-            ],
-        )
-        return 0
-    if cmd == "close" and len(sys.argv) > 2:
-        app_id = sys.argv[2]
-        name = NAMES.get(app_id, app_id)
-        show(
-            "Закрыть «%s»?" % name,
-            [
-                ("Закрыть", "danger", lambda: close_app(app_id)),
-                ("Отмена", "", None),
-            ],
-        )
-        return 0
-    if cmd == "close-webapp" and len(sys.argv) > 2:
-        app_id = sys.argv[2]
-        name = NAMES.get(app_id, app_id)
-
-        def close_webapp(app_id=app_id):
-            subprocess.call(["/usr/local/bin/b8k-focus", "close-webapp", app_id])
-
-        show(
-            "Закрыть «%s»?" % name,
-            [
-                ("Закрыть", "danger", close_webapp),
-                ("Отмена", "", None),
-            ],
-        )
-        return 0
-    sys.stderr.write("usage: b8k-ask power | b8k-ask close <id>\n")
-    del held
-    return 2
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+case ${1:-} in
+power)
+	case $(ask "Питание" "Выключить" "Перезагрузить" "Терминал" "Отмена") in
+	0) chosen; doas -n /usr/local/sbin/b8k-poweroff off ;;
+	1) chosen; doas -n /usr/local/sbin/b8k-poweroff reboot ;;
+	2) chosen; /usr/local/bin/b8k-launch start term ;;
+	esac
+	;;
+close | close-webapp)
+	id=${2:-}
+	[ -n "$id" ] || exit 2
+	label=$(conf "$id" label)
+	[ "$(ask "Закрыть «${label:-$id}»?" "Закрыть" "Отмена")" = 0 ] || exit 0
+	chosen
+	if [ "$1" = close-webapp ]; then
+		/usr/local/bin/b8k-focus close-webapp "$id"
+	else
+		ids=$(conf "$id" app_ids)
+		# shellcheck disable=SC2086 # the app_ids are separate words
+		/usr/local/bin/b8k-focus close ${ids:-$id}
+	fi
+	;;
+*)
+	echo "usage: b8k-ask power | b8k-ask close <id> | b8k-ask close-webapp <id>" >&2
+	exit 2
+	;;
+esac

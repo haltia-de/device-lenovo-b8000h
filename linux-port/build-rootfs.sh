@@ -22,7 +22,7 @@ case "$UI_PROFILE" in
 		foot grim py3-pillow py3-cairo font-noto-emoji
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
-		aisleriot aisleriot-lang earlyoom earlyoom-openrc
+		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel
 		py3-gobject3" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
@@ -337,6 +337,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
+	install -m 644 "$REPO/linux-port/rootfs/fuzzel-ask.ini" "$ROOT/usr/local/share/b8k/fuzzel-ask.ini"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
 	# Without this, reboot turns the tablet off (see the script).

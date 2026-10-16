@@ -73,8 +73,9 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - waybar stays on the `top` layer. The keyboard runs on `bottom` (`--wayland-layer bottom`). Then phoc arranges the panel first, and the keyboard gets the width right of it.
   - With the keyboard on `top`, it squeezed the left panel to 440px. waybar asked for 800px again, and phoc looped (`Timeout ... configures pending` in the log), so the keyboard never appeared.
   - Moving waybar to `overlay` blanked the screen.
-- **Dialogs** (`b8k-ask`, `b8k-brightness`) are undecorated dark windows.
-  - Once mapped, each asks `b8k-focus activate <app_id>` to raise it. A second launch, which finds the lock taken, raises the open one, because a dialog opened during boot could end up under Firefox.
+- **Dialogs.**
+  - `b8k-ask` (the power menu and "close this program?") is a shell script around fuzzel in dmenu mode (`rootfs/fuzzel-ask.ini`): C, Wayland only, on the overlay layer, so it shows in about 0.3 s (the Python GTK version took 2.3 s) and is always on top. fuzzel takes taps. Отмена, the last item, is preselected so that Enter does no harm. A choice buzzes through `b8k-press ask` (no signal).
+  - `b8k-brightness` is an undecorated dark GTK window. Once mapped it asks `b8k-focus activate <app_id>` to raise it; a second launch, which finds the lock taken, raises the open one, because a dialog opened during boot could end up under Firefox.
   - Python GTK3 programs must call `gi.require_version("Gdk", "3.0")` as well as `Gtk`: GTK4 is installed too, and gi otherwise loads Gdk 4.
 - **Power key** (`b8k-sleep.py`, root, nice -10).
   - A short press toggles the backlight on release. A one-second hold opens `b8k-ask power`. Ten minutes without input from any device (read ungrabbed) turn the screen off the same way (`IDLE_OFF`). 30 s after the screen goes off, `b8k-suspend` runs s2idle.
