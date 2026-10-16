@@ -205,9 +205,28 @@ def load_feeds():
             for name in conf.sections() if conf[name].get("url", "").startswith(("https://", "http://"))]
 
 
+def clean_name(text):
+    """A feed's title as a section name of news.conf. Titles come from any
+    site: no line breaks or brackets that could start new lines, sections
+    or keys in the file, no control characters, not too long."""
+    text = re.sub(r"[\x00-\x1f\x7f\[\]]+", " ", text or "")
+    text = " ".join(text.split())[:80]
+    return text or "Лента"
+
+
+def clean_url(url):
+    url = (url or "").strip()
+    if not url.startswith(("https://", "http://")) or re.search(r"[\x00-\x20\x7f]", url):
+        return ""
+    return url
+
+
 def save_feeds(feeds):
     conf = configparser.ConfigParser(interpolation=None)
     for name, url, icon in feeds:
+        name, url = clean_name(name), clean_url(url)
+        if not url or conf.has_section(name):
+            continue
         conf[name] = {"url": url}
         if icon:
             conf[name]["icon"] = icon
@@ -892,7 +911,8 @@ class News(Gtk.Application):
             return False
 
         def take(btn, title, url):
-            if any(f[1] == url for f in self.feeds):
+            title, url = clean_name(title), clean_url(url)
+            if not url or any(f[1] == url for f in self.feeds):
                 return
             name, k = title, 2
             while any(f[0] == name for f in self.feeds):
