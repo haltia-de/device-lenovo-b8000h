@@ -651,6 +651,10 @@ class Max(Gtk.Application):
         self.entry.connect("activate", lambda _e: self.send())
         self.sendb = Gtk.Button(label="Отправить")
         self.sendb.get_style_context().add_class("send")
+        # The button must not take the focus from the entry: that hid the
+        # keyboard, the window grew under the finger, and the tap was lost.
+        self.sendb.set_can_focus(False)
+        self.sendb.set_focus_on_click(False)
         self.sendb.connect("clicked", lambda _b: self.send())
         self.inputbar.pack_start(self.entry, True, True, 0)
         self.inputbar.pack_start(self.sendb, False, False, 0)
