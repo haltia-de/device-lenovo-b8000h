@@ -59,7 +59,23 @@ PHOTO_DAYS = 30  # cached photos older than this are removed
 CHATS = os.path.join(PHOTOS, "chats")  # message cache, one file per chat
 KEEP = 80  # messages kept per chat on disk
 VIEWS = 6  # chats kept built in memory
-PANEL_SIGNAL = 7  # the MAX button's waybar signal (apps.conf)
+def panel_signal():
+    """The MAX button's waybar signal, from the session's apps.conf (b8k-apps
+    numbers the buttons by their place); 0 when MAX is not on the panel."""
+    run = os.environ.get("XDG_RUNTIME_DIR", "")
+    for path in (os.path.join(run, "b8k", "apps.conf"), "/usr/local/share/b8k/apps.conf"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                inside = False
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith("["):
+                        inside = line == "[max]"
+                    elif inside and line.replace(" ", "").startswith("signal="):
+                        return int(line.split("=", 1)[1])
+        except (OSError, ValueError):
+            continue
+    return 0
 MONTHS = "янв фев мар апр мая июн июл авг сен окт ноя дек".split()
 COLOURS = ((0.21, 0.52, 0.89), (0.15, 0.64, 0.41), (0.90, 0.38, 0.0), (0.57, 0.25, 0.67),
            (0.75, 0.11, 0.16), (0.10, 0.58, 0.62), (0.53, 0.36, 0.24))
@@ -491,7 +507,10 @@ def set_badge(count):
         os.replace(os.path.join(folder, "max.new"), os.path.join(folder, "max"))
     except OSError:
         return
-    signum = signal.SIGRTMIN + PANEL_SIGNAL
+    sig = panel_signal()
+    if sig <= 0:
+        return
+    signum = signal.SIGRTMIN + sig
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue

@@ -15,7 +15,11 @@ EV_TITLE, EV_APP_ID, EV_STATE, EV_DONE, EV_CLOSED = 0, 1, 4, 5, 6
 REQ_ACTIVATE = 4
 REQ_CLOSE = 5
 ACTIVATED, MINIMIZED = 2, 1
-APPS = "/usr/local/share/b8k/apps.conf"
+# The session's copy written by b8k-apps (one's own programs, the panel's
+# signals), else the built-in one.
+APPS = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent"), "b8k", "apps.conf")
+if not os.path.exists(APPS):
+    APPS = "/usr/local/share/b8k/apps.conf"
 # The same invisible mark is written by b8k-webapp.js onto web-app windows.
 WEBAPP_MARK = "\u2060"
 

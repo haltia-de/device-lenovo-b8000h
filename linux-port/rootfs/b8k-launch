@@ -10,8 +10,11 @@ run=${XDG_RUNTIME_DIR:-$HOME/.cache}
 dir="$run/b8k-launch"
 mkdir -p "$dir"
 
-# Every program and its fields live in apps.conf.
+# Every program and its fields live in apps.conf: the copy b8k-apps writes
+# for this session (one's own programs and the panel included), else the
+# built-in one.
 APPS=/usr/local/share/b8k/apps.conf
+[ -f "$run/b8k/apps.conf" ] && APPS="$run/b8k/apps.conf"
 
 # field ID KEY prints that key of the program, or fails when it has none.
 field() {
@@ -114,7 +117,7 @@ status)
 		''|0|*[!0-9]*) ;;
 		*) label="$label <span background='#e01b24' foreground='#ffffff' weight='bold'> $badge </span>" ;;
 	esac
-	printf '{"text":"%s","class":"%s"}\n' "$label" "$class"
+	printf '{"text":"%s","class":["app","%s"]}\n' "$label" "$class"
 	exit 0
 	;;
 start)

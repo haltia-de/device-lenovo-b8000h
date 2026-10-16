@@ -8,6 +8,15 @@ mkdir -p "$run"
 # No screen reader runs here. Without these GTK starts the at-spi bus and
 # its registry for every session.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
+# The programs and the panel as set in ~/.config/b8k (b8k-apps): the
+# session's apps.conf, read by everything started below, and the panel's
+# config and style. Without them, the built-in ones.
+panel=
+rm -f "$run"/b8k/apps.conf
+if [ -x /usr/local/bin/b8k-apps ] && /usr/local/bin/b8k-apps >"$run"/b8k-apps.log 2>&1 &&
+	[ -s "$run"/b8k/waybar.json ] && [ -s "$run"/b8k/style.css ]; then
+	panel=yes
+fi
 # The brightness chosen last time (b8k-brightness keeps it).
 /usr/local/bin/b8k-brightness --restore >"$run"/b8k-brightness.log 2>&1
 # Settings starts through D-Bus activation and takes the bus environment.
@@ -34,4 +43,7 @@ fi
 # Firefox starts only from its button: running without a window it held
 # 300-500 MB, and once its WebExtensions process filled the swap and froze
 # the session.
+if [ -n "$panel" ]; then
+	exec waybar -c "$run"/b8k/waybar.json -s "$run"/b8k/style.css
+fi
 exec waybar

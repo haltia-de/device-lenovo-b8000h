@@ -77,10 +77,19 @@ static void trim(char *s)
 /* The label and icon of section [id]. */
 static void read_app(const char *id)
 {
-	FILE *f = fopen(APPS, "r");
-	char line[640], want[96];
+	const char *run = getenv("XDG_RUNTIME_DIR");
+	char own[512], line[640], want[96];
+	FILE *f = NULL;
 	int inside = 0;
 
+	/* The session's copy written by b8k-apps (one's own programs), else
+	 * the built-in one. */
+	if (run && run[0] == '/') {
+		snprintf(own, sizeof(own), "%s/b8k/apps.conf", run);
+		f = fopen(own, "r");
+	}
+	if (!f)
+		f = fopen(APPS, "r");
 	if (!f)
 		return;
 	snprintf(want, sizeof(want), "[%s]", id);

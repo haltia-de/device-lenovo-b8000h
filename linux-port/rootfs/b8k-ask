@@ -11,8 +11,9 @@
 # is always on top, so nothing has to raise it. fuzzel takes taps as well
 # as keys. A choice buzzes like the panel (b8k-press without a signal).
 set -u
-APPS=/usr/local/share/b8k/apps.conf
 run=${XDG_RUNTIME_DIR:-$HOME/.cache}
+APPS=/usr/local/share/b8k/apps.conf
+[ -f "$run/b8k/apps.conf" ] && APPS="$run/b8k/apps.conf"
 
 # One question at a time; a second tap while one is open does nothing.
 exec 9>"$run/b8k-ask.lock" || exit 1

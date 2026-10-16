@@ -12,6 +12,19 @@
   // once when Firefox starts. The window title is U+2060 + label, which is
   // how b8k-focus tells the window apart.
   var APPS = "/usr/local/share/b8k/apps.conf";
+  try {
+    // The session's copy written by b8k-apps, with one's own sites.
+    var run = Cc["@mozilla.org/process/environment;1"]
+      .getService(Ci.nsIEnvironment)
+      .get("XDG_RUNTIME_DIR");
+    if (run) {
+      var f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      f.initWithPath(run + "/b8k/apps.conf");
+      if (f.exists()) {
+        APPS = f.path;
+      }
+    }
+  } catch (e) {}
   var ALLOW = {}; // page -> title prefix
   // Each web app may show its own site and its subdomains. A page on any
   // other host moves to a normal window with an address bar, so it cannot
@@ -409,10 +422,24 @@
     }
   }
 
+  // b8k-apps rewrites the session's apps.conf when one adds a site; read
+  // it again then, so a running Firefox knows the new site.
+  var appsStamp = 0;
+  function rereadApps() {
+    var f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    f.initWithPath(APPS);
+    var stamp = f.exists() ? f.lastModifiedTime : 0;
+    if (stamp && stamp !== appsStamp) {
+      appsStamp = stamp;
+      loadApps();
+    }
+  }
+
   function poll() {
     try {
       retitle();
       calmStart();
+      rereadApps();
     } catch (e) {}
     var jobs = [];
     try {
@@ -446,7 +473,7 @@
     }
   }
 
-  loadApps();
+  rereadApps();
   var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   var callback = { notify: poll };
   arms.push(timer);

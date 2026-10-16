@@ -341,6 +341,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-apps" "$ROOT/usr/local/bin/b8k-apps"
 	install -m 644 "$REPO/linux-port/rootfs/fuzzel-ask.ini" "$ROOT/usr/local/share/b8k/fuzzel-ask.ini"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"

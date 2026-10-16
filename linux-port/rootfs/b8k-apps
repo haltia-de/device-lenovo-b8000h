@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""The programs of the shell and the panel, as the person has set them.
+
+    b8k-apps            write the files below (b8k-launcher, at session start)
+    b8k-apps reload     write them and apply them to the running session
+    b8k-apps list       the ids one can put on the panel
+
+Three sources, later ones winning:
+  /usr/local/share/b8k/apps.conf  the programs that come with the shell
+  ~/.config/b8k/apps.conf         one's own programs and sites, or changes
+                                  to the built-in ones (same fields)
+  installed programs              any id with a .desktop file, e.g. "gimp"
+                                  for /usr/share/applications/gimp.desktop
+and ~/.config/b8k/panel, the buttons from top to bottom, one id per line
+(without it, the built-in programs that have a signal, in file order).
+
+Written to $XDG_RUNTIME_DIR/b8k/:
+  apps.conf    every program, with "signal" set from its place on the
+               panel; b8k-launch, b8k-focus, b8k-ask, b8k-splash, b8k-max
+               and b8k-webapp.js read this one when it is there
+  waybar.json  the panel: /etc/xdg/waybar/config with these buttons
+  style.css    /etc/xdg/waybar/style.css and each button's icon
+"""
+import configparser
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+
+SYSTEM = "/usr/local/share/b8k/apps.conf"
+USER_APPS = os.path.expanduser("~/.config/b8k/apps.conf")
+USER_PANEL = os.path.expanduser("~/.config/b8k/panel")
+WAYBAR_CONFIG = "/etc/xdg/waybar/config"
+WAYBAR_STYLE = "/etc/xdg/waybar/style.css"
+DESKTOP_DIRS = (os.path.expanduser("~/.local/share/applications"), "/usr/share/applications")
+ICON_DIRS = ("/usr/share/icons/hicolor/scalable/apps", "/usr/share/icons/hicolor/256x256/apps",
+             "/usr/share/icons/hicolor/128x128/apps", "/usr/share/icons/hicolor/96x96/apps",
+             "/usr/share/icons/hicolor/64x64/apps", "/usr/share/icons/hicolor/48x48/apps",
+             "/usr/share/pixmaps")
+# Programs without an icon of their own: a globe for a site, tiles otherwise.
+SITE_ICON = "/usr/local/share/b8k/site.svg"
+APP_ICON = "/usr/local/share/b8k/app.svg"
+# waybar signals of the system modules (volume, brightness, Wi-Fi, battery);
+# program buttons get 1-7, then 12 up.
+RESERVED = range(8, 12)
+MAX_BUTTONS = 10
+FIELDS = ("label", "icon", "app_ids", "exec", "env", "url", "host")
+
+
+def out_dir():
+    run = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
+    path = os.path.join(run, "b8k")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def read_conf(path):
+    conf = configparser.ConfigParser(interpolation=None)
+    try:
+        conf.read(path, encoding="utf-8")
+    except configparser.Error as exc:
+        sys.stderr.write("b8k-apps: %s: %s\n" % (path, exc))
+    return conf
+
+
+def find_icon(name):
+    if not name:
+        return ""
+    if name.startswith("/"):
+        return name if os.path.exists(name) else ""
+    for d in ICON_DIRS:
+        for ext in (".svg", ".png"):
+            path = os.path.join(d, name + ext)
+            if os.path.exists(path):
+                return path
+    return ""
+
+
+def desktop_app(app_id):
+    """A program's fields from its .desktop file, or None."""
+    for d in DESKTOP_DIRS:
+        path = os.path.join(d, app_id + ".desktop")
+        if not os.path.exists(path):
+            continue
+        entry = {}
+        section = None
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("["):
+                    section = line
+                    continue
+                if section != "[Desktop Entry]" or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                entry[key.strip()] = value.strip()
+        command = re.sub(r"\s%[a-zA-Z]", "", entry.get("Exec", "")).strip()
+        if not command:
+            return None
+        binary = os.path.basename(command.split()[0])
+        ids = [x for x in (entry.get("StartupWMClass"), app_id, binary) if x]
+        return {
+            "label": entry.get("Name[ru]") or entry.get("Name") or app_id,
+            "icon": find_icon(entry.get("Icon", "")),
+            "app_ids": " ".join(dict.fromkeys(ids)),
+            "exec": command,
+        }
+    return None
+
+
+def programs():
+    """{id: fields} from the system catalogue, then one's own file."""
+    apps = {}
+    order = []
+    for path in (SYSTEM, USER_APPS):
+        conf = read_conf(path)
+        for sec in conf.sections():
+            fields = apps.setdefault(sec, {})
+            if sec not in order:
+                order.append(sec)
+            for key in FIELDS + ("signal",):
+                if key in conf[sec]:
+                    fields[key] = conf[sec][key]
+            if path == USER_APPS:
+                fields["mine"] = "yes"
+    return apps, order
+
+
+def panel_ids(apps, order):
+    if os.path.exists(USER_PANEL):
+        ids = []
+        with open(USER_PANEL, encoding="utf-8") as fh:
+            for line in fh:
+                word = line.split("#", 1)[0].strip()
+                if word and word not in ids:
+                    ids.append(word)
+        return ids
+    return [i for i in order if int(apps[i].get("signal", "0") or 0) > 0]
+
+
+def signals():
+    n = 1
+    while True:
+        if n not in RESERVED:
+            yield n
+        n += 1
+
+
+def build():
+    apps, order = programs()
+    wanted = panel_ids(apps, order)
+    panel = []
+    for app_id in wanted:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", app_id):
+            sys.stderr.write("b8k-apps: skipped %r: an id has letters, digits, . _ -\n" % app_id)
+            continue
+        if app_id not in apps:
+            found = desktop_app(app_id)
+            if not found:
+                sys.stderr.write("b8k-apps: no program %r (not in apps.conf, no %s.desktop)\n"
+                                 % (app_id, app_id))
+                continue
+            apps[app_id] = found
+            order.append(app_id)
+        fields = apps[app_id]
+        if not (fields.get("exec") or fields.get("url")):
+            sys.stderr.write("b8k-apps: %r has neither exec nor url\n" % app_id)
+            continue
+        panel.append(app_id)
+    if len(panel) > MAX_BUTTONS:
+        sys.stderr.write("b8k-apps: only the first %d buttons fit\n" % MAX_BUTTONS)
+        panel = panel[:MAX_BUTTONS]
+
+    gen = signals()
+    for app_id in order:
+        apps[app_id]["signal"] = "0"
+    for app_id in panel:
+        apps[app_id]["signal"] = str(next(gen))
+        if not apps[app_id].get("icon"):
+            apps[app_id]["icon"] = SITE_ICON if apps[app_id].get("url") else APP_ICON
+    return apps, order, panel
+
+
+def write_apps(path, apps, order):
+    lines = ["# Written by b8k-apps from %s, %s and the panel; do not edit." % (SYSTEM, USER_APPS)]
+    for app_id in order:
+        lines.append("")
+        lines.append("[%s]" % app_id)
+        for key in FIELDS + ("signal",):
+            value = apps[app_id].get(key)
+            if value:
+                lines.append("%s = %s" % (key, value.replace("\n", " ")))
+    with open(path + ".new", "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    os.replace(path + ".new", path)
+
+
+def strip_comments(text):
+    return re.sub(r"^\s*//.*$", "", text, flags=re.M)
+
+
+def write_waybar(path, apps, panel):
+    with open(WAYBAR_CONFIG, encoding="utf-8") as fh:
+        conf = json.loads(strip_comments(fh.read()))
+    for key in [k for k in conf if k.startswith("custom/") and k[7:] in apps]:
+        del conf[key]
+    conf["modules-left"] = ["custom/" + i for i in panel]
+    for app_id in panel:
+        sig = apps[app_id]["signal"]
+        conf["custom/" + app_id] = {
+            "exec": "/usr/local/bin/b8k-launch status " + app_id,
+            "return-type": "json",
+            "format": "{text}",
+            "signal": int(sig),
+            "exec-on-event": False,
+            "on-click": "/usr/local/bin/b8k-press %s %s; /usr/local/bin/b8k-launch tap %s"
+                        % (app_id, sig, app_id),
+            "tooltip": False,
+        }
+    with open(path + ".new", "w", encoding="utf-8") as fh:
+        json.dump(conf, fh, ensure_ascii=False, indent=2)
+    os.replace(path + ".new", path)
+
+
+def write_style(path, apps, panel):
+    with open(WAYBAR_STYLE, encoding="utf-8") as fh:
+        css = fh.read()
+    extra = ["", "/* Written by b8k-apps: the icon of each program button. */"]
+    for app_id in panel:
+        icon = apps[app_id].get("icon", "").replace('"', "")
+        # Dots and the like in an id (org.gnome.Settings) need escaping in CSS.
+        selector = re.sub(r"([^A-Za-z0-9_-])", r"\\\1", app_id)
+        extra.append('#custom-%s { background-image: url("%s"); }' % (selector, icon))
+    if len(panel) > 7:
+        # More buttons than fit at full size: shorter ones, smaller icons.
+        extra.append(".app { padding-top: 36px; background-size: 32px 32px; min-height: 22px; }")
+    with open(path + ".new", "w", encoding="utf-8") as fh:
+        fh.write(css + "\n".join(extra) + "\n")
+    os.replace(path + ".new", path)
+
+
+def reload_session(uid):
+    """Apply the files: waybar rereads its config, b8k-focus starts again."""
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.stat("/proc/" + pid).st_uid != uid:
+                continue
+            with open("/proc/%s/cmdline" % pid, "rb") as fh:
+                args = fh.read().split(b"\0")
+        except OSError:
+            continue
+        if args[0].endswith(b"waybar"):
+            os.kill(int(pid), signal.SIGUSR2)
+        elif len(args) > 2 and args[1].endswith(b"b8k-focus") and args[2] == b"watch":
+            os.kill(int(pid), signal.SIGTERM)
+    run = os.environ.get("XDG_RUNTIME_DIR", "")
+    log = open(os.path.join(run, "b8k-focus-watch.log"), "a") if run else subprocess.DEVNULL
+    subprocess.Popen(["/usr/local/bin/b8k-focus", "watch"], stdout=log, stderr=log,
+                     start_new_session=True)
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd not in ("", "reload", "list"):
+        sys.stderr.write(__doc__)
+        return 2
+    apps, order, panel = build()
+    if cmd == "list":
+        for app_id in order:
+            mark = "*" if app_id in panel else " "
+            print("%s %-12s %s" % (mark, app_id, apps[app_id].get("label", "")))
+        return 0
+    d = out_dir()
+    write_apps(os.path.join(d, "apps.conf"), apps, order)
+    write_waybar(os.path.join(d, "waybar.json"), apps, panel)
+    write_style(os.path.join(d, "style.css"), apps, panel)
+    if cmd == "reload":
+        reload_session(os.getuid())
+        print("Панель: " + ", ".join(apps[i].get("label", i) for i in panel))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
