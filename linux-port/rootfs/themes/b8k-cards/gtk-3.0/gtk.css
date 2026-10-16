@@ -8,6 +8,7 @@ window, .background { background-color: #e6e6e4; }
    (new game, restart, choose game, undo, redo, deal, hint), and both bars
    only took height from the cards. GTK 3 cannot hide a widget from CSS,
    so they are squeezed to nothing. */
+menubar > menuitem > label { min-height: 0; margin: 0; padding: 0; font-size: 1px; }
 menubar, menubar > menuitem {
   min-height: 0;
   padding: 0;
@@ -17,6 +18,12 @@ menubar, menubar > menuitem {
   color: transparent;
   background: none;
 }
+menubar { margin-top: -40px; box-shadow: none; }
+/* GTK draws the title of a window without its own header bar as
+   headerbar.titlebar.default-decoration; Adwaita's rule for that is more
+   specific than a bare class, so name it in full. */
+window.csd > headerbar.titlebar.default-decoration,
+headerbar.titlebar.default-decoration,
 .titlebar:not(headerbar), .default-decoration {
   min-height: 0;
   padding: 0;
@@ -27,11 +34,12 @@ menubar, menubar > menuitem {
   color: transparent;
   background: #dcdcda;
 }
+headerbar.default-decoration button, headerbar.default-decoration image,
 .default-decoration button, .default-decoration image { min-height: 0; min-width: 0; padding: 0; margin: 0; -gtk-icon-transform: scale(0); }
 menu menuitem { min-height: 60px; padding: 4px 22px; }
 menu menuitem label { font-size: 23px; }
 
-toolbar { padding: 6px 8px; background-color: #dcdcda; }
+toolbar { padding: 6px 8px; margin-top: -22px; background-color: #dcdcda; }
 toolbar toolbutton > button,
 .primary-toolbar toolbutton > button {
   min-height: 64px;
