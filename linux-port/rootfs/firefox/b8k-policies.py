@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write Firefox's policies for the tablet: mobile-config-firefox's, changed.
 
-    b8k-policies.py SRC DST
+    b8k-policies.py SRC DST [XPI]
 
 SRC is the policies.json of mobile-config-firefox
 (/usr/lib/firefox/distribution/policies.json), DST is
@@ -15,6 +15,10 @@ this 1 GB tablet, which once filled the swap and froze the session.
 uBlock Origin Lite ships its rules precompiled for the browser to apply,
 and its process stays near 37 MB. Its filtering mode is set to complete
 (cosmetic filtering included) through its managed settings.
+
+XPI is the path of a signed uBlock Origin Lite on the tablet. Firefox
+installs it from there: addons.mozilla.org answers 406 from some networks,
+and then the extension never arrived. Without XPI, Firefox downloads it.
 """
 import json
 import sys
@@ -23,6 +27,7 @@ UBO = "uBlock0@raymondhill.net"
 UBOL = "uBOLiteRedux@raymondhill.net"
 
 src, dst = sys.argv[1], sys.argv[2]
+xpi = sys.argv[3] if len(sys.argv) > 3 else None
 with open(src) as fh:
     data = json.load(fh)
 policies = data["policies"]
@@ -30,7 +35,8 @@ settings = policies.setdefault("ExtensionSettings", {})
 settings[UBO] = {"installation_mode": "blocked"}
 settings[UBOL] = {
     "installation_mode": "normal_installed",
-    "install_url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin-lite/latest.xpi",
+    "install_url": "file://" + xpi if xpi else
+    "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin-lite/latest.xpi",
     "default_area": "menupanel",
 }
 policies.setdefault("3rdparty", {}).setdefault("Extensions", {})[UBOL] = {

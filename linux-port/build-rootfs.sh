@@ -454,10 +454,25 @@ EOF
 			"$ROOT/usr/lib/firefox/defaults/pref/b8k-lean.js"
 		# uBlock Origin Lite in complete mode instead of uBlock Origin, in a
 		# copy of mobile-config-firefox's policies that Firefox reads instead.
+		# The extension goes into the image: addons.mozilla.org answers 406
+		# from some networks, and Firefox then never installed it. The
+		# release on GitHub is the same file, signed by Mozilla.
+		ubol_ver=2026.1012.1545
+		ubol_sha=0a55b67791c0987bae74ae4648cd2034e47fcc33ebd2a45e2ea0706b13af0e3d
+		ubol=/usr/local/share/b8k/firefox/ubol.xpi
+		install -d -m 755 "$ROOT${ubol%/*}"
+		if wget -q -O "$ROOT$ubol" "https://github.com/uBlockOrigin/uBOL-home/releases/download/$ubol_ver/uBOLite_$ubol_ver.firefox.signed.xpi" &&
+			echo "$ubol_sha  $ROOT$ubol" | sha256sum -c - >/dev/null; then
+			chmod 644 "$ROOT$ubol"
+		else
+			echo "warning: no uBlock Origin Lite $ubol_ver, Firefox will download it" >&2
+			rm -f "$ROOT$ubol"
+			ubol=
+		fi
 		mkdir -p "$ROOT/etc/firefox/policies"
 		python3 "$REPO/linux-port/rootfs/firefox/b8k-policies.py" \
 			"$ROOT/usr/lib/firefox/distribution/policies.json" \
-			"$ROOT/etc/firefox/policies/policies.json"
+			"$ROOT/etc/firefox/policies/policies.json" $ubol
 		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
 		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
 			cat >> "$mc" <<'EOF'
