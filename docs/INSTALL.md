@@ -41,7 +41,11 @@
    собранный wpa_supplicant, конфиг NetworkManager, повторную загрузку MT6628 после
    появления прошивки (с постоянным MAC из `/etc/machine-id`), службы
    `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку,
-   тему Firefox и исправление перезагрузки (`b8k-wdt-exrst`).
+   тему Firefox и её политики (uBlock Origin Lite вместо uBlock Origin,
+   `/etc/firefox/policies/policies.json`), `earlyoom`, Aisleriot и исправление
+   перезагрузки (`b8k-wdt-exrst`). Для клиента MAX скрипт скачивает с PyPI колесо
+   PyMax (`maxapi-python` 2.4.1) и сверяет его sha256; готовое колесо можно
+   заранее положить в `/opt/b8000h/out/`.
 8. **Остров Debian** собирается на самом планшете: armhf в `/opt/debian`
    (debootstrap), `linux-port/hybris/build-hybris.sh` (libhybris), `build-phoc.sh`
    (phoc 0.55.1 с `wlroots-0.20-hybris.patch`). GLES 2.0 использует только этот
