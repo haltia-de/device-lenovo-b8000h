@@ -56,3 +56,14 @@ statusbar, statusbar label { font-size: 20px; }
 dialog label, messagedialog label { font-size: 23px; }
 dialog button, messagedialog button { min-height: 64px; padding: 0 24px; }
 dialog button label, messagedialog button label { font-size: 22px; }
+
+/* The game chooser (toolbar: choose game): a list of 91 names. */
+dialog treeview, dialog treeview.view { font-size: 26px; }
+dialog treeview.view { -GtkTreeView-vertical-separator: 24; }
+dialog treeview.view:selected { background-color: #3584e4; color: #ffffff; }
+dialog scrollbar slider { min-width: 14px; }
+dialog headerbar { min-height: 72px; }
+dialog headerbar label.title { font-size: 26px; }
+dialog headerbar button { min-height: 60px; padding: 0 22px; }
+dialog headerbar button label { font-size: 22px; }
+dialog treeview.view { padding-left: 16px; }

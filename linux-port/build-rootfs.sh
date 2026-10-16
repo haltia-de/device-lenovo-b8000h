@@ -309,7 +309,6 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-paint" "$ROOT/usr/local/bin/b8k-paint"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-weather" "$ROOT/usr/local/bin/b8k-weather"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-max" "$ROOT/usr/local/bin/b8k-max"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-cards" "$ROOT/usr/local/bin/b8k-cards"
 	# PyMax (MIT), MAX's web protocol for b8k-max: the pinned wheel from PyPI,
 	# checked against its sha256 and unpacked next to the program.
 	pymax_whl=/opt/b8000h/out/maxapi_python-2.4.1-py3-none-any.whl
@@ -429,7 +428,7 @@ try {
 EOF
 		fi
 	fi
-	# Aisleriot for fingers: no menu bar or title, a large toolbar.
+	# Aisleriot for fingers: no menu bar or title, a large toolbar and chooser.
 	install -d -m 755 "$ROOT/usr/share/themes/b8k-cards/gtk-3.0"
 	install -m 644 "$REPO/linux-port/rootfs/themes/b8k-cards/gtk-3.0/gtk.css" \
 		"$ROOT/usr/share/themes/b8k-cards/gtk-3.0/gtk.css"
