@@ -42,6 +42,9 @@
 #define DOTS 10
 #define RING 86        /* ring radius */
 #define STEP_MS 280
+/* b8k-launch waits at most 40 s for a window; past this the splash goes by
+ * itself, so a launcher that died can never leave it over the screen. */
+#define LIFETIME_STEPS (45000 / STEP_MS)
 
 static struct wl_compositor *compositor;
 static struct wl_shm *shm;
@@ -359,7 +362,7 @@ int main(int argc, char **argv)
 	struct wl_display *display;
 	struct itimerspec every = { { 0, STEP_MS * 1000000L }, { 0, STEP_MS * 1000000L } };
 	sigset_t mask;
-	int sfd, tfd;
+	int sfd, tfd, ticks = 0;
 
 	if (argc > 1 && argv[1][0] && !strchr(argv[1], '/'))
 		read_app(argv[1]);
@@ -429,6 +432,8 @@ int main(int argc, char **argv)
 
 			if (read(tfd, &n, sizeof(n)) < 0)
 				n = 0;
+			if (++ticks >= LIFETIME_STEPS)
+				break;
 			if (configured) {
 				step = (step + 1) % DOTS;
 				frame(0);
