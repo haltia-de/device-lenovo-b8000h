@@ -682,14 +682,20 @@ class Paint:
         self.win.add(self.stack)
         self.board = None
         self.swatches = []
-        self.show_gallery()
-        self.win.show_all()
+        # An unfinished picture opens straight away; the gallery is built
+        # only when it is needed (back() builds it afresh anyway). Building
+        # both cost a second before the window first showed.
         open_id = open_id or read_last()
         pic = next((p for p in load_pictures() if p["id"] == open_id), None)
         if pic:
             done, total = share_done(pic, load_progress(pic))
-            if done < total:
-                self.open(pic)
+            if done >= total:
+                pic = None
+        if pic:
+            self.open(pic)
+        else:
+            self.show_gallery()
+        self.win.show_all()
 
     def on_button(self, *_args):
         self.buzz()
