@@ -150,6 +150,56 @@ tap)
 	fi
 	exec "$0" start "$id"
 	;;
+url)
+	# A link from a program (news: "open in the browser"). Firefox can take
+	# 20 s to start cold, so the splash shows meanwhile, taps while it
+	# starts are ignored, and the same link again within 15 s only raises
+	# Firefox: repeated taps used to open the same page in several tabs.
+	url=${2:-}
+	case $url in
+		https://* | http://*) ;;
+		*) exit 2 ;;
+	esac
+	exec 9>"$dir/url.lock"
+	if ! flock -n 9; then
+		exit 0
+	fi
+	names=$(aliases_of firefox)
+	last="$dir/last-url"
+	if [ -f "$last" ] && [ "$(cat "$last")" = "$url" ] &&
+		[ $(($(date +%s) - $(stat -c %Y "$last"))) -lt 15 ]; then
+		/usr/local/bin/b8k-focus activate $names >/dev/null 2>&1
+		exit 0
+	fi
+	printf '%s\n' "$url" >"$last"
+	if alive firefox; then
+		firefox "$url" >"$run"/b8k-app-firefox.log 2>&1 9>&- &
+		i=0
+		while [ "$i" -lt 10 ]; do
+			sleep 0.5
+			/usr/local/bin/b8k-focus activate $names >/dev/null 2>&1 && exit 0
+			i=$((i + 1))
+		done
+		exit 0
+	fi
+	install_firefox_chrome
+	splash_pid=
+	if [ -x /usr/local/bin/b8k-splash ]; then
+		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
+		splash_pid=$!
+	fi
+	trap '[ -n "$splash_pid" ] && kill "$splash_pid" 2>/dev/null' EXIT
+	firefox "$url" >"$run"/b8k-app-firefox.log 2>&1 9>&- &
+	i=0
+	while [ "$i" -lt 80 ]; do
+		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
+			exit 0
+		fi
+		i=$((i + 1))
+		sleep 0.5
+	done
+	exit 0
+	;;
 open)
 	id=${2:-}
 	exec 9>"$dir/$id.lock"
@@ -231,7 +281,7 @@ open)
 	;;
 *)
 	ids=$(awk '/^[ \t]*\[/ { s = $0; gsub(/[][ \t]/, "", s); printf "%s%s", sep, s; sep = "|" }' "$APPS")
-	echo "usage: b8k-launch status|start|tap <$ids>" >&2
+	echo "usage: b8k-launch status|start|tap <$ids> | b8k-launch url <link>" >&2
 	exit 2
 	;;
 esac
