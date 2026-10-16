@@ -8,10 +8,12 @@ set -eu
 REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 ROOT=/opt/b8000h/rootfs
 
-# fetch_app NAME URL TAG COMMIT: a program from its own repository (see
-# linux-port/apps/sources) installed into the image. The clone is kept in
-# /opt/b8000h/out/apps and must be at COMMIT; B8K_APPS_SRC/NAME, when
-# present, is used instead (a checkout being worked on).
+# fetch_app NAME URL TAG COMMIT [private]: a program from its own
+# repository (see linux-port/apps/sources) installed into the image. The
+# clone is kept in /opt/b8000h/out/apps and must be at COMMIT;
+# B8K_APPS_SRC/NAME, when present, is used instead (a checkout being
+# worked on). A private repository that cannot be cloned (no access) is
+# left out with a warning.
 fetch_app() {
 	if [ -n "${B8K_APPS_SRC:-}" ] && [ -d "$B8K_APPS_SRC/$1" ]; then
 		dir=$B8K_APPS_SRC/$1
@@ -19,7 +21,14 @@ fetch_app() {
 		dir=/opt/b8000h/out/apps/$1
 		if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" != "$4" ]; then
 			rm -rf "$dir"
-			git -c advice.detachedHead=false clone -q --depth 1 --branch "$3" "$2" "$dir"
+			if ! GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false \
+					clone -q --depth 1 --branch "$3" "$2" "$dir"; then
+				if [ "${5:-}" = private ]; then
+					echo "WARNING: $1 left out: no access to $2" >&2
+					return 0
+				fi
+				exit 1
+			fi
 		fi
 		if [ "$(git -C "$dir" rev-parse HEAD)" != "$4" ]; then
 			echo "$1: tag $3 is not commit $4" >&2
@@ -337,14 +346,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# They use the shell's shared module b8k_ui when it is there.
 	install -D -m 644 "$REPO/linux-port/rootfs/python/b8k_ui.py" \
 		"$ROOT/usr/local/share/b8k/python/b8k_ui.py"
-	# Those still in this repository:
-	for app in news max; do
-		B8K_CACHE=/opt/b8000h/out sh "$REPO/linux-port/apps/$app/install.sh" "$ROOT"
-	done
-	# and those in repositories of their own (linux-port/apps/sources).
-	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit; do
+	# They live in repositories of their own (linux-port/apps/sources).
+	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
-		fetch_app "$name" "$url" "$tag" "$commit"
+		fetch_app "$name" "$url" "$tag" "$commit" "$private"
 	done
 	# Speaker: hardware gain fixed at the clean top step, software volume.
 	mkdir -p "$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets" \

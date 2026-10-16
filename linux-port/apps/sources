@@ -2,8 +2,12 @@
 # build-rootfs.sh clones each at its tag, checks that the tag is still the
 # commit given here, and runs its install.sh into the image. To build with
 # a local checkout instead (one being worked on), set B8K_APPS_SRC to a
-# folder holding it as <name>/.
+# folder holding it as <name>/. A program marked "private" lives in a
+# private repository: without access to it the image is built without
+# that program (b8k-apps leaves it off the panel), with a warning.
 #
-# name     repository                                     tag    commit
+# name     repository                                     tag    commit                                    [private]
 paint      https://github.com/trudenboy/b8k-paint.git     v1.0   68eec731bdd112d34601ae7112fc9e533fb7604b
 weather    https://github.com/trudenboy/b8k-weather.git   v1.0   82e12d89ceaaca8eaefb4a5ad7cc4b0923cae7dd
+news       https://github.com/trudenboy/b8k-news.git      v1.0   bf314136b5eef4b4e0924b5266bdae04f521f62e
+max        https://github.com/trudenboy/b8k-max.git       v1.0   3f6b3c95d8ba7c9f0a6aea48429a5c55e2caa391  private

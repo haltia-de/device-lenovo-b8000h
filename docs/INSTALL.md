@@ -48,9 +48,12 @@
    `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку,
    тему Firefox и её политики (uBlock Origin Lite вместо uBlock Origin,
    `/etc/firefox/policies/policies.json`), `earlyoom`, Aisleriot и исправление
-   перезагрузки (`b8k-wdt-exrst`). Для клиента MAX скрипт скачивает с PyPI колесо
-   PyMax (`maxapi-python` 2.4.1) и сверяет его sha256; готовое колесо можно
-   заранее положить в `/opt/b8000h/out/`.
+   перезагрузки (`b8k-wdt-exrst`). Погоду, Новости, Раскраску и MAX он
+   клонирует из их репозиториев по тегам из `linux-port/apps/sources`; MAX
+   (закрытый репозиторий) ставится, только если у git есть к нему доступ.
+   `install.sh` MAX скачивает с PyPI колесо PyMax (`maxapi-python` 2.4.1) и
+   сверяет его sha256; готовое колесо можно заранее положить в
+   `/opt/b8000h/out/`.
 8. **Остров Debian** собирается на самом планшете: armhf в `/opt/debian`
    (debootstrap), `linux-port/hybris/build-hybris.sh` (libhybris), `build-phoc.sh`
    (phoc 0.55.1 с `wlroots-0.20-hybris.patch`). GLES 2.0 использует только этот
