@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""Пасьянсы: a large-button starter for Aisleriot (sol).
+
+Aisleriot's own game chooser is a small list sized for a mouse. This
+window shows every game it has, by its Russian name, as large buttons:
+the game in progress (raise it), the recently played ones (Aisleriot's
+own Recent list), a few popular ones, then all of them alphabetically.
+A tap starts `sol -v <game>` with the b8k-cards GTK theme, which enlarges
+Aisleriot's menus and toolbar. sol opens a new window on every start, so
+the running one is closed first.
+"""
+import fcntl
+import gettext
+import os
+import re
+import signal
+import struct
+import subprocess
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("Pango", "1.0")
+from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
+
+GAMES = "/usr/lib/aisleriot/guile/3.0"
+CONFIG = os.path.expanduser("~/.config/gnome-games/aisleriot")
+POPULAR = ("klondike", "spider", "spiderette", "freecell", "yukon", "scorpion",
+           "forty-thieves", "canfield", "golf", "gypsy")
+CSS = b"""
+window { background-color: #e6e6e4; }
+headerbar {
+  background-color: #dcdcda;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 16px;
+}
+headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
+label.section { font-size: 24px; font-weight: bold; color: #5e5c64; }
+button.game {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 84px;
+  padding: 0 12px;
+}
+button.game label { font-size: 24px; color: #2e3436; }
+button.game:active { background-color: #99c1f1; }
+button.resume {
+  background-image: none;
+  background-color: #3584e4;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 84px;
+}
+button.resume label { font-size: 26px; color: #ffffff; }
+"""
+
+
+class Buzz:
+    """A 70 ms pulse of the regulator-haptic motor, as in the other b8k programs."""
+    EVIOCSFF = 0x40000000 | (0x2C << 16) | (ord("E") << 8) | 0x80
+
+    def __init__(self, ms=70):
+        self.fd = -1
+        try:
+            for node in sorted(os.listdir("/sys/class/input")):
+                if not node.startswith("event"):
+                    continue
+                with open("/sys/class/input/%s/device/name" % node) as fh:
+                    if fh.read().strip() != "regulator-haptic":
+                        continue
+                self.fd = os.open("/dev/input/" + node, os.O_RDWR | os.O_CLOEXEC)
+                buf = bytearray(struct.pack("<HhHHHHHHH", 0x50, -1, 0, 0, 0, ms, 0,
+                                            0xFFFF, 0xFFFF) + bytes(32))
+                fcntl.ioctl(self.fd, self.EVIOCSFF, buf)
+                self.effect = struct.unpack_from("<h", buf, 2)[0]
+                break
+        except OSError:
+            self.fd = -1
+
+    def __call__(self, *_args):
+        if self.fd >= 0:
+            try:
+                os.write(self.fd, struct.pack("<llHHi", 0, 0, 0x15, self.effect, 1))
+            except OSError:
+                pass
+        return True
+
+
+def names():
+    """{game: Russian name} for every game Aisleriot has.
+
+    Aisleriot names a game after its file (bakers-dozen: "Bakers Dozen")
+    and translates that in its own catalogue; match it the same way,
+    ignoring case and punctuation.
+    """
+    games = sorted(f[:-3] for f in os.listdir(GAMES) if f.endswith(".go"))
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
+    catalogue = {}
+    try:
+        cat = gettext.translation("aisleriot", languages=["ru"])._catalog
+        for msgid, text in cat.items():
+            if isinstance(msgid, str) and msgid and len(msgid) < 40:
+                catalogue.setdefault(norm(msgid), text)
+    except OSError:
+        pass
+    return {g: catalogue.get(norm(g), g.replace("-", " ").title()) for g in games}
+
+
+def recent():
+    """Aisleriot's own list of recently played games, newest first."""
+    try:
+        with open(CONFIG) as fh:
+            for line in fh:
+                if line.startswith("Recent="):
+                    return [g.replace(".scm", "") for g in line[7:].strip().split(";") if g]
+    except OSError:
+        pass
+    return []
+
+
+def sol_pids():
+    pids = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/comm" % pid) as fh:
+                if fh.read().strip() != "sol":
+                    continue
+            if os.stat("/proc/" + pid).st_uid == os.getuid():
+                pids.append(int(pid))
+        except OSError:
+            continue
+    return pids
+
+
+class Cards(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="b8k.Cards")
+        self.win = None
+        self.buzz = Buzz()
+        self.titles = {}
+        self.playing = None
+
+    def do_activate(self):
+        if self.win:
+            self.fill()
+            self.win.present()
+            return
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.Button()  # the "pressed" signal exists once the class is set up
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
+        self.titles = names()
+
+        self.win = Gtk.ApplicationWindow(application=self, title="Пасьянсы")
+        self.win.set_default_size(1160, 800)
+        bar = Gtk.HeaderBar()
+        title = Gtk.Label(label="Пасьянсы")
+        title.get_style_context().add_class("title")
+        bar.set_custom_title(title)
+        self.win.set_titlebar(bar)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(self.box, "set_margin_" + side)(24)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(self.box)
+        self.win.add(scroll)
+        self.win.connect("notify::is-active", lambda w, _p: w.is_active() and self.fill())
+        self.fill()
+        self.win.show_all()
+
+    def fill(self):
+        for child in self.box.get_children():
+            child.destroy()
+        if self.playing and sol_pids():
+            resume = Gtk.Button(label="Вернуться к игре: %s" % self.titles.get(self.playing, ""))
+            resume.get_style_context().add_class("resume")
+            resume.connect("clicked", lambda _b: self.resume())
+            self.box.pack_start(resume, False, False, 0)
+        last = [g for g in recent() if g in self.titles][:5]
+        if last:
+            self.section("Недавние", last)
+        self.section("Популярные", [g for g in POPULAR if g in self.titles and g not in last])
+        everything = sorted(self.titles, key=lambda g: self.titles[g].lower()
+                            .replace("ё", "е").replace("пасьянс «", ""))
+        self.section("Все пасьянсы", everything)
+        self.box.show_all()
+
+    def section(self, heading, games):
+        if not games:
+            return
+        lab = Gtk.Label(label=heading, xalign=0)
+        lab.get_style_context().add_class("section")
+        lab.set_margin_top(8)
+        self.box.pack_start(lab, False, False, 0)
+        grid = Gtk.FlowBox()
+        grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        grid.set_homogeneous(True)
+        grid.set_min_children_per_line(4)
+        grid.set_max_children_per_line(4)
+        grid.set_row_spacing(12)
+        grid.set_column_spacing(12)
+        for game in games:
+            text = self.titles[game].replace("Пасьянс «", "").rstrip("»")
+            button = Gtk.Button(label=text)
+            button.get_child().set_ellipsize(Pango.EllipsizeMode.END)
+            button.get_style_context().add_class("game")
+            button.connect("clicked", lambda _b, g=game: self.play(g))
+            grid.add(button)
+        self.box.pack_start(grid, False, False, 0)
+
+    def play(self, game):
+        for pid in sol_pids():
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        env = dict(os.environ, GTK_THEME="b8k-cards")
+        subprocess.Popen(["sol", "-v", game], env=env, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.playing = game
+
+    def resume(self):
+        subprocess.Popen(["/usr/local/bin/b8k-focus", "activate", "sol"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+if __name__ == "__main__":
+    Cards().run(None)

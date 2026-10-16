@@ -1,0 +1,50 @@
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+
+/* Aisleriot (sol) for fingers: its menus and toolbar are sized for a mouse.
+   b8k palette for the frame; the card table keeps its own green. */
+window, .background { background-color: #e6e6e4; }
+
+/* No menu bar and no title: the toolbar holds every action a game needs
+   (new game, restart, choose game, undo, redo, deal, hint), and both bars
+   only took height from the cards. GTK 3 cannot hide a widget from CSS,
+   so they are squeezed to nothing. */
+menubar, menubar > menuitem {
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  font-size: 1px;
+  color: transparent;
+  background: none;
+}
+.titlebar:not(headerbar), .default-decoration {
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  font-size: 1px;
+  color: transparent;
+  background: #dcdcda;
+}
+.default-decoration button, .default-decoration image { min-height: 0; min-width: 0; padding: 0; margin: 0; -gtk-icon-transform: scale(0); }
+menu menuitem { min-height: 60px; padding: 4px 22px; }
+menu menuitem label { font-size: 23px; }
+
+toolbar { padding: 6px 8px; background-color: #dcdcda; }
+toolbar toolbutton > button,
+.primary-toolbar toolbutton > button {
+  min-height: 64px;
+  min-width: 80px;
+  padding: 4px 12px;
+}
+toolbar toolbutton > button > image,
+.primary-toolbar toolbutton > button > box > image {
+  -gtk-icon-transform: scale(1.8);
+}
+
+statusbar, statusbar label { font-size: 20px; }
+
+dialog label, messagedialog label { font-size: 23px; }
+dialog button, messagedialog button { min-height: 64px; padding: 0 24px; }
+dialog button label, messagedialog button label { font-size: 22px; }
