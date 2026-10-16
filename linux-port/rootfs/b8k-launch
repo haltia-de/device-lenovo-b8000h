@@ -185,7 +185,7 @@ url)
 	install_firefox_chrome
 	splash_pid=
 	if [ -x /usr/local/bin/b8k-splash ]; then
-		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
+		/usr/local/bin/b8k-splash firefox >"$run"/b8k-splash.log 2>&1 9>&- &
 		splash_pid=$!
 	fi
 	trap '[ -n "$splash_pid" ] && kill "$splash_pid" 2>/dev/null' EXIT
@@ -224,7 +224,7 @@ open)
 		printf '%s\n' "$url" > "$run"/b8k-webapp.d/"$id"
 		if ! /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
 			if [ -x /usr/local/bin/b8k-splash ]; then
-				/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
+				/usr/local/bin/b8k-splash "$id" >"$run"/b8k-splash.log 2>&1 9>&- &
 				splash_pid=$!
 			fi
 		fi
@@ -260,7 +260,7 @@ open)
 	}
 	trap stop_splash EXIT
 	if [ -x /usr/local/bin/b8k-splash ]; then
-		/usr/local/bin/b8k-splash >"$run"/b8k-splash.log 2>&1 9>&- &
+		/usr/local/bin/b8k-splash "$id" >"$run"/b8k-splash.log 2>&1 9>&- &
 		splash_pid=$!
 	fi
 	env=$(field "$id" env || true)

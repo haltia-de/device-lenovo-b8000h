@@ -299,6 +299,11 @@ if [ "$UI_PROFILE" = phosh ]; then
 	if [ -x /opt/b8000h/tools/b8k-press ]; then
 		install -m 755 /opt/b8000h/tools/b8k-press "$ROOT/usr/local/bin/b8k-press"
 	fi
+	# The curtain with the program's icon while it starts
+	# (tools-arm/build-b8k-splash.sh).
+	if [ -x /opt/b8000h/tools/b8k-splash ]; then
+		install -m 755 /opt/b8000h/tools/b8k-splash "$ROOT/usr/local/bin/b8k-splash"
+	fi
 	# The tab that brings the hidden panel back (tools-arm/build-b8k-tab.sh).
 	if [ -x /opt/b8000h/tools/b8k-tab ]; then
 		install -m 755 /opt/b8000h/tools/b8k-tab "$ROOT/usr/local/bin/b8k-tab"
@@ -332,7 +337,6 @@ if [ "$UI_PROFILE" = phosh ]; then
 		"$ROOT/etc/pulse/daemon.conf.d/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-splash" "$ROOT/usr/local/bin/b8k-splash"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
