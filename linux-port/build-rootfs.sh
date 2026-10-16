@@ -51,7 +51,7 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
-	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit upower networkmanager networkmanager-openrc
+	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc network-manager-applet
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
@@ -60,11 +60,11 @@ case "$UI_PROFILE" in
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
-		py3-gobject3" ;;
+		py3-gobject3 openssh doas" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
-apk add --no-cache qemu-arm e2fsprogs sfdisk alpine-keys git >/dev/null
+apk add --no-cache qemu-arm e2fsprogs sfdisk alpine-keys git kmod make tar >/dev/null
 
 # Run armv7 package scripts through qemu (F = interpreter preloaded, works in chroot).
 [ -d /proc/sys/fs/binfmt_misc ] || mkdir -p /proc/sys/fs/binfmt_misc
@@ -104,7 +104,7 @@ for s in seatd local; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 done
 if [ "$UI_PROFILE" = phosh ]; then
-	for s in dbus elogind polkit openrc-settingsd networkmanager; do
+	for s in dbus elogind polkit openrc-settingsd networkmanager sshd ntpd; do
 		[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 	done
 fi
@@ -518,13 +518,16 @@ chmod 700 "$XDG_RUNTIME_DIR"
 # pipewire-launcher's own cleanup (pkill -u "$USER" -fx) misses under
 # busybox: stale audio daemons of the last session would fight the new ones
 # over the sound card, so stop them between sessions.
-( while :; do
+# The loop ignores SIGHUP and is put in the background outside the
+# subshell, so it outlives the shell of the local service that starts it.
+( trap '' HUP
+while :; do
 	u=$(cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
 	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/local/share/b8k/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
-done & ) >/dev/null 2>&1
+done ) >/dev/null 2>&1 &
 EOF
 	mkdir -p "$ROOT/etc/pam.d"
 	printf 'auth     sufficient pam_permit.so\naccount  sufficient pam_permit.so\nsession  include    base-session\n' \
@@ -552,8 +555,80 @@ sources=[('xkb', 'us'), ('xkb', 'ru')]
 [org.gnome.system.locale]
 region='ru_RU.UTF-8'
 
+[org.gnome.desktop.interface]
+enable-animations=false
+cursor-blink=false
+toolkit-accessibility=false
+
+[org.gnome.desktop.background]
+picture-options='none'
+picture-uri=''
+picture-uri-dark=''
+primary-color='#1e2430'
+secondary-color='#1e2430'
+
+[org.gnome.desktop.screensaver]
+picture-options='none'
+picture-uri=''
+primary-color='#1e2430'
+secondary-color='#1e2430'
+
+[org.gnome.desktop.wm.preferences]
+num-workspaces=1
+audible-bell=false
 EOF
 	chroot "$ROOT" glib-compile-schemas /usr/share/glib-2.0/schemas
+
+	# The session user: uid 1000, empty password, administrator through
+	# doas (wheel). make-release-rootfs.sh locks root; set a password with
+	# passwd before doas. The power menu turns the machine off without one.
+	grep -q '^user:' "$ROOT/etc/passwd" ||
+		chroot "$ROOT" adduser -D -u 1000 -G wheel -h /home/user -s /bin/sh user
+	for g in video seat input audio; do
+		chroot "$ROOT" addgroup user "$g"
+	done
+	chroot "$ROOT" passwd -d user >/dev/null
+	chmod 750 "$ROOT/home/user"
+	mkdir -p "$ROOT/etc/b8k"
+	echo user > "$ROOT/etc/b8k/session-user"
+	install -d "$ROOT/etc/doas.d"
+	echo 'permit persist :wheel' > "$ROOT/etc/doas.d/wheel.conf"
+	# z- sorts after wheel.conf. doas uses the last matching rule.
+	cat > "$ROOT/etc/doas.d/z-b8k-power.conf" <<'EOF'
+permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
+permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
+EOF
+
+	# Kernel modules, GPU module sets and the GPU island come from outside
+	# this tree: KERNEL is the built kernel tree (docs/INSTALL.md §0 step 1),
+	# GPU_SETS a folder of kN/ sets of the external modules built against
+	# each kernel, ISLAND a tar.gz of /opt/debian from a tablet that built it
+	# (linux-port/hybris/). Without them the image has no Wi-Fi, no GPU.
+	KERNEL=${KERNEL:-/opt/b8000h/linux-drm}
+	GPU_SETS=${GPU_SETS:-/opt/b8000h/out/gpu-sets}
+	ISLAND=${ISLAND:-/opt/b8000h/out/island.tgz}
+	if [ -f "$KERNEL/include/generated/utsrelease.h" ]; then
+		rel=$(sed -n 's/^#define UTS_RELEASE "\(.*\)"/\1/p' "$KERNEL/include/generated/utsrelease.h")
+		make -C "$KERNEL" ARCH=arm LLVM=1 modules_install INSTALL_MOD_PATH="$ROOT" >/dev/null
+		rm -f "$ROOT/lib/modules/$rel/build" "$ROOT/lib/modules/$rel/source"
+		test -e "$ROOT/lib/modules/$rel/kernel/drivers/net/wireless/mediatek/mt6628/wlan_mt6628.ko"
+		echo "kernel modules: $rel"
+	else
+		echo "warning: no built kernel in $KERNEL, image has no kernel modules" >&2
+	fi
+	for d in "$GPU_SETS"/k[0-9]*; do
+		[ -d "$d" ] || continue
+		install -d -m 755 "$ROOT/usr/lib/b8k/${d##*/}"
+		install -m 644 "$d"/*.ko "$ROOT/usr/lib/b8k/${d##*/}/"
+		echo "GPU modules: ${d##*/}"
+	done
+	if [ -f "$ISLAND" ]; then
+		install -d -m 755 "$ROOT/opt"
+		tar -xzpf "$ISLAND" -C "$ROOT/opt" --numeric-owner
+		test -x "$ROOT/opt/debian/usr/local/bin/phoc"
+	else
+		echo "warning: no $ISLAND, the session draws on the CPU" >&2
+	fi
 
 else
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'

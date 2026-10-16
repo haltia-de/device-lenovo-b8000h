@@ -29,6 +29,12 @@ fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
+# Wi-Fi passwords: NetworkManager asks a secret agent, which GNOME keeps
+# in its shell. Without one, a tap on a protected network in Settings
+# does nothing. The session restarts with waybar; one agent is enough.
+if command -v nm-applet >/dev/null && ! pgrep -x -u "$(id -u)" nm-applet >/dev/null; then
+	setsid nm-applet >"$run"/nm-applet.log 2>&1 &
+fi
 # MAX lives in the background: messages buzz and the button counts them
 # with no window open.
 if [ -x /usr/local/bin/b8k-max ] && [ -s "$HOME/.local/share/b8k-max/web.db" ]; then
