@@ -262,7 +262,7 @@ def write_waybar(path, apps, panel, slots):
             "format": "{text}",
             "signal": sig,
             "exec-on-event": False,
-            "on-click": "/usr/local/bin/b8k-press slot%d %d; /usr/local/bin/b8k-launch tap-slot %d"
+            "on-click-release": "/usr/local/bin/b8k-press slot%d %d; /usr/local/bin/b8k-launch tap-slot %d"
                         % (n, sig, n),
             "tooltip": False,
         }
@@ -274,7 +274,7 @@ def write_waybar(path, apps, panel, slots):
             "format": "{text}",
             "signal": int(sig),
             "exec-on-event": False,
-            "on-click": "/usr/local/bin/b8k-press %s %s; /usr/local/bin/b8k-launch tap %s"
+            "on-click-release": "/usr/local/bin/b8k-press %s %s; /usr/local/bin/b8k-launch tap %s"
                         % (app_id, sig, app_id),
             "tooltip": False,
         }

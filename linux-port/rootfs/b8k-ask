@@ -6,6 +6,8 @@
 #   b8k-ask close <id>
 #   b8k-ask close-webapp <id>
 #   b8k-ask pin <id>          (a long press on a home screen tile)
+#   b8k-ask hide              (the panel's "‹": hiding it is asked first, as
+#                             a hidden panel is easily lost by accident)
 #
 # The question is a fuzzel menu (C, Wayland only) on the overlay layer: it
 # shows in about 0.3 s, where the GTK version in Python took 2.3 s, and it
@@ -73,6 +75,11 @@ close | close-webapp)
 		/usr/local/bin/b8k-focus close ${ids:-$id}
 	fi
 	;;
+hide)
+	[ "$(ask "Спрятать панель? Вернуть — касанием «›» внизу слева" "Спрятать" "Отмена")" = 0 ] || exit 0
+	chosen
+	exec /usr/local/bin/b8k-tab
+	;;
 pin)
 	id=${2:-}
 	[ -n "$id" ] || exit 2
@@ -88,7 +95,7 @@ pin)
 	/usr/local/bin/b8k-apps "$verb" "$id" >/dev/null
 	;;
 *)
-	echo "usage: b8k-ask power | b8k-ask close|close-webapp|pin <id>" >&2
+	echo "usage: b8k-ask power | hide | b8k-ask close|close-webapp|pin <id>" >&2
 	exit 2
 	;;
 esac

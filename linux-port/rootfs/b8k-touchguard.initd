@@ -1,0 +1,17 @@
+#!/sbin/openrc-run
+# SPDX-License-Identifier: GPL-2.0
+# Keeps accidental touches off the screen (b8k-touchguard): brushes, a
+# tremor's repeated strikes and a resting palm. Settings in
+# /etc/b8k/touchguard.conf.
+description="Filter for accidental touches"
+command=/usr/local/sbin/b8k-touchguard
+command_background=yes
+pidfile=/run/b8k-touchguard.pid
+output_log=/var/log/b8k-touchguard.log
+error_log=/var/log/b8k-touchguard.log
+
+depend() {
+	# Before the session and b8k-sleep (local.d) see the screen.
+	before local
+	after udev
+}

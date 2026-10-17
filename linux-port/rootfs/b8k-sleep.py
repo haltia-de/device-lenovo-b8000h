@@ -40,6 +40,7 @@ LEVEL_PATH = "/run/b8k-sleep/level"
 LONG_PRESS = 1.0  # seconds held before the power menu opens
 SUSPEND_AFTER = 30.0  # seconds with the screen off before a system sleep
 IDLE_OFF = 600.0  # seconds without any input before the screen goes off
+RESCAN_SEC = 30.0  # how often the input devices are looked at again
 SUSPEND = "/usr/local/sbin/b8k-suspend"
 
 
@@ -139,6 +140,12 @@ def touch_nodes():
         if "synaptics" in name or "touch" in name:
             found.append("/dev/input/" + node)
     return found
+
+
+def event_nodes():
+    """The input devices there are now, to notice one coming or going (the
+    touch filter b8k-touchguard replaces the screen with its own)."""
+    return sorted(n for n in os.listdir("/sys/class/input") if n.startswith("event"))
 
 
 def activity_nodes(power_path):
@@ -455,19 +462,28 @@ def listen():
         log("NO_GRAB")
     lamp = Lamp()
     activity = activity_nodes(path)
+    seen_nodes = event_nodes()
     last_input = time.monotonic()
     last = 0.0
     down = None  # press time while the key is held and not yet handled
     log("LISTEN asleep=%s activity=%d" % (int(lamp.asleep), len(activity)))
     while True:
         if down is None:
+            # A device came or went: watch the ones there are now.
+            nodes = event_nodes()
+            if nodes != seen_nodes:
+                for fd in activity:
+                    os.close(fd)
+                activity = activity_nodes(path)
+                seen_nodes = nodes
+                log("ACTIVITY_RESCAN %d" % len(activity))
             due = lamp.suspend_due()
             idle = None
             if not lamp.asleep:
                 idle = max(0.0, last_input + IDLE_OFF - time.monotonic())
-            waits = [t for t in (due, idle) if t is not None]
-            ready = select.select([power] + activity, [], [],
-                                  min(waits) if waits else None)[0]
+            # At least every RESCAN_SEC, to notice new devices.
+            waits = [t for t in (due, idle, RESCAN_SEC) if t is not None]
+            ready = select.select([power] + activity, [], [], min(waits))[0]
             for fd in ready:
                 if fd != power:
                     drain(fd)
@@ -476,7 +492,8 @@ def listen():
                 if ready:
                     continue
                 if lamp.asleep:
-                    if due is not None:
+                    left = lamp.suspend_due()
+                    if left is not None and left <= 0:
                         lamp.suspend()
                 elif time.monotonic() - last_input >= IDLE_OFF:
                     if awake_held("screen"):

@@ -352,6 +352,14 @@ if [ "$UI_PROFILE" = phosh ]; then
 	if [ -x /opt/b8000h/tools/b8k-vplay ]; then
 		install -m 755 /opt/b8000h/tools/b8k-vplay "$ROOT/usr/local/bin/b8k-vplay"
 	fi
+	# The filter for accidental touches (tools-arm/build-b8k-touchguard.sh),
+	# on from the first boot; settings in /etc/b8k/touchguard.conf.
+	if [ -x /opt/b8000h/tools/b8k-touchguard ]; then
+		install -m 755 /opt/b8000h/tools/b8k-touchguard "$ROOT/usr/local/sbin/b8k-touchguard"
+		install -m 755 "$REPO/linux-port/rootfs/b8k-touchguard.initd" "$ROOT/etc/init.d/b8k-touchguard"
+		install -D -m 644 "$REPO/linux-port/rootfs/touchguard.conf" "$ROOT/etc/b8k/touchguard.conf"
+		ln -sf /etc/init.d/b8k-touchguard "$ROOT/etc/runlevels/default/b8k-touchguard"
+	fi
 	# The home screen (tools-arm/build-b8k-home.sh).
 	if [ -x /opt/b8000h/tools/b8k-home ]; then
 		install -m 755 /opt/b8000h/tools/b8k-home "$ROOT/usr/local/bin/b8k-home"
