@@ -60,7 +60,8 @@ case "$UI_PROFILE" in
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
-		py3-gobject3 openssh doas" ;;
+		py3-gobject3 openssh doas
+		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
@@ -346,6 +347,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# (tools-arm/build-b8k-splash.sh).
 	if [ -x /opt/b8000h/tools/b8k-splash ]; then
 		install -m 755 /opt/b8000h/tools/b8k-splash "$ROOT/usr/local/bin/b8k-splash"
+	fi
+	# The video window (tools-arm/build-b8k-vplay.sh), played into by Видео.
+	if [ -x /opt/b8000h/tools/b8k-vplay ]; then
+		install -m 755 /opt/b8000h/tools/b8k-vplay "$ROOT/usr/local/bin/b8k-vplay"
 	fi
 	# The home screen (tools-arm/build-b8k-home.sh).
 	if [ -x /opt/b8000h/tools/b8k-home ]; then

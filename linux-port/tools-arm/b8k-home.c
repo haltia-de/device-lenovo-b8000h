@@ -125,12 +125,24 @@ static const char *runtime_dir(void)
 	return run && run[0] == '/' ? run : NULL;
 }
 
+/* A program started from here gets a clean signal mask and default
+ * handlers: ours blocks SIGTERM and others for the signalfd, and a child
+ * that inherited that could not be stopped with SIGTERM. */
 static void spawn(const char *a0, const char *a1, const char *a2)
 {
 	char *argv[] = { (char *)a0, (char *)a1, (char *)a2, NULL };
+	posix_spawnattr_t attr;
+	sigset_t none, all;
 	pid_t pid;
 
-	posix_spawn(&pid, a0, NULL, NULL, argv, environ);
+	sigemptyset(&none);
+	sigfillset(&all);
+	posix_spawnattr_init(&attr);
+	posix_spawnattr_setsigmask(&attr, &none);
+	posix_spawnattr_setsigdefault(&attr, &all);
+	posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
+	posix_spawn(&pid, a0, NULL, &attr, argv, environ);
+	posix_spawnattr_destroy(&attr);
 }
 
 /* --- icons ---------------------------------------------------------------- */

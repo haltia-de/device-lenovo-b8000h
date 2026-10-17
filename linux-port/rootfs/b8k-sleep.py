@@ -13,6 +13,12 @@ the Wi-Fi drivers out of the way.
 
 The key shares its input device with Home. The device is grabbed so
 elogind cannot power the tablet off, and Home is passed through.
+
+A program of the session holds the screen on, or the system awake, with a
+file in $XDG_RUNTIME_DIR/b8k-awake/ named after its pid: <pid>.screen keeps
+the idle timer from turning the lamp off (a video), <pid>.suspend keeps
+the system from sleeping while the lamp is off (music). A file whose
+process is gone counts for nothing.
 """
 import ctypes
 import errno
@@ -221,6 +227,8 @@ class Lamp:
         """Seconds until the screen-off timer asks for a system sleep."""
         if not self.asleep or not os.access(SUSPEND, os.X_OK):
             return None
+        if awake_held("suspend"):
+            self.since = time.monotonic()  # check again a full delay later
         if self.suspender is not None:
             if self.suspender.poll() is None:
                 return None  # asleep or just woken; it is still running
@@ -273,6 +281,20 @@ def session_user():
         return name
     except (OSError, KeyError):
         return "root"
+
+
+def awake_held(kind):
+    """True while a live program of the session holds a <pid>.<kind> file."""
+    try:
+        uid = pwd.getpwnam(session_user()).pw_uid
+        names = os.listdir("/run/user/%d/b8k-awake" % uid)
+    except (OSError, KeyError):
+        return False
+    for name in names:
+        pid, _dot, what = name.partition(".")
+        if what == kind and pid.isdigit() and os.path.exists("/proc/" + pid):
+            return True
+    return False
 
 
 def session_env():
@@ -457,8 +479,11 @@ def listen():
                     if due is not None:
                         lamp.suspend()
                 elif time.monotonic() - last_input >= IDLE_OFF:
-                    log("IDLE")
-                    lamp.sleep()
+                    if awake_held("screen"):
+                        last_input = time.monotonic()  # a video is playing
+                    else:
+                        log("IDLE")
+                        lamp.sleep()
                 continue
         if down is not None:
             # Held: wait for the release, or open the menu at LONG_PRESS.
