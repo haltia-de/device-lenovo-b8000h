@@ -55,9 +55,10 @@ def volume():
 
 
 def refresh_bar():
-    # The panel's volume module listens on SIGRTMIN+8. Signal only a bar
-    # that catches it: an uncaught real-time signal would kill the bar.
-    signum = signal.SIGRTMIN + 8
+    # The drawer handle shows a muted speaker and listens on SIGRTMIN+10.
+    # Signal only a bar that catches it: an uncaught real-time signal
+    # would kill the bar.
+    signum = signal.SIGRTMIN + 10
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue

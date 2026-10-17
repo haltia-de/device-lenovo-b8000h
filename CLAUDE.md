@@ -88,11 +88,11 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - `b8k-ask power` calls `doas -n /usr/local/sbin/b8k-poweroff off|reboot`. The doas rule is written by `make-release-rootfs.sh`.
 - **Brightness and volume.**
   - `b8k-brightness` sets the level through logind `Session.SetBrightness` and keeps it in `~/.config/b8k/brightness`.
-  - `b8k-volume` steps the PulseAudio sink by 5% (at most 100%) and signals the panel's volume module with `SIGRTMIN+8`.
+  - `b8k-volume` steps the PulseAudio sink by 5% (at most 100%) and signals the drawer handle (`SIGRTMIN+10`), which shows a muted speaker; the panel has no volume module.
   - The hardware `Speaker` gain is pinned at step 7 by a PulseAudio profile set (`rootfs/pulse/`, selected by a udev rule), because steps 0–2 crackle.
 - **Tap feedback.**
   - Every panel `on-click` starts with `b8k-press <id> <signal>` (`tools-arm/b8k-press.c`, built by `build-b8k-press.sh`). It marks `$XDG_RUNTIME_DIR/b8k-press/<id>` for 300 ms, which `b8k-launch status` and `b8k-meter` turn into the `pressed` class, and buzzes the motor for 70 ms.
-  - waybar ignores `:active` on touch. Panel signals: programs 1–7, volume 8, brightness 9, Wi-Fi 10, battery 11.
+  - waybar ignores `:active` on touch. Panel signals: programs 1–7, 8 unused (was volume), brightness 9, Wi-Fi and the drawer handle 10, battery 11.
   - The motor is the `regulator-haptic` input device on the MT6320 VIBR LDO (patch 0039). Pulses shorter than about 50 ms are not felt.
   - The keyboard buzzes on every key press too (`wvkbd/0005-haptic.patch`, same 70 ms).
 - **Start-up curtain.** `b8k-launch` runs `b8k-splash <id>` (C, `tools-arm/b8k-splash.c`, built by `build-b8k-splash.sh` against the keyboard sysroot for cairo and pango) while a program has no window, and SIGTERMs it once the window is there. It draws the `icon` and `label` of `apps.conf` on the top layer right of the panel; SVG icons go through librsvg opened with `dlopen`, as the sysroot has no librsvg headers.

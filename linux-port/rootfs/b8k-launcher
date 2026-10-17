@@ -5,6 +5,8 @@
 # The keyboard stays hidden until a text field is focused.
 run=${XDG_RUNTIME_DIR:-$HOME/.cache}
 mkdir -p "$run"
+# A new panel starts with its drawer closed (b8k-meter).
+rm -f "$run"/b8k-drawer-open
 # No screen reader runs here. Without these GTK starts the at-spi bus and
 # its registry for every session.
 export NO_AT_BRIDGE=1 GTK_A11Y=none

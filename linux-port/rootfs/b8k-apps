@@ -258,9 +258,9 @@ def write_style(path, apps, panel):
     if len(panel) > 7:
         # More buttons than fit at full size: shorter ones, smaller icons.
         # The rest of the 800 px column (open drawer, battery, two-line
-        # clock, hide button: style.css) leaves 496 px; 4 px are margins
+        # clock, hide button: style.css) leaves 520 px; 4 px are margins
         # and 18 px the label.
-        top = 496 // len(panel) - 4 - 18
+        top = 520 // len(panel) - 4 - 18
         extra.append(".app { padding-top: %dpx; background-size: %dpx %dpx; min-height: 18px; }"
                      % (top, top - 4, top - 4))
     with open(path + ".new", "w", encoding="utf-8") as fh:
@@ -270,6 +270,11 @@ def write_style(path, apps, panel):
 
 def reload_session(uid):
     """Apply the files: waybar rereads its config, b8k-focus starts again."""
+    # The new panel starts with its drawer closed; so does the handle.
+    try:
+        os.unlink(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "b8k-drawer-open"))
+    except OSError:
+        pass
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue
