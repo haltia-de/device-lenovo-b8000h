@@ -22,7 +22,7 @@
  * writes to $XDG_RUNTIME_DIR/b8k-badge/<id> shows on its tile. The weather
  * comes from the cache of the weather program (~/.cache/b8k-weather.json,
  * "now": "t" and "descr") while it is under three hours old; a tap on it
- * opens that program. Icons as in b8k-splash: PNG through cairo, SVG
+ * opens that program, a tap on the time and date opens the calendar. Icons as in b8k-splash: PNG through cairo, SVG
  * through librsvg opened with dlopen.
  */
 #define _GNU_SOURCE
@@ -64,6 +64,7 @@
 #define BADGE_POLL_S 5
 #define WEATHER_MAX_AGE (3 * 3600)
 #define WEATHER_ID "weather"
+#define CALENDAR_ID "calendar"
 
 extern char **environ;
 
@@ -731,6 +732,9 @@ static void press_down(int x, int y)
 	/* The weather in the header opens the weather program. */
 	if (press < 0 && y < HEADER && x > width / 2 && shown_weather[0][0])
 		press = -2;
+	/* The time and the date open the calendar. */
+	if (press < 0 && y < HEADER && x <= width / 2)
+		press = -3;
 	press_x = x;
 	press_y = y;
 	press_scroll = scroll;
@@ -758,9 +762,11 @@ static void press_move(int x, int y)
 static void press_up(void)
 {
 	arm_long_press(0);
-	if (press == -2 && !moved) {
-		spawn("/usr/local/bin/b8k-press", WEATHER_ID, NULL);
-		spawn("/usr/local/bin/b8k-launch", "start", WEATHER_ID);
+	if ((press == -2 || press == -3) && !moved) {
+		const char *id = press == -2 ? WEATHER_ID : CALENDAR_ID;
+
+		spawn("/usr/local/bin/b8k-press", id, NULL);
+		spawn("/usr/local/bin/b8k-launch", "start", id);
 		set_raised(0);
 	} else if (press >= 0 && !moved && !held) {
 		spawn("/usr/local/bin/b8k-press", apps[press].id, NULL);

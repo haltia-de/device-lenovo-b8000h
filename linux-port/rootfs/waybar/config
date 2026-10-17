@@ -155,6 +155,7 @@
     "format": "{text}",
     "interval": 15,
     "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-press clock; /usr/local/bin/b8k-launch tap calendar",
     "tooltip": false,
     "align": 0.5,
     "justify": "center"
