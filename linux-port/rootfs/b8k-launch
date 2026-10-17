@@ -47,6 +47,24 @@ alive() {
 	return 1
 }
 
+# slot_id N: the Nth open program without a pinned button (signal 0), in
+# apps.conf order. The panel shows these in its slots under the pinned ones.
+slot_id() {
+	[ -f "$dir/state" ] || return 1
+	awk -v n="$1" '
+		FNR == NR {
+			if ($0 ~ /^[ \t]*\[/) { sec = $0; gsub(/[][ \t]/, "", sec); ids[++k] = sec; sig[sec] = 0; next }
+			if ($0 ~ /^[ \t]*signal[ \t]*=/) { v = $0; sub(/^[^=]*=[ \t]*/, "", v); sig[sec] = v + 0 }
+			next
+		}
+		$2 == "running" || $2 == "active" { open[$1] = 1 }
+		END {
+			for (i = 1; i <= k; i++)
+				if (open[ids[i]] && sig[ids[i]] == 0 && ++m == n) { print ids[i]; exit 0 }
+			exit 1
+		}' "$APPS" "$dir/state"
+}
+
 label_of() { field "$1" label; }
 # A web app opens the site in its own Firefox window, without tabs or an address bar.
 url_of() { field "$1" url; }
@@ -133,6 +151,38 @@ status)
 	printf '{"text":"%s","class":["app","%s"]}\n' "$label" "$class"
 	exit 0
 	;;
+slot)
+	# A slot shows the open program it holds, or nothing (waybar hides an
+	# empty module).
+	n=${2:-0}
+	id=$(slot_id "$n" || true)
+	if [ -z "$id" ]; then
+		printf '{"text":""}\n'
+		exit 0
+	fi
+	label=$(label_of "$id" || true)
+	[ -n "$label" ] || label="$id"
+	class=$(awk -v id="$id" '$1 == id { print $2; exit }' "$dir/state" 2>/dev/null || true)
+	[ -e "$run/b8k-press/slot$n" ] && class=pressed
+	cls=id-$(printf '%s' "$id" | tr -c 'A-Za-z0-9_-' '-')
+	printf '{"text":"%s","class":["app","slot","%s","%s"]}\n' "$label" "${class:-running}" "$cls"
+	exit 0
+	;;
+sep)
+	# The line between the pinned buttons and the slots: there while slot 1
+	# holds a program.
+	if slot_id 1 >/dev/null; then
+		printf '{"text":" ","class":"sep"}\n'
+	else
+		printf '{"text":""}\n'
+	fi
+	exit 0
+	;;
+tap-slot)
+	id=$(slot_id "${2:-0}" || true)
+	[ -n "$id" ] || exit 0
+	exec "$0" tap "$id"
+	;;
 start)
 	id=${2:-}
 	if ! url_of "$id" >/dev/null 2>&1; then
@@ -144,6 +194,12 @@ start)
 tap)
 	# The front program asks before it closes. Any other tap still switches or starts.
 	id=${2:-}
+	# Over the home screen a tap means "go to it": lower the home screen,
+	# never ask to close.
+	if [ -e "$run/b8k-home.raised" ]; then
+		/usr/local/bin/b8k-home hide
+		exec "$0" start "$id"
+	fi
 	if url_of "$id" >/dev/null 2>&1; then
 		if /usr/local/bin/b8k-focus front-webapp "$id" >/dev/null 2>&1; then
 			setsid /usr/local/bin/b8k-ask close-webapp "$id" </dev/null >"$run"/b8k-ask.log 2>&1 &

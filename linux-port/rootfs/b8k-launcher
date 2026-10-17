@@ -19,6 +19,11 @@ if [ -x /usr/local/bin/b8k-apps ] && /usr/local/bin/b8k-apps >"$run"/b8k-apps.lo
 	[ -s "$run"/b8k/waybar.json ] && [ -s "$run"/b8k/style.css ]; then
 	panel=yes
 fi
+# The home screen: every program as a tile, on the background layer right
+# of the panel; the panel's home button raises it over the windows.
+if [ -x /usr/local/bin/b8k-home ]; then
+	setsid /usr/local/bin/b8k-home >"$run"/b8k-home.log 2>&1 &
+fi
 # The brightness chosen last time (b8k-brightness keeps it).
 /usr/local/bin/b8k-brightness --restore >"$run"/b8k-brightness.log 2>&1
 # Settings starts through D-Bus activation and takes the bus environment.

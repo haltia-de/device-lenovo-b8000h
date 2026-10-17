@@ -347,6 +347,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 	if [ -x /opt/b8000h/tools/b8k-splash ]; then
 		install -m 755 /opt/b8000h/tools/b8k-splash "$ROOT/usr/local/bin/b8k-splash"
 	fi
+	# The home screen (tools-arm/build-b8k-home.sh).
+	if [ -x /opt/b8000h/tools/b8k-home ]; then
+		install -m 755 /opt/b8000h/tools/b8k-home "$ROOT/usr/local/bin/b8k-home"
+	fi
 	# The tab that brings the hidden panel back (tools-arm/build-b8k-tab.sh).
 	if [ -x /opt/b8000h/tools/b8k-tab ]; then
 		install -m 755 /opt/b8000h/tools/b8k-tab "$ROOT/usr/local/bin/b8k-tab"

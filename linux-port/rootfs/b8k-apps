@@ -5,6 +5,8 @@
     b8k-apps            write the files below (b8k-launcher, at session start)
     b8k-apps reload     write them and apply them to the running session
     b8k-apps list       the ids one can put on the panel
+    b8k-apps pin ID     put a program on the panel (last), and reload
+    b8k-apps unpin ID   take it off, and reload
 
 Four sources, later ones winning:
   /usr/local/share/b8k/apps.conf  the programs of the shell itself
@@ -14,16 +16,18 @@ Four sources, later ones winning:
                                   to the built-in ones (same fields)
   installed programs              any id with a .desktop file, e.g. "gimp"
                                   for /usr/share/applications/gimp.desktop
-and the buttons from top to bottom, one id per line: ~/.config/b8k/panel,
-or else /usr/local/share/b8k/panel followed by any program with a signal
-it does not name.
+and the pinned buttons from top to bottom, one id per line:
+~/.config/b8k/panel, or else /usr/local/share/b8k/panel. Every program is
+on the home screen (b8k-home) anyway; under the pinned ones the panel has
+slots for programs that are open but not pinned (b8k-launch slot N).
 
 Written to $XDG_RUNTIME_DIR/b8k/:
   apps.conf    every program, with "signal" set from its place on the
                panel; b8k-launch, b8k-focus, b8k-ask, b8k-splash, b8k-max
                and b8k-webapp.js read this one when it is there
   waybar.json  the panel: /etc/xdg/waybar/config with these buttons
-  style.css    /etc/xdg/waybar/style.css and each button's icon
+  style.css    /etc/xdg/waybar/style.css and each program's icon
+  slots        the waybar signal of each slot, one per line (b8k-focus)
 """
 import configparser
 import json
@@ -48,10 +52,15 @@ ICON_DIRS = ("/usr/share/icons/hicolor/scalable/apps", "/usr/share/icons/hicolor
 # Programs without an icon of their own: a globe for a site, tiles otherwise.
 SITE_ICON = "/usr/local/share/b8k/site.svg"
 APP_ICON = "/usr/local/share/b8k/app.svg"
-# waybar signals of the system modules (volume, brightness, Wi-Fi, battery);
-# program buttons get 1-7, then 12 up.
+# waybar signals of the system modules (home, brightness, Wi-Fi and drawer,
+# battery); program buttons and slots get 1-7, then 12 up.
 RESERVED = range(8, 12)
+# Pinned buttons and slots together. Five fit at full size under the home
+# button; more get shorter (write_style).
 MAX_BUTTONS = 10
+FULL_SIZE = 5
+# At least this many slots for open programs, even with a long panel.
+MIN_SLOTS = 2
 FIELDS = ("label", "icon", "app_ids", "exec", "env", "url", "host")
 
 
@@ -149,16 +158,19 @@ def read_panel(path):
     return ids
 
 
-def panel_ids(apps, order):
+def panel_ids(apps):
     if os.path.exists(USER_PANEL):
         return read_panel(USER_PANEL)
     # The default panel: the shell's list, where a program not installed
-    # is left out, then programs that want a button and are not on it.
-    ids = []
+    # is left out. Everything else is on the home screen.
     if os.path.exists(SYSTEM_PANEL):
-        ids = [i for i in read_panel(SYSTEM_PANEL) if i in apps]
-    return ids + [i for i in order
-                  if i not in ids and int(apps[i].get("signal", "0") or 0) > 0]
+        return [i for i in read_panel(SYSTEM_PANEL) if i in apps]
+    return []
+
+
+def css_class(app_id):
+    """The class b8k-launch gives a slot showing this program."""
+    return "id-" + re.sub(r"[^A-Za-z0-9_-]", "-", app_id)
 
 
 def signals():
@@ -171,7 +183,7 @@ def signals():
 
 def build():
     apps, order = programs()
-    wanted = panel_ids(apps, order)
+    wanted = panel_ids(apps)
     panel = []
     for app_id in wanted:
         if not re.fullmatch(r"[A-Za-z0-9._-]+", app_id):
@@ -190,18 +202,20 @@ def build():
             sys.stderr.write("b8k-apps: %r has neither exec nor url\n" % app_id)
             continue
         panel.append(app_id)
-    if len(panel) > MAX_BUTTONS:
-        sys.stderr.write("b8k-apps: only the first %d buttons fit\n" % MAX_BUTTONS)
-        panel = panel[:MAX_BUTTONS]
+    if len(panel) > MAX_BUTTONS - MIN_SLOTS:
+        sys.stderr.write("b8k-apps: only the first %d buttons fit\n"
+                         % (MAX_BUTTONS - MIN_SLOTS))
+        panel = panel[:MAX_BUTTONS - MIN_SLOTS]
 
     gen = signals()
     for app_id in order:
         apps[app_id]["signal"] = "0"
-    for app_id in panel:
-        apps[app_id]["signal"] = str(next(gen))
         if not apps[app_id].get("icon"):
             apps[app_id]["icon"] = SITE_ICON if apps[app_id].get("url") else APP_ICON
-    return apps, order, panel
+    for app_id in panel:
+        apps[app_id]["signal"] = str(next(gen))
+    slots = [next(gen) for _ in range(max(MIN_SLOTS, FULL_SIZE - len(panel)))]
+    return apps, order, panel, slots
 
 
 def write_apps(path, apps, order):
@@ -223,12 +237,35 @@ def strip_comments(text):
     return re.sub(r"^\s*//.*$", "", text, flags=re.M)
 
 
-def write_waybar(path, apps, panel):
+def write_waybar(path, apps, panel, slots):
     with open(WAYBAR_CONFIG, encoding="utf-8") as fh:
         conf = json.loads(strip_comments(fh.read()))
     for key in [k for k in conf if k.startswith("custom/") and k[7:] in apps]:
         del conf[key]
-    conf["modules-left"] = ["custom/" + i for i in panel]
+    # The home button stays first; the pinned buttons, then the slots.
+    head = [m for m in conf.get("modules-left", []) if m == "custom/home"]
+    conf["modules-left"] = (head + ["custom/" + i for i in panel] + ["custom/sep"]
+                            + ["custom/slot%d" % (n + 1) for n in range(len(slots))])
+    # The line above the slots shares the first slot's signal.
+    conf["custom/sep"] = {
+        "exec": "/usr/local/bin/b8k-launch sep",
+        "return-type": "json",
+        "format": "{text}",
+        "signal": slots[0],
+        "exec-on-event": False,
+        "tooltip": False,
+    }
+    for n, sig in enumerate(slots, 1):
+        conf["custom/slot%d" % n] = {
+            "exec": "/usr/local/bin/b8k-launch slot %d" % n,
+            "return-type": "json",
+            "format": "{text}",
+            "signal": sig,
+            "exec-on-event": False,
+            "on-click": "/usr/local/bin/b8k-press slot%d %d; /usr/local/bin/b8k-launch tap-slot %d"
+                        % (n, sig, n),
+            "tooltip": False,
+        }
     for app_id in panel:
         sig = apps[app_id]["signal"]
         conf["custom/" + app_id] = {
@@ -246,21 +283,24 @@ def write_waybar(path, apps, panel):
     os.replace(path + ".new", path)
 
 
-def write_style(path, apps, panel):
+def write_style(path, apps, order, panel, slots):
     with open(WAYBAR_STYLE, encoding="utf-8") as fh:
         css = fh.read()
-    extra = ["", "/* Written by b8k-apps: the icon of each program button. */"]
-    for app_id in panel:
+    extra = ["", "/* Written by b8k-apps: the icon of each program, for its pinned button"
+                 " and for a slot that shows it. */"]
+    for app_id in order:
         icon = apps[app_id].get("icon", "").replace('"', "")
         # Dots and the like in an id (org.gnome.Settings) need escaping in CSS.
         selector = re.sub(r"([^A-Za-z0-9_-])", r"\\\1", app_id)
-        extra.append('#custom-%s { background-image: url("%s"); }' % (selector, icon))
-    if len(panel) > 7:
+        extra.append('#custom-%s, .%s { background-image: url("%s"); }'
+                     % (selector, css_class(app_id), icon))
+    buttons = len(panel) + len(slots)
+    if buttons > FULL_SIZE:
         # More buttons than fit at full size: shorter ones, smaller icons.
-        # The rest of the 800 px column (open drawer, battery, two-line
-        # clock, hide button: style.css) leaves 520 px; 4 px are margins
-        # and 18 px the label.
-        top = 520 // len(panel) - 4 - 18
+        # The rest of the 800 px column (home button, the line above the
+        # slots, open drawer, battery, two-line clock, hide button:
+        # style.css) leaves 406 px; 4 px are margins and 18 px the label.
+        top = 406 // buttons - 4 - 18
         extra.append(".app { padding-top: %dpx; background-size: %dpx %dpx; min-height: 18px; }"
                      % (top, top - 4, top - 4))
     with open(path + ".new", "w", encoding="utf-8") as fh:
@@ -295,12 +335,33 @@ def reload_session(uid):
                      start_new_session=True)
 
 
+def pin(app_id, on):
+    """Put a program on the panel or take it off, in ~/.config/b8k/panel."""
+    apps, _order, panel, _slots = build()
+    if app_id not in apps:
+        sys.stderr.write("b8k-apps: no program %r\n" % app_id)
+        return False
+    ids = [i for i in panel if i != app_id]
+    if on:
+        ids.append(app_id)
+    os.makedirs(os.path.dirname(USER_PANEL), exist_ok=True)
+    with open(USER_PANEL + ".new", "w", encoding="utf-8") as fh:
+        fh.write("# The pinned panel buttons, top to bottom (b8k-apps).\n")
+        fh.write("".join(i + "\n" for i in ids))
+    os.replace(USER_PANEL + ".new", USER_PANEL)
+    return True
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd in ("pin", "unpin") and len(sys.argv) > 2:
+        if not pin(sys.argv[2], cmd == "pin"):
+            return 1
+        cmd = "reload"
     if cmd not in ("", "reload", "list"):
         sys.stderr.write(__doc__)
         return 2
-    apps, order, panel = build()
+    apps, order, panel, slots = build()
     if cmd == "list":
         for app_id in order:
             mark = "*" if app_id in panel else " "
@@ -308,8 +369,11 @@ def main():
         return 0
     d = out_dir()
     write_apps(os.path.join(d, "apps.conf"), apps, order)
-    write_waybar(os.path.join(d, "waybar.json"), apps, panel)
-    write_style(os.path.join(d, "style.css"), apps, panel)
+    write_waybar(os.path.join(d, "waybar.json"), apps, panel, slots)
+    write_style(os.path.join(d, "style.css"), apps, order, panel, slots)
+    with open(os.path.join(d, "slots.new"), "w", encoding="utf-8") as fh:
+        fh.write("".join("%d\n" % sig for sig in slots))
+    os.replace(os.path.join(d, "slots.new"), os.path.join(d, "slots"))
     if cmd == "reload":
         reload_session(os.getuid())
         print("Панель: " + ", ".join(apps[i].get("label", i) for i in panel))

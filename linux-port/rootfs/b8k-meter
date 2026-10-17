@@ -1,6 +1,6 @@
 #!/bin/sh
-# Waybar status for the drawer handle, the Wi-Fi icon and the 4-bar
-# battery. "b8k-meter toggle" flips the handle between open and closed.
+# Waybar status for the drawer handle, the volume, the Wi-Fi icon and the
+# 4-bar battery. "b8k-meter toggle" flips the handle between open and closed.
 # Always prints one JSON line and exits 0, so the icon cannot disappear.
 set -u
 
@@ -104,11 +104,11 @@ volume() {
 drawer=${XDG_RUNTIME_DIR:-/tmp}/b8k-drawer-open
 
 system() {
-	# The handle of the drawer that holds brightness and Wi-Fi: an arrow
-	# up while closed, down while open (the drawer opens above it). A
-	# problem shows on the closed handle instead of the arrow: no network
+	# The handle of the drawer that holds brightness, volume and Wi-Fi: an
+	# arrow up while closed, down while open (the drawer opens above it).
+	# A problem shows on the closed handle instead of the arrow: no network
 	# first (w0, or wx when the gateway does not answer), then a muted
-	# speaker (the volume keys have no panel module).
+	# speaker.
 	if [ -e "$drawer" ]; then
 		out system open
 		return
@@ -130,6 +130,14 @@ case ${1:-} in
 	system) system ;;
 	toggle) if [ -e "$drawer" ]; then rm -f "$drawer"; else : > "$drawer"; fi ;;
 	hide) out hide idle ;;
+	home)
+		# Lit while the home screen is up over the windows (b8k-home).
+		if [ -e "${XDG_RUNTIME_DIR:-/tmp}/b8k-home.raised" ]; then
+			out home raised
+		else
+			out home idle
+		fi
+		;;
 	wifi) wifi ;;
 	battery) battery ;;
 	*) printf '{"text":" ","class":"w0"}\n' ;;

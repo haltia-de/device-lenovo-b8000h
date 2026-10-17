@@ -3,8 +3,9 @@
    each button's icon to the copy waybar loads. */
 * { font-family: "DejaVu Sans", sans-serif; font-size: 15px; }
 window#waybar { background: #242424; color: #ffffff; }
-/* Seven buttons, the open drawer, the battery, the two-line clock and the
-   hide button fit the 800 px column; the open drawer leaves a few pixels. */
+/* The home button, five buttons, the line above the open programs, the
+   open drawer, the battery, the two-line clock and the hide button fit the
+   800 px column; more buttons get shorter (b8k-apps). */
 .app {
   min-height: 24px;
   margin: 2px 4px;
@@ -34,6 +35,38 @@ window#waybar { background: #242424; color: #ffffff; }
 .app:active {
   background-color: #3584e4;
   color: #ffffff;
+}
+/* The home button: raises the home screen (b8k-home) over the windows. */
+#custom-home {
+  min-height: 60px;
+  margin: 2px 4px 4px;
+  padding: 0;
+  border-radius: 12px;
+  background-color: #303030;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 50px 50px;
+  background-image: url("/usr/local/share/b8k/home.svg");
+}
+#custom-home.raised { background-color: #3584e4; }
+/* Open programs that are not pinned (b8k-launch slot N): outlined instead
+   of filled, under a line that shows while there is one. */
+#custom-sep {
+  font-size: 1px;
+  min-height: 3px;
+  margin: 5px 14px;
+  border-radius: 2px;
+  background-color: #77767b;
+}
+.app.slot,
+.app.slot.running {
+  background-color: transparent;
+  border: 2px solid #5e5c64;
+  box-shadow: none;
+}
+.app.slot.active {
+  background-color: #3584e4;
+  border-color: #3584e4;
 }
 /* The handle of the brightness and Wi-Fi drawer (group/system): an arrow
    up while closed, down while open: the drawer opens above it (b8k-meter). */
@@ -66,6 +99,20 @@ window#waybar { background: #242424; color: #ffffff; }
   background-size: 34px 34px;
   background-image: url("/usr/local/share/b8k/brightness.svg");
 }
+#custom-volume {
+  min-height: 36px;
+  margin: 2px 4px;
+  padding: 0;
+  background-color: #242424;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 37px 40px;
+}
+#custom-volume.v0 { background-image: url("/usr/local/share/b8k/vol-0.svg"); }
+#custom-volume.v1 { background-image: url("/usr/local/share/b8k/vol-1.svg"); }
+#custom-volume.v2 { background-image: url("/usr/local/share/b8k/vol-2.svg"); }
+#custom-volume.v3 { background-image: url("/usr/local/share/b8k/vol-3.svg"); }
+#custom-volume.v4 { background-image: url("/usr/local/share/b8k/vol-4.svg"); }
 #custom-wifi3,
 #custom-battery {
   min-height: 40px;
@@ -116,8 +163,10 @@ window#waybar { background: #242424; color: #ffffff; }
   background-color: #3584e4;
   color: #ffffff;
 }
+#custom-home.pressed,
 #custom-system.pressed,
 #custom-brightness.pressed,
+#custom-volume.pressed,
 #custom-wifi3.pressed {
   background-color: #3a3a3a;
   border-radius: 12px;

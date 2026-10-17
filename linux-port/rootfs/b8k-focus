@@ -45,8 +45,19 @@ def load_apps():
     return tuple(buttons), webapps
 
 
+def load_slots():
+    """The waybar signals of the panel's slots for open, unpinned programs
+    (b8k-apps writes them next to apps.conf)."""
+    try:
+        with open(os.path.join(os.path.dirname(APPS), "slots")) as fh:
+            return tuple(int(line) for line in fh if line.strip().isdigit())
+    except OSError:
+        return ()
+
+
 # Read once: after a change to apps.conf, restart "b8k-focus watch".
 BUTTONS, WEBAPPS = load_apps()
+SLOTS = load_slots()
 
 
 def pad(n):
@@ -293,10 +304,13 @@ def publish(found, prev):
             fh.write("%s %s\n" % (bid, cur[bid]))
     os.rename(tmp, state_path())
     changed = [item for item in BUTTONS if cur[item[0]] != prev.get(item[0])]
+    sigs = [sig for _bid, sig, _names in changed if sig > 0]
+    # A program without a button opened, closed or came to the front: the
+    # slots may all shift, so every slot reads its program again.
+    if any(sig <= 0 for _bid, sig, _names in changed):
+        sigs += SLOTS
     for pid in waybar_pids():
-        for bid, sig, _names in changed:
-            if sig <= 0:
-                continue
+        for sig in sigs:
             signum = signal.SIGRTMIN + sig
             if not catches(pid, signum):
                 continue

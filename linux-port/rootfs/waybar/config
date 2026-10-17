@@ -4,13 +4,9 @@
   "width": 120,
   "spacing": 4,
   "modules-left": [
+    "custom/home",
     "custom/firefox",
-    "custom/calc",
-    "custom/weather",
-    "custom/news",
-    "custom/max",
-    "custom/paint",
-    "custom/cards"
+    "custom/max"
   ],
   "modules-right": [
     "group/system",
@@ -18,6 +14,15 @@
     "custom/clock",
     "custom/hide"
   ],
+  "custom/home": {
+    "exec": "/usr/local/bin/b8k-meter home",
+    "return-type": "json",
+    "format": "{text}",
+    "signal": 8,
+    "exec-on-event": false,
+    "on-click": "/usr/local/bin/b8k-press home 8; /usr/local/bin/b8k-home toggle",
+    "tooltip": false
+  },
   "custom/firefox": {
     "exec": "/usr/local/bin/b8k-launch status firefox",
     "return-type": "json",
@@ -92,6 +97,7 @@
     "modules": [
       "custom/system",
       "custom/brightness",
+      "custom/volume",
       "custom/wifi3"
     ]
   },
@@ -112,6 +118,16 @@
     "signal": 9,
     "exec-on-event": false,
     "on-click": "/usr/local/bin/b8k-press brightness 9; /usr/local/bin/b8k-brightness",
+    "tooltip": false
+  },
+  "custom/volume": {
+    "exec": "/usr/local/bin/b8k-meter volume",
+    "return-type": "json",
+    "format": "{text}",
+    "signal": 10,
+    "interval": 60,
+    "exec-on-event": true,
+    "on-click": "/usr/local/bin/b8k-press volume 10; pactl set-sink-mute @DEFAULT_SINK@ toggle",
     "tooltip": false
   },
   "custom/wifi3": {
