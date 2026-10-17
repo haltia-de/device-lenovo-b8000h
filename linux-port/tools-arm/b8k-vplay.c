@@ -10,11 +10,19 @@
  * own wlshm output scaled every frame to the window in software and showed
  * 5-15 frames a second at 480p; this way 480p plays at its full 30.
  *
+ * The controls are three strips over the video (the top bar, the buttons
+ * across the middle, the bottom bar), not one window-sized layer: phoc on
+ * the SGX draws a shm surface of 1000x600 or more opaque (alpha dropped,
+ * see wlroots-0.20-hybris.patch), and a translucent layer that big hid
+ * the whole video behind black. The strips are small enough to blend.
+ *
  * A tap shows the controls for four seconds: "←" closes the window, the
  * middle buttons go back 10 s, pause or play, and go on 10 s, and the bar
  * at the bottom seeks (tap or drag). While the video plays, the file
  * $XDG_RUNTIME_DIR/b8k-awake/<pid>.screen keeps the screen on (b8k-sleep).
- * The window closes at the end of the video. A YouTube or other page URL
+ * Another window taking the screen pauses the video: hidden, the window
+ * gets no frame callbacks, and the sound went on with no picture and no
+ * way to stop it. The window closes at the end of the video. A YouTube or other page URL
  * goes through mpv's yt-dlp hook, at most 480p H.264 by default: more
  * than this CPU can convert in time.
  */
@@ -49,6 +57,7 @@
 #define BAR_H 120
 #define TOP_H 112
 #define SEEK_STEP 10
+#define MID_H 200
 
 extern char **environ;
 
@@ -68,10 +77,20 @@ static struct xdg_wm_base *wm;
 static struct wp_viewporter *vporter;
 static struct wl_seat *seat;
 
-static struct wl_surface *base, *vsurf, *uisurf;
-static struct wl_subsurface *vsub, *uisub;
+static struct wl_surface *base, *vsurf;
+static struct wl_subsurface *vsub;
 static struct wp_viewport *base_vp, *vid_vp;
-static struct buf black, vbufs[2], uibufs[2];
+static struct buf black, vbufs[2];
+
+/* The controls: strips of the window, each drawn with the whole UI moved
+ * up by its y, so that one drawing serves all three. */
+enum { UI_TOP, UI_MID, UI_BOTTOM, UI_PARTS };
+static struct uipart {
+	struct wl_surface *s;
+	struct wl_subsurface *sub;
+	struct buf bufs[2];
+	int y, h;
+} ui[UI_PARTS];
 
 static int win_w = 1160, win_h = 800, configured, frame_pending, want_frame, quit;
 static int vx, vy, vw_shown, vh_shown, placed_w, placed_h, have_frame;
@@ -83,7 +102,7 @@ static mpv_render_context *rc;
 static char title[256];
 static char error_text[128];
 static double t_pos = -1, t_dur = -1;
-static int paused, last_sec = -1;
+static int paused, last_sec = -1, was_active;
 static char awake_path[512];
 
 /* A finger on the controls. */
@@ -241,6 +260,18 @@ static void place_video(int w, int h)
 	wl_subsurface_set_position(vsub, vx, vy);
 }
 
+static void place_ui(void)
+{
+	ui[UI_TOP].y = 0;
+	ui[UI_TOP].h = TOP_H;
+	ui[UI_MID].h = MID_H;
+	ui[UI_MID].y = (win_h - MID_H) / 2;
+	ui[UI_BOTTOM].h = BAR_H;
+	ui[UI_BOTTOM].y = win_h - BAR_H;
+	for (int i = 0; i < UI_PARTS; i++)
+		wl_subsurface_set_position(ui[i].sub, 0, ui[i].y); /* with the base */
+}
+
 static void commit_base(void)
 {
 	wp_viewport_set_destination(base_vp, win_w, win_h);
@@ -294,35 +325,11 @@ static void text(cairo_t *cr, PangoLayout *pl, const char *font, const char *s, 
 	pango_cairo_show_layout(cr, pl);
 }
 
-static void draw_ui(void)
+static void draw_controls(cairo_t *cr, PangoLayout *pl)
 {
-	struct buf *b;
-	cairo_surface_t *s;
-	cairo_t *cr;
-	PangoLayout *pl;
 	double cx = win_w / 2.0, cy = win_h / 2.0, frac;
 	char a[32], d[32];
 	int x0, x1;
-
-	ui_dirty = 0;
-	if (!ui_visible) {
-		wl_surface_attach(uisurf, NULL, 0, 0);
-		wl_surface_commit(uisurf);
-		return;
-	}
-	b = free_buf(uibufs, win_w, win_h, WL_SHM_FORMAT_ARGB8888);
-	if (!b) {
-		ui_dirty = 1; /* both held: try again on the next event */
-		return;
-	}
-	s = cairo_image_surface_create_for_data(b->data, CAIRO_FORMAT_ARGB32, b->w, b->h,
-						b->stride);
-	cr = cairo_create(s);
-	pl = pango_cairo_create_layout(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	cairo_set_source_rgba(cr, 0, 0, 0, have_frame ? 0.25 : 0);
-	cairo_paint(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	/* Top: back, title. */
 	cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
@@ -390,14 +397,48 @@ static void draw_ui(void)
 		cairo_fill(cr);
 	}
 
-	g_object_unref(pl);
-	cairo_destroy(cr);
-	cairo_surface_flush(s);
-	cairo_surface_destroy(s);
-	wl_surface_attach(uisurf, b->wb, 0, 0);
-	wl_surface_damage_buffer(uisurf, 0, 0, b->w, b->h);
-	b->busy = 1;
-	wl_surface_commit(uisurf);
+}
+
+static void draw_ui(void)
+{
+	struct buf *b[UI_PARTS];
+
+	ui_dirty = 0;
+	if (!ui_visible) {
+		for (int i = 0; i < UI_PARTS; i++) {
+			wl_surface_attach(ui[i].s, NULL, 0, 0);
+			wl_surface_commit(ui[i].s);
+		}
+		return;
+	}
+	for (int i = 0; i < UI_PARTS; i++) {
+		b[i] = free_buf(ui[i].bufs, win_w, ui[i].h, WL_SHM_FORMAT_ARGB8888);
+		if (!b[i]) {
+			ui_dirty = 1; /* both held: try again on the next event */
+			return;
+		}
+	}
+	for (int i = 0; i < UI_PARTS; i++) {
+		cairo_surface_t *s = cairo_image_surface_create_for_data(
+			b[i]->data, CAIRO_FORMAT_ARGB32, b[i]->w, b[i]->h, b[i]->stride);
+		cairo_t *cr = cairo_create(s);
+		PangoLayout *pl = pango_cairo_create_layout(cr);
+
+		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+		cairo_set_source_rgba(cr, 0, 0, 0, 0);
+		cairo_paint(cr);
+		cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+		cairo_translate(cr, 0, -ui[i].y);
+		draw_controls(cr, pl);
+		g_object_unref(pl);
+		cairo_destroy(cr);
+		cairo_surface_flush(s);
+		cairo_surface_destroy(s);
+		wl_surface_attach(ui[i].s, b[i]->wb, 0, 0);
+		wl_surface_damage_buffer(ui[i].s, 0, 0, b[i]->w, b[i]->h);
+		b[i]->busy = 1;
+		wl_surface_commit(ui[i].s);
+	}
 }
 
 /* --- video frames ---------------------------------------------------------- */
@@ -708,6 +749,7 @@ static void xs_configure(void *data, struct xdg_surface *xs, uint32_t serial)
 	configured = 1;
 	if (placed_w)
 		place_video(placed_w, placed_h);
+	place_ui();
 	commit_base();
 	ui_dirty = 1;
 	want_frame = 1;
@@ -718,11 +760,20 @@ static const struct xdg_surface_listener xs_listener = { xs_configure };
 static void tl_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t h,
 			 struct wl_array *states)
 {
-	(void)data; (void)t; (void)states;
+	uint32_t *state;
+	int active = 0;
+
+	(void)data; (void)t;
 	if (w > 0 && h > 0) {
 		win_w = w;
 		win_h = h;
 	}
+	wl_array_for_each(state, states)
+		if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
+			active = 1;
+	if (was_active && !active && mpv && !paused)
+		mpv_set_property_string(mpv, "pause", "yes"); /* back: tap play */
+	was_active = active;
 }
 
 static void tl_close(void *data, struct xdg_toplevel *t)
@@ -884,13 +935,17 @@ int main(int argc, char **argv)
 	vid_vp = wp_viewporter_get_viewport(vporter, vsurf);
 	vsub = wl_subcompositor_get_subsurface(subcomp, vsurf, base);
 	wl_subsurface_set_desync(vsub);
-	uisurf = wl_compositor_create_surface(comp);
-	uisub = wl_subcompositor_get_subsurface(subcomp, uisurf, base);
-	wl_subsurface_set_desync(uisub);
-	wl_subsurface_place_above(uisub, vsurf);
-	/* Taps on the video go to the window underneath, in window terms. */
+	/* Taps on the video and the controls go to the window underneath, in
+	 * window terms. */
 	empty = wl_compositor_create_region(comp);
 	wl_surface_set_input_region(vsurf, empty);
+	for (int i = 0; i < UI_PARTS; i++) {
+		ui[i].s = wl_compositor_create_surface(comp);
+		ui[i].sub = wl_subcompositor_get_subsurface(subcomp, ui[i].s, base);
+		wl_subsurface_set_desync(ui[i].sub);
+		wl_subsurface_place_above(ui[i].sub, vsurf);
+		wl_surface_set_input_region(ui[i].s, empty);
+	}
 	wl_region_destroy(empty);
 
 	xs = xdg_wm_base_get_xdg_surface(wm, base);
