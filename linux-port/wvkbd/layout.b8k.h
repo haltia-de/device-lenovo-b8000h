@@ -5,6 +5,7 @@
  * Pads under that foot are not keys. The hyphen is the half key directly
  * left of the stem. Comma and period are the wide marks on the bottom
  * letter row. 123 is the left bottom key. The alphabet switch is next.
+ * The digits layout leads on to the symbols one (<>| and the rest).
  */
 
 #define KBD_PIXEL_HEIGHT 360
@@ -15,16 +16,19 @@ enum layout_id {
 	Latin = 0,
 	Cyrillic,
 	Numbers,
+	Symbols,
 	Index, /* referenced by the compose path; not shown in normal use */
 	NumLayouts,
 };
 
-static struct key keys_latin[], keys_cyrillic[], keys_numbers[], keys_index[];
+static struct key keys_latin[], keys_cyrillic[], keys_numbers[], keys_index[],
+	keys_symbols[];
 
 static struct layout layouts[NumLayouts] = {
 	[Latin] = {keys_latin, "latin", "latin", true},
 	[Cyrillic] = {keys_cyrillic, "cyrillic", "cyrillic", true},
 	[Numbers] = {keys_numbers, "latin", "numbers", false},
+	[Symbols] = {keys_symbols, "latin", "symbols", false},
 	[Index] = {keys_index, "latin", "index", false},
 };
 
@@ -74,7 +78,7 @@ static struct key keys_latin[] = {
 
 	{"123", "123", 1.5, Layout, 0, &layouts[Numbers], .scheme = 1},
 	{"РУС", "РУС", 1.5, Layout, 0, &layouts[Cyrillic], .scheme = 1},
-	{"пробел", "пробел", 7.0, Code, KEY_SPACE},
+	{"space", "space", 7.0, Code, KEY_SPACE},
 	{"▼", "▼", 1.0, Hide, 0, .scheme = 2},
 	{"", "", 0.0, Last},
 };
@@ -130,15 +134,18 @@ static struct key keys_cyrillic[] = {
 	{"", "", 1.0, Pad},
 	{"", "", 0.0, EndRow},
 
-	{"123", "123", 1.5, Layout, 0, &layouts[Numbers], .scheme = 1},
-	{"ENG", "ENG", 1.5, Layout, 0, &layouts[Latin], .scheme = 1},
-	{"пробел", "пробел", 9.0, Code, KEY_SPACE},
-	{"▼", "▼", 1.0, Hide, 0, .scheme = 2},
+	/* The bottom row keeps the Latin geometry (1.5 + 1.5 + 7 + 1 of 11),
+	 * scaled to 13, so no key moves when the alphabet changes. */
+	{"123", "123", 1.5 * 13 / 11, Layout, 0, &layouts[Numbers], .scheme = 1},
+	{"ENG", "ENG", 1.5 * 13 / 11, Layout, 0, &layouts[Latin], .scheme = 1},
+	{"пробел", "пробел", 7.0 * 13 / 11, Code, KEY_SPACE},
+	{"▼", "▼", 1.0 * 13 / 11, Hide, 0, .scheme = 2},
 	{"", "", 0.0, Last},
 };
 
 /* Row sum 11. Enter stays square: a foot here would cover symbols.
- * Tab, Esc and Ctrl are for the terminal. */
+ * Tab, Esc and Ctrl are for the terminal. Shifted marks are Copy keys: the
+ * mobile keymap has its own shift level (shift+slash is >, not ?). */
 static struct key keys_numbers[] = {
 	{"1", "1", 1.0, Code, KEY_1},
 	{"2", "2", 1.0, Code, KEY_2},
@@ -154,35 +161,92 @@ static struct key keys_numbers[] = {
 	{"", "", 0.0, EndRow},
 
 	{"-", "-", 1.0, Code, KEY_MINUS},
-	{"_", "_", 1.0, Code, KEY_MINUS, 0, Shift},
+	{"_", "_", 1.0, Copy, 0x005F, 0, 0x005F},
 	{"=", "=", 1.0, Code, KEY_EQUAL},
-	{"+", "+", 1.0, Code, KEY_EQUAL, 0, Shift},
+	{"+", "+", 1.0, Copy, 0x002B, 0, 0x002B},
 	{"/", "/", 1.0, Code, KEY_SLASH},
-	{"?", "?", 1.0, Code, KEY_SLASH, 0, Shift},
-	{"!", "!", 1.0, Code, KEY_1, 0, Shift},
-	{"@", "@", 1.0, Code, KEY_2, 0, Shift},
-	{"(", "(", 1.0, Code, KEY_9, 0, Shift},
-	{")", ")", 1.0, Code, KEY_0, 0, Shift},
+	{"?", "?", 1.0, Copy, 0x003F, 0, 0x003F},
+	{"!", "!", 1.0, Copy, 0x0021, 0, 0x0021},
+	{"@", "@", 1.0, Copy, 0x0040, 0, 0x0040},
+	{"(", "(", 1.0, Copy, 0x0028, 0, 0x0028},
+	{")", ")", 1.0, Copy, 0x0029, 0, 0x0029},
 	{"Tab", "Tab", 1.0, Code, KEY_TAB, .scheme = 1},
 	{"", "", 0.0, EndRow},
 
 	{",", ",", 1.0, Code, KEY_COMMA},
 	{".", ".", 1.0, Code, KEY_DOT},
-	{":", ":", 1.0, Code, KEY_SEMICOLON, 0, Shift},
+	{":", ":", 1.0, Copy, 0x003A, 0, 0x003A},
 	{";", ";", 1.0, Code, KEY_SEMICOLON},
-	{"\"", "\"", 1.0, Code, KEY_APOSTROPHE, 0, Shift},
+	{"\"", "\"", 1.0, Copy, 0x0022, 0, 0x0022},
 	{"'", "'", 1.0, Code, KEY_APOSTROPHE},
-	{"#", "#", 1.0, Code, KEY_3, 0, Shift},
-	{"$", "$", 1.0, Code, KEY_4, 0, Shift},
-	{"&", "&", 1.0, Code, KEY_7, 0, Shift},
-	{"*", "*", 1.0, Code, KEY_8, 0, Shift},
+	{"#", "#", 1.0, Copy, 0x0023, 0, 0x0023},
+	{"$", "$", 1.0, Copy, 0x0024, 0, 0x0024},
+	{"&", "&", 1.0, Copy, 0x0026, 0, 0x0026},
+	{"*", "*", 1.0, Copy, 0x002A, 0, 0x002A},
 	{"Esc", "Esc", 1.0, Code, KEY_ESC, .scheme = 1},
 	{"", "", 0.0, EndRow},
 
 	/* Ctrl holds for the next key, also after АБВ: Ctrl, АБВ, c is Ctrl+C. */
 	{"Ctrl", "Ctrl", 1.0, Mod, Ctrl, .scheme = 1},
 	{"АБВ", "АБВ", 1.0, BackLayer, .scheme = 1},
-	{"пробел", "пробел", 7.0, Code, KEY_SPACE},
+	{"<>|", "<>|", 1.0, Layout, 0, &layouts[Symbols], .scheme = 1},
+	{"пробел", "пробел", 6.0, Code, KEY_SPACE},
+	{"↵", "↵", 1.0, Code, KEY_ENTER, .scheme = 1},
+	{"▼", "▼", 1.0, Hide, 0, .scheme = 2},
+	{"", "", 0.0, Last},
+};
+
+/* Row sum 11, laid out like the digits. The marks a shell needs come first.
+ * All marks are Copy keys: the mobile keymap puts other characters on
+ * shifted comma and period (apostrophe and question mark, not < and >). */
+static struct key keys_symbols[] = {
+	{"<", "<", 1.0, Copy, 0x003C, 0, 0x003C},
+	{">", ">", 1.0, Copy, 0x003E, 0, 0x003E},
+	{"|", "|", 1.0, Copy, 0x007C, 0, 0x007C},
+	{"\\", "\\", 1.0, Copy, 0x005C, 0, 0x005C},
+	{"~", "~", 1.0, Copy, 0x007E, 0, 0x007E},
+	{"`", "`", 1.0, Copy, 0x0060, 0, 0x0060},
+	{"^", "^", 1.0, Copy, 0x005E, 0, 0x005E},
+	{"%", "%", 1.0, Copy, 0x0025, 0, 0x0025},
+	{"[", "[", 1.0, Copy, 0x005B, 0, 0x005B},
+	{"]", "]", 1.0, Copy, 0x005D, 0, 0x005D},
+	{"⌫", "⌫", 1.0, Code, KEY_BACKSPACE, .scheme = 1},
+	{"", "", 0.0, EndRow},
+
+	{"{", "{", 1.0, Copy, 0x007B, 0, 0x007B},
+	{"}", "}", 1.0, Copy, 0x007D, 0, 0x007D},
+	{"«", "«", 1.0, Copy, 0x00AB, 0, 0x00AB},
+	{"»", "»", 1.0, Copy, 0x00BB, 0, 0x00BB},
+	{"—", "—", 1.0, Copy, 0x2014, 0, 0x2014},
+	{"…", "…", 1.0, Copy, 0x2026, 0, 0x2026},
+	{"№", "№", 1.0, Copy, 0x2116, 0, 0x2116},
+	{"°", "°", 1.0, Copy, 0x00B0, 0, 0x00B0},
+	{"€", "€", 1.0, Copy, 0x20AC, 0, 0x20AC},
+	{"₽", "₽", 1.0, Copy, 0x20BD, 0, 0x20BD},
+	{"Tab", "Tab", 1.0, Code, KEY_TAB, .scheme = 1},
+	{"", "", 0.0, EndRow},
+
+	{"$", "$", 1.0, Copy, 0x0024, 0, 0x0024},
+	{"&", "&", 1.0, Copy, 0x0026, 0, 0x0026},
+	{"*", "*", 1.0, Copy, 0x002A, 0, 0x002A},
+	{"#", "#", 1.0, Copy, 0x0023, 0, 0x0023},
+	{"=", "=", 1.0, Copy, 0x003D, 0, 0x003D},
+	{"/", "/", 1.0, Copy, 0x002F, 0, 0x002F},
+	{"-", "-", 1.0, Copy, 0x002D, 0, 0x002D},
+	{"\"", "\"", 1.0, Copy, 0x0022, 0, 0x0022},
+	{"'", "'", 1.0, Copy, 0x0027, 0, 0x0027},
+	{":", ":", 1.0, Copy, 0x003A, 0, 0x003A},
+	{"Esc", "Esc", 1.0, Code, KEY_ESC, .scheme = 1},
+	{"", "", 0.0, EndRow},
+
+	{"Ctrl", "Ctrl", 1.0, Mod, Ctrl, .scheme = 1},
+	{"АБВ", "АБВ", 1.0, BackLayer, .scheme = 1},
+	{"123", "123", 1.0, Layout, 0, &layouts[Numbers], .scheme = 1},
+	{"←", "←", 1.0, Code, KEY_LEFT, .scheme = 1},
+	{"↑", "↑", 1.0, Code, KEY_UP, .scheme = 1},
+	{"↓", "↓", 1.0, Code, KEY_DOWN, .scheme = 1},
+	{"→", "→", 1.0, Code, KEY_RIGHT, .scheme = 1},
+	{"пробел", "пробел", 2.0, Code, KEY_SPACE},
 	{"↵", "↵", 1.0, Code, KEY_ENTER, .scheme = 1},
 	{"▼", "▼", 1.0, Hide, 0, .scheme = 2},
 	{"", "", 0.0, Last},
