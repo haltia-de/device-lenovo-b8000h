@@ -47,8 +47,9 @@ alive() {
 	return 1
 }
 
-# slot_id N: the Nth open program without a pinned button (signal 0), in
-# apps.conf order. The panel shows these in its slots under the pinned ones.
+# slot_id N: the Nth open program without a pinned button (signal 0): the
+# one in front first, so it always has a slot, then the rest in apps.conf
+# order. The panel shows these in its slots under the pinned ones.
 slot_id() {
 	[ -f "$dir/state" ] || return 1
 	awk -v n="$1" '
@@ -58,9 +59,13 @@ slot_id() {
 			next
 		}
 		$2 == "running" || $2 == "active" { open[$1] = 1 }
+		$2 == "active" { front = $1 }
 		END {
+			if (front != "" && sig[front] == 0 && ++m == n) { print front; exit 0 }
 			for (i = 1; i <= k; i++)
-				if (open[ids[i]] && sig[ids[i]] == 0 && ++m == n) { print ids[i]; exit 0 }
+				if (open[ids[i]] && ids[i] != front && sig[ids[i]] == 0 && ++m == n) {
+					print ids[i]; exit 0
+				}
 			exit 1
 		}' "$APPS" "$dir/state"
 }
