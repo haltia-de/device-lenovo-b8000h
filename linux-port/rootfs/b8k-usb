@@ -3,9 +3,13 @@
 # or "host" (a keyboard or a mouse through an OTG adapter). The port cannot
 # tell an adapter from a cable (kernel patch 0044), so the power menu
 # switches it. In host mode the charger's OTG boost feeds the adapter 5 V
-# and the battery does not charge.
+# and the battery does not charge, so host mode does not outlive its use:
+# ten seconds after the last USB device is gone, or after a minute with
+# none plugged in at all, the port goes back to being a device and the
+# battery charges again.
 #
 #   b8k-usb host | device | status
+#   b8k-usb watch     (started by "host": the way back to charging)
 set -u
 role=
 for f in /sys/class/usb_role/*/role; do [ -e "$f" ] && role=$f && break; done
@@ -15,22 +19,59 @@ for f in /sys/bus/platform/drivers/reg-userspace-consumer/*/state; do
 done
 [ -n "$role" ] || { echo "b8k-usb: no USB role switch" >&2; exit 1; }
 
+to_device() {
+	echo device >"$role"
+	[ -z "$vbus" ] || echo disabled >"$vbus"
+}
+
+# Any USB device but the root hubs (usbN) is plugged in.
+plugged() {
+	for d in /sys/bus/usb/devices/[0-9]*-*; do
+		[ -e "$d" ] && return 0
+	done
+	return 1
+}
+
+watch() {
+	exec 9>/run/b8k-usb.watch.lock
+	flock -n 9 || exit 0
+	seen=0
+	idle=0
+	while [ "$(cat "$role")" = host ]; do
+		sleep 5
+		if plugged; then
+			seen=1
+			idle=0
+		else
+			idle=$((idle + 5))
+		fi
+		if { [ "$seen" = 1 ] && [ "$idle" -ge 10 ]; } || [ "$idle" -ge 60 ]; then
+			to_device
+			logger -t b8k-usb "no USB device: back to device mode, charging"
+			break
+		fi
+	done
+}
+
 case ${1:-status} in
 host)
 	if [ -n "$vbus" ]; then
 		echo enabled >"$vbus" || exit 1
 	fi
 	echo host >"$role"
+	setsid "$0" watch </dev/null >/dev/null 2>&1 &
 	;;
 device)
-	echo device >"$role"
-	[ -z "$vbus" ] || echo disabled >"$vbus"
+	to_device
+	;;
+watch)
+	watch
 	;;
 status)
 	cat "$role"
 	;;
 *)
-	echo "usage: b8k-usb host | device | status" >&2
+	echo "usage: b8k-usb host | device | status | watch" >&2
 	exit 2
 	;;
 esac
