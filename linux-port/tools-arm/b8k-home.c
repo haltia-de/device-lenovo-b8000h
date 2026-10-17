@@ -694,6 +694,23 @@ static void signal_panel(void)
 	closedir(proc);
 }
 
+/* The close button (b8k-close) hides while the home screen is up. */
+static void signal_close_button(void)
+{
+	const char *run = runtime_dir();
+	char path[512], buf[32];
+	FILE *f;
+
+	if (!run)
+		return;
+	snprintf(path, sizeof(path), "%s/b8k-close.pid", run);
+	if (!(f = fopen(path, "r")))
+		return;
+	if (fgets(buf, sizeof(buf), f) && atoi(buf) > 1)
+		kill((pid_t)atoi(buf), SIGUSR1);
+	fclose(f);
+}
+
 static void set_raised(int up)
 {
 	const char *run = runtime_dir();
@@ -710,6 +727,7 @@ static void set_raised(int up)
 			unlink(path);
 	}
 	signal_panel();
+	signal_close_button();
 	scroll = 0;
 	zwlr_layer_surface_v1_set_layer(layer, up ? ZWLR_LAYER_SHELL_V1_LAYER_TOP
 						 : ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);

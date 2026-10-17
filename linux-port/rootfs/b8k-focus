@@ -292,7 +292,38 @@ def catches(pid, signum):
     return False
 
 
+def front_path():
+    return os.path.join(os.path.dirname(state_path()), "front")
+
+
+def publish_front(found):
+    """The app id of the window in front, for the close button (b8k-close),
+    which is told when it changes."""
+    front = next((w["app_id"] for w in found.values()
+                  if w.get("activated") and not w.get("closed") and w["app_id"]), "")
+    try:
+        with open(front_path()) as fh:
+            if fh.read().strip() == front:
+                return
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(front_path()), exist_ok=True)
+    with open(front_path() + ".new", "w") as fh:
+        fh.write(front + "\n")
+    os.rename(front_path() + ".new", front_path())
+    try:
+        run = os.environ.get("XDG_RUNTIME_DIR", "")
+        with open(os.path.join(run, "b8k-close.pid")) as fh:
+            os.kill(int(fh.read().strip()), signal.SIGUSR1)
+    except (OSError, ValueError):
+        pass  # no close button running: it looks again within seconds anyway
+
+
 def publish(found, prev):
+    try:
+        publish_front(found)
+    except OSError:
+        pass
     cur = button_classes(found)
     if cur == prev:
         return prev

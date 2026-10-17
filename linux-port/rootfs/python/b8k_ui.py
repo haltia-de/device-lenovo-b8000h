@@ -32,7 +32,8 @@ headerbar {
   border: none;
   box-shadow: none;
   min-height: 88px;
-  padding: 8px 16px;
+  /* The right end is the shell's close button (b8k-close, 104 px). */
+  padding: 8px 112px 8px 16px;
 }
 button.back {
   background-image: none;

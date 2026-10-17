@@ -24,6 +24,10 @@ fi
 if [ -x /usr/local/bin/b8k-home ]; then
 	setsid /usr/local/bin/b8k-home >"$run"/b8k-home.log 2>&1 &
 fi
+# The "✕" in the top right corner that closes the program in front.
+if [ -x /usr/local/bin/b8k-close ]; then
+	setsid /usr/local/bin/b8k-close >"$run"/b8k-close.log 2>&1 &
+fi
 # The brightness chosen last time (b8k-brightness keeps it).
 /usr/local/bin/b8k-brightness --restore >"$run"/b8k-brightness.log 2>&1
 # Settings starts through D-Bus activation and takes the bus environment.

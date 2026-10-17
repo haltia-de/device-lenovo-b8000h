@@ -221,10 +221,9 @@ tap)
 			active|running) class=$found ;;
 		esac
 	fi
-	if [ "$class" = active ]; then
-		setsid /usr/local/bin/b8k-ask close "$id" </dev/null >"$run"/b8k-ask.log 2>&1 &
-		exit 0
-	fi
+	# The program in front stays: closing is the "✕" in the corner
+	# (b8k-close) for every program alike.
+	[ "$class" = active ] && exit 0
 	exec "$0" start "$id"
 	;;
 url)

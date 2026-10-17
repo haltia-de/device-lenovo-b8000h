@@ -5,6 +5,7 @@
 #   b8k-ask power
 #   b8k-ask close <id>
 #   b8k-ask close-webapp <id>
+#   b8k-ask close-front       (the "✕" of b8k-close: the window in front)
 #   b8k-ask pin <id>          (a long press on a home screen tile)
 #   b8k-ask hide              (the panel's "‹": hiding it is asked first, as
 #                             a hidden panel is easily lost by accident)
@@ -74,6 +75,23 @@ close | close-webapp)
 		# shellcheck disable=SC2086 # the app_ids are separate words
 		/usr/local/bin/b8k-focus close ${ids:-$id}
 	fi
+	;;
+close-front)
+	# The window in front by its app id; its program's label when one of
+	# apps.conf has that app id.
+	app=$(cat "$run/b8k-launch/front" 2>/dev/null)
+	[ -n "$app" ] || exit 0
+	id=$(awk -v app="$app" '
+		/^\[/ { sec = $0; gsub(/[][ \t]/, "", sec); next }
+		/^[ \t]*app_ids[ \t]*=/ {
+			v = $0; sub(/^[^=]*=/, "", v); n = split(v, a, " ")
+			for (i = 1; i <= n; i++) if (a[i] == app) { print sec; exit }
+		}' "$APPS")
+	label=
+	[ -n "$id" ] && label=$(conf "$id" label)
+	[ "$(ask "Закрыть «${label:-$app}»?" "Закрыть" "Отмена")" = 0 ] || exit 0
+	chosen
+	/usr/local/bin/b8k-focus close "$app"
 	;;
 hide)
 	[ "$(ask "Спрятать панель? Вернуть — касанием «›» внизу слева" "Спрятать" "Отмена")" = 0 ] || exit 0

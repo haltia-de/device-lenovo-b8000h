@@ -16,8 +16,8 @@
  * see wlroots-0.20-hybris.patch), and a translucent layer that big hid
  * the whole video behind black. The strips are small enough to blend.
  *
- * A tap shows the controls for four seconds: "←" closes the window, the
- * middle buttons go back 10 s, pause or play, and go on 10 s, and the bar
+ * A tap shows the controls for four seconds: the title, the middle buttons
+ * that go back 10 s, pause or play, and go on 10 s, and the bar
  * at the bottom seeks (tap or drag). While the video plays, the file
  * $XDG_RUNTIME_DIR/b8k-awake/<pid>.screen keeps the screen on (b8k-sleep).
  * Another window taking the screen pauses the video: hidden, the window
@@ -283,8 +283,8 @@ static void commit_base(void)
 /* Control positions. */
 #define BACK_X 16
 #define BACK_Y 16
-#define BACK_W 120
 #define BACK_H 80
+#define CORNER 128 /* the shell's close button, and a margin */
 #define BTN_R 78
 #define BTN_GAP 240
 
@@ -331,17 +331,15 @@ static void draw_controls(cairo_t *cr, PangoLayout *pl)
 	char a[32], d[32];
 	int x0, x1;
 
-	/* Top: back, title. */
+	/* Top: the title. The window is closed by the shell's "✕" in the top
+	 * right corner (b8k-close), as every program is; the title stops
+	 * short of it. */
 	cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
 	cairo_rectangle(cr, 0, 0, win_w, TOP_H);
 	cairo_fill(cr);
-	rounded(cr, BACK_X, BACK_Y, BACK_W, BACK_H, 16);
-	cairo_set_source_rgba(cr, 1, 1, 1, 0.18);
-	cairo_fill(cr);
 	cairo_set_source_rgb(cr, 1, 1, 1);
-	text(cr, pl, "DejaVu Sans 34", "←", BACK_X + BACK_W / 2.0, BACK_Y + BACK_H / 2.0, 0, 0);
-	text(cr, pl, "DejaVu Sans 24", title, BACK_X + BACK_W + 24, BACK_Y + BACK_H / 2.0, -1,
-	     win_w - BACK_W - 72);
+	text(cr, pl, "DejaVu Sans 24", title, BACK_X + 8, BACK_Y + BACK_H / 2.0, -1,
+	     win_w - BACK_X - 8 - CORNER);
 
 	if (error_text[0] || !have_frame) {
 		cairo_set_source_rgb(cr, 1, 1, 1);
@@ -573,11 +571,6 @@ static void press_up(void)
 	}
 	if (!ui_visible) {
 		show_ui(1);
-		return;
-	}
-	if (x >= BACK_X && x < BACK_X + BACK_W + 40 && y >= BACK_Y && y < BACK_Y + BACK_H) {
-		buzz();
-		quit = 1;
 		return;
 	}
 	if (have_frame && !error_text[0]) {

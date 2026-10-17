@@ -360,6 +360,10 @@ if [ "$UI_PROFILE" = phosh ]; then
 		install -D -m 644 "$REPO/linux-port/rootfs/touchguard.conf" "$ROOT/etc/b8k/touchguard.conf"
 		ln -sf /etc/init.d/b8k-touchguard "$ROOT/etc/runlevels/default/b8k-touchguard"
 	fi
+	# The close button in the top right corner (tools-arm/build-b8k-close.sh).
+	if [ -x /opt/b8000h/tools/b8k-close ]; then
+		install -m 755 /opt/b8000h/tools/b8k-close "$ROOT/usr/local/bin/b8k-close"
+	fi
 	# The home screen (tools-arm/build-b8k-home.sh).
 	if [ -x /opt/b8000h/tools/b8k-home ]; then
 		install -m 755 /opt/b8000h/tools/b8k-home "$ROOT/usr/local/bin/b8k-home"

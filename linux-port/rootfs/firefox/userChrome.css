@@ -24,6 +24,13 @@
   min-height: 66px !important;
 }
 
+/* The top right corner is the shell's close button (b8k-close, 104 x 96
+   px): both rows end short of it. */
+#TabsToolbar,
+#nav-bar {
+  padding-inline-end: 104px !important;
+}
+
 .tabbrowser-tab,
 .tab-stack,
 .tab-content {
