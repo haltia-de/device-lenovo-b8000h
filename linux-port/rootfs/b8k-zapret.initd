@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+# SPDX-License-Identifier: GPL-2.0
+# DPI bypass for YouTube (nfqws from zapret). Off in the image; switched
+# on and off with "b8k-zapret on|off" in the terminal.
+description="DPI bypass for YouTube (nfqws from zapret)"
+
+depend() {
+	need net
+}
+
+start() {
+	ebegin "Starting the DPI bypass"
+	/usr/local/sbin/b8k-zapret start
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping the DPI bypass"
+	/usr/local/sbin/b8k-zapret stop
+	eend 0
+}

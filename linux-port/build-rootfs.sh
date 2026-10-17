@@ -61,7 +61,7 @@ case "$UI_PROFILE" in
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
 		py3-gobject3 openssh doas
-		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests" ;;
+		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
@@ -396,6 +396,23 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-usb" "$ROOT/usr/local/sbin/b8k-usb"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-rootsh" "$ROOT/usr/local/sbin/b8k-rootsh"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-term" "$ROOT/usr/local/bin/b8k-term"
+	# The DPI bypass for YouTube, off until "b8k-zapret on" (kernel 25 has
+	# the netfilter it needs). nfqws is the static ARM build of a zapret
+	# release, checked against the release archive's sha256.
+	install -m 755 "$REPO/linux-port/rootfs/b8k-zapret" "$ROOT/usr/local/sbin/b8k-zapret"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-zapret.initd" "$ROOT/etc/init.d/b8k-zapret"
+	install -D -m 644 "$REPO/linux-port/rootfs/zapret.hosts" "$ROOT/etc/b8k/zapret.hosts"
+	zapret_ver=v72.13
+	zapret_sha=25c74e6c5f48963fa244c2955e76694a07c39447245a0457e2efdc74b3317e68
+	ztmp=$(mktemp -d)
+	if wget -q -O "$ztmp/z.tgz" "https://github.com/bol-van/zapret/releases/download/$zapret_ver/zapret-$zapret_ver.tar.gz" &&
+		echo "$zapret_sha  $ztmp/z.tgz" | sha256sum -c - >/dev/null &&
+		tar -xzf "$ztmp/z.tgz" -C "$ztmp" "zapret-$zapret_ver/binaries/linux-arm/nfqws"; then
+		install -m 755 "$ztmp/zapret-$zapret_ver/binaries/linux-arm/nfqws" "$ROOT/usr/local/sbin/nfqws"
+	else
+		echo "warning: no nfqws (zapret $zapret_ver): b8k-zapret will not start" >&2
+	fi
+	rm -rf "$ztmp"
 	# Without this, reboot turns the tablet off (see the script).
 	install -m 755 "$REPO/linux-port/rootfs/b8k-wdt-exrst" "$ROOT/usr/local/sbin/b8k-wdt-exrst"
 	cat > "$ROOT/etc/local.d/b8k-wdt-exrst.start" <<'EOF'

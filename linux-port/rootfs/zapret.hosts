@@ -1,0 +1,17 @@
+# Hosts whose TLS ClientHello b8k-zapret's nfqws breaks up, so that DPI does
+# not see the name; subdomains included. One per line. Installed as
+# /etc/b8k/zapret.hosts; after a change: b8k-zapret restart.
+# The same list as on the home router (YouTube direct through nfqws).
+youtube.com
+youtu.be
+ytimg.com
+ytbugfix.com
+googlevideo.com
+youtube-nocookie.com
+ytimg.l.google.com
+youtube-ui.l.google.com
+wide-youtube.l.google.com
+youtubeembeddedplayer.googleapis.com
+jnn-pa.googleapis.com
+ggpht.com
+yt3.googleusercontent.com

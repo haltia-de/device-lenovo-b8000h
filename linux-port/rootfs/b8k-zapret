@@ -1,0 +1,95 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# DPI bypass for YouTube with nfqws from zapret, off until switched on.
+#
+#   b8k-zapret on        start it now and at every boot
+#   b8k-zapret off       stop it and keep it off
+#   b8k-zapret status    running or not, with the packet counters
+#   b8k-zapret start|stop|restart   (the b8k-zapret service uses these)
+#
+# The first 12 packets of every outgoing TLS connection (TCP 443) go
+# through an NFQUEUE to nfqws. For the hosts in /etc/b8k/zapret.hosts it
+# cuts the ClientHello in pieces sent in reverse order (multidisorder), so
+# the provider's DPI does not see the name; other connections pass as they
+# are. QUIC (UDP 443) is refused, so browsers fall back to TCP. The same
+# strategy as on the home router: the API hosts split right after the
+# start of the name, the rest in the middle of the second-level domain.
+set -u
+NFQWS=/usr/local/sbin/nfqws
+HOSTS=/etc/b8k/zapret.hosts
+PIDFILE=/run/b8k-zapret.pid
+QNUM=200
+MARK=0x40000000
+
+rules_up() {
+	nft -f - <<NFT
+table inet b8k_zapret
+delete table inet b8k_zapret
+table inet b8k_zapret {
+	chain to_nfqws {
+		type filter hook postrouting priority 101; policy accept;
+		oifname "lo" return
+		meta mark & $MARK != 0 return
+		tcp dport 443 ct original packets 1-12 counter queue num $QNUM bypass
+	}
+	chain no_quic {
+		type filter hook output priority 0; policy accept;
+		oifname "lo" return
+		udp dport 443 counter reject
+	}
+	chain own_packets {
+		type filter hook output priority -401; policy accept;
+		meta mark & $MARK != 0 notrack
+	}
+}
+NFT
+}
+
+rules_down() {
+	nft delete table inet b8k_zapret 2>/dev/null || true
+}
+
+start() {
+	[ -x "$NFQWS" ] || { echo "b8k-zapret: no $NFQWS" >&2; exit 1; }
+	rules_up || exit 1
+	start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE" \
+		--exec "$NFQWS" -- --user=nobody --qnum=$QNUM --dpi-desync-fwmark=$MARK \
+		--filter-tcp=443 --hostlist-domains=youtubei.googleapis.com,youtube.googleapis.com \
+		--dpi-desync=multidisorder --dpi-desync-split-pos=host+1 \
+		--new \
+		--filter-tcp=443 --hostlist="$HOSTS" \
+		--dpi-desync=multidisorder --dpi-desync-split-pos=midsld
+}
+
+stop() {
+	start-stop-daemon --stop --quiet --pidfile "$PIDFILE" --exec "$NFQWS" 2>/dev/null
+	rm -f "$PIDFILE"
+	rules_down
+}
+
+case ${1:-status} in
+on)
+	rc-update add b8k-zapret default >/dev/null
+	rc-service b8k-zapret restart
+	;;
+off)
+	rc-service b8k-zapret stop
+	rc-update del b8k-zapret default >/dev/null 2>&1 || true
+	;;
+start) start ;;
+stop) stop ;;
+restart) stop; start ;;
+status)
+	if start-stop-daemon --status --pidfile "$PIDFILE" --exec "$NFQWS" 2>/dev/null; then
+		echo "b8k-zapret: on"
+	else
+		echo "b8k-zapret: off"
+	fi
+	rc-update show default 2>/dev/null | grep -q b8k-zapret && echo "starts at boot"
+	nft list table inet b8k_zapret 2>/dev/null | grep counter
+	;;
+*)
+	echo "usage: b8k-zapret on|off|status|start|stop|restart" >&2
+	exit 2
+	;;
+esac
