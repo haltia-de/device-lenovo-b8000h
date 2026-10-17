@@ -6,14 +6,17 @@
  *   b8k-close update     look again at what is in front (b8k-focus and
  *                        b8k-home call this when it changes)
  *
- * A square on the overlay layer at the top right of the screen, over the
- * program's own header (the shell's programs leave that corner free). It
- * shows while a program's window is in front, $XDG_RUNTIME_DIR/
- * b8k-launch/front names its app id (b8k-focus writes it), and the home
- * screen is not up; otherwise it is clear and lets taps through. A tap
- * asks "Закрыть «…»?" (b8k-ask close-front), Отмена preselected, as a
- * program closed by accident is lost work for an older hand. The same
- * corner for every program, the video player included.
+ * A square on the overlay layer at the top right of the screen, drawn as
+ * the last button of the program's header (same size, place and look as
+ * the shell's header buttons, which end short of it), red only while
+ * pressed. It shows while a program's window is in front ($XDG_RUNTIME_DIR/
+ * b8k-launch/front names its app id; b8k-focus writes it) or a program is
+ * starting under its curtain (b8k-launch/starting), and the home screen is
+ * not up; otherwise it is clear and lets taps through. A tap runs b8k-ask
+ * close-front: a starting program is stopped at once, a window is closed
+ * after "Закрыть «…»?" with Отмена preselected, as a program closed by
+ * accident is lost work for an older hand. The same corner for every
+ * program, the video player included.
  */
 #define _GNU_SOURCE
 #include <cairo.h>
@@ -36,9 +39,14 @@
 
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
-#define W 104 /* the corner taken: the header is 88 px high, plus a margin */
-#define H 96
-#define SQ 72 /* the square drawn */
+/* The shell's header buttons fill its 88 px from 8 px down, 6 px apart,
+ * the last 16 px from the right edge (b8k_ui.HEADER_CSS pads the header
+ * 110 px on the right for this one). */
+#define SQ 88
+#define TOP 8
+#define RIGHT 16
+#define W (SQ + RIGHT + 6)
+#define H (TOP + SQ + 8)
 #define POLL_S 2 /* a look at the files now and then, besides the signal */
 
 extern char **environ;
@@ -81,6 +89,9 @@ static int wanted(void)
 	snprintf(path, sizeof(path), "%s/b8k-home.raised", run);
 	if (!stat(path, &st))
 		return 0;
+	snprintf(path, sizeof(path), "%s/b8k-launch/starting", run);
+	if (!stat(path, &st))
+		return 1; /* a program under its curtain: the way to stop it */
 	snprintf(path, sizeof(path), "%s/b8k-launch/front", run);
 	if (!(f = fopen(path, "r")))
 		return 0;
@@ -156,21 +167,32 @@ static void draw(void *px, int on)
 	cairo_surface_t *s = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32, W, H,
 								  W * 4);
 	cairo_t *cr = cairo_create(s);
-	double x = W - SQ - 16, y = 8, c = SQ * 0.28;
+	double x = W - SQ - RIGHT, y = TOP, c = SQ * 0.2;
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_rgba(cr, 0, 0, 0, 0);
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 	if (on) {
-		rounded(cr, x, y, SQ, SQ, 16);
+		/* As the header buttons: #f2f2f0 with a #c0bfbc line, the mark in
+		 * #2e3436; red with a white mark only under the finger. */
+		rounded(cr, x + 0.5, y + 0.5, SQ - 1, SQ - 1, 16);
 		if (pressed)
-			cairo_set_source_rgb(cr, 0xa5 / 255.0, 0x1d / 255.0, 0x2d / 255.0);
-		else
 			cairo_set_source_rgb(cr, 0xe0 / 255.0, 0x1b / 255.0, 0x24 / 255.0);
-		cairo_fill(cr);
-		cairo_set_source_rgb(cr, 1, 1, 1);
-		cairo_set_line_width(cr, 7);
+		else
+			cairo_set_source_rgb(cr, 0xf2 / 255.0, 0xf2 / 255.0, 0xf0 / 255.0);
+		cairo_fill_preserve(cr);
+		if (pressed)
+			cairo_set_source_rgb(cr, 0xe0 / 255.0, 0x1b / 255.0, 0x24 / 255.0);
+		else
+			cairo_set_source_rgb(cr, 0xc0 / 255.0, 0xbf / 255.0, 0xbc / 255.0);
+		cairo_set_line_width(cr, 1);
+		cairo_stroke(cr);
+		if (pressed)
+			cairo_set_source_rgb(cr, 1, 1, 1);
+		else
+			cairo_set_source_rgb(cr, 0x2e / 255.0, 0x34 / 255.0, 0x36 / 255.0);
+		cairo_set_line_width(cr, 5);
 		cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
 		cairo_move_to(cr, x + SQ / 2.0 - c, y + SQ / 2.0 - c);
 		cairo_line_to(cr, x + SQ / 2.0 + c, y + SQ / 2.0 + c);

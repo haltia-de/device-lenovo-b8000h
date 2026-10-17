@@ -77,6 +77,14 @@ close | close-webapp)
 	fi
 	;;
 close-front)
+	# A program still starting under its curtain is stopped at once: there
+	# is nothing of it to lose yet.
+	if read -r sid spid cpid <"$run/b8k-launch/starting" 2>/dev/null; then
+		rm -f "$run/b8k-launch/starting"
+		kill "$spid" "$cpid" 2>/dev/null
+		/usr/local/bin/b8k-close update 2>/dev/null
+		exit 0
+	fi
 	# The window in front by its app id; its program's label when one of
 	# apps.conf has that app id.
 	app=$(cat "$run/b8k-launch/front" 2>/dev/null)

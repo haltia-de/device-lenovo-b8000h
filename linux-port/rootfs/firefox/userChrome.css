@@ -24,11 +24,11 @@
   min-height: 66px !important;
 }
 
-/* The top right corner is the shell's close button (b8k-close, 104 x 96
+/* The top right corner is the shell's close button (b8k-close, 110 x 104
    px): both rows end short of it. */
 #TabsToolbar,
 #nav-bar {
-  padding-inline-end: 104px !important;
+  padding-inline-end: 110px !important;
 }
 
 .tabbrowser-tab,

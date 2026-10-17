@@ -32,8 +32,9 @@ headerbar {
   border: none;
   box-shadow: none;
   min-height: 88px;
-  /* The right end is the shell's close button (b8k-close, 104 px). */
-  padding: 8px 112px 8px 16px;
+  /* The right end is the shell's close button (b8k-close): an 88 px button
+     like these, 6 px after the last of them and 16 px from the edge. */
+  padding: 8px 110px 8px 16px;
 }
 button.back {
   background-image: none;
@@ -45,6 +46,20 @@ button.back {
   min-width: 96px;
   font-size: 30px;
   color: #2e3436;
+}
+/* Every header button fills the header's 88 px, as the close button in
+   the corner does; an icon alone makes an 88 px square. The :not()
+   outweighs a program's own button.<class> rules, loaded after this. */
+headerbar button:not(.b8k-any) {
+  min-height: 72px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+headerbar button.image-button:not(.b8k-any) {
+  min-width: 72px;
+  padding: 7px;
 }
 """
 

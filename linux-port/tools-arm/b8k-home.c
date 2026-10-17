@@ -711,6 +711,26 @@ static void signal_close_button(void)
 	fclose(f);
 }
 
+/* A program starting under its curtain (b8k-launch writes "id pid
+ * curtain-pid"): the home screen takes the curtain away; the program goes
+ * on starting and its window comes up under the home screen. */
+static void drop_curtain(void)
+{
+	const char *run = runtime_dir();
+	char path[512], id[128];
+	int pid = 0, curtain = 0;
+	FILE *f;
+
+	if (!run)
+		return;
+	snprintf(path, sizeof(path), "%s/b8k-launch/starting", run);
+	if (!(f = fopen(path, "r")))
+		return;
+	if (fscanf(f, "%127s %d %d", id, &pid, &curtain) == 3 && curtain > 1)
+		kill((pid_t)curtain, SIGTERM);
+	fclose(f);
+}
+
 static void set_raised(int up)
 {
 	const char *run = runtime_dir();
@@ -728,6 +748,8 @@ static void set_raised(int up)
 	}
 	signal_panel();
 	signal_close_button();
+	if (up)
+		drop_curtain();
 	scroll = 0;
 	zwlr_layer_surface_v1_set_layer(layer, up ? ZWLR_LAYER_SHELL_V1_LAYER_TOP
 						 : ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);

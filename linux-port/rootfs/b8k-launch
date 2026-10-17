@@ -333,6 +333,9 @@ open)
 			kill "$splash_pid" 2>/dev/null || true
 			splash_pid=
 		fi
+		# No longer starting: the close button (b8k-close) looks again.
+		rm -f "$dir/starting"
+		/usr/local/bin/b8k-close update 2>/dev/null || true
 	}
 	trap stop_splash EXIT
 	if [ -x /usr/local/bin/b8k-splash ]; then
@@ -346,8 +349,13 @@ open)
 	# exec may carry arguments; apps.conf has no quoting, so plain splitting.
 	# shellcheck disable=SC2086
 	$bin >"$run"/b8k-app-"$id".log 2>&1 9>&- &
+	# While it starts, the close button stops it (b8k-ask close-front kills
+	# the pid and the curtain, and removes this file) and the home button
+	# takes the curtain away (b8k-home).
+	echo "$id $! ${splash_pid:-0}" >"$dir/starting"
+	/usr/local/bin/b8k-close update 2>/dev/null || true
 	i=0
-	while [ "$i" -lt 40 ]; do
+	while [ "$i" -lt 40 ] && [ -e "$dir/starting" ]; do
 		if /usr/local/bin/b8k-focus has $names >/dev/null 2>&1; then
 			exit 0
 		fi
