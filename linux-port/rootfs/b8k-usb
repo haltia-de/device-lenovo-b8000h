@@ -1,0 +1,36 @@
+#!/bin/sh
+# The role of the USB port: "device" (the default: a computer, charging)
+# or "host" (a keyboard or a mouse through an OTG adapter). The port cannot
+# tell an adapter from a cable (kernel patch 0044), so the power menu
+# switches it. In host mode the charger's OTG boost feeds the adapter 5 V
+# and the battery does not charge.
+#
+#   b8k-usb host | device | status
+set -u
+role=
+for f in /sys/class/usb_role/*/role; do [ -e "$f" ] && role=$f && break; done
+vbus=
+for f in /sys/bus/platform/drivers/reg-userspace-consumer/*/state; do
+	[ -e "$f" ] && vbus=$f && break
+done
+[ -n "$role" ] || { echo "b8k-usb: no USB role switch" >&2; exit 1; }
+
+case ${1:-status} in
+host)
+	if [ -n "$vbus" ]; then
+		echo enabled >"$vbus" || exit 1
+	fi
+	echo host >"$role"
+	;;
+device)
+	echo device >"$role"
+	[ -z "$vbus" ] || echo disabled >"$vbus"
+	;;
+status)
+	cat "$role"
+	;;
+*)
+	echo "usage: b8k-usb host | device | status" >&2
+	exit 2
+	;;
+esac

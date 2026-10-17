@@ -76,6 +76,10 @@ while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
 	i=$((i + 1))
 	sleep 1
 done
+# One reload at a time: b8k-netwatch and b8k-suspend run this script too,
+# and two at once left modprobe hanging.
+exec 8>/run/b8k-wlan.lock
+flock 8
 rmmod wlan_mt6628 2>/dev/null || true
 rmmod wmt 2>/dev/null || true
 modprobe wmt
@@ -135,12 +139,16 @@ apk --root "$R" --arch armv7 --no-cache del -q gdb 2>/dev/null || true
 apk --root "$R" --arch armv7 --no-cache add -q doas
 install -d "$R/etc/doas.d"
 echo 'permit persist :wheel' > "$R/etc/doas.d/wheel.conf"
-# The power menu may turn the machine off without a password prompt.
-# It cannot run any other command.
+# The power menu may turn the machine off, switch the USB port and open
+# the root terminal without a password prompt. It cannot run any other
+# command.
 # z- sorts after wheel.conf. doas uses the last matching rule.
 cat > "$R/etc/doas.d/z-b8k-power.conf" << 'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
 permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
+permit nopass user cmd /usr/local/sbin/b8k-usb args host
+permit nopass user cmd /usr/local/sbin/b8k-usb args device
+permit nopass user cmd /usr/local/sbin/b8k-rootsh
 EOF
 rm -rf "$R"/var/cache/apk/*
 

@@ -7,8 +7,9 @@
 # once. The driver also does not survive a system
 # sleep: the link is simply gone. So when the network was up and the link
 # stays down for a minute while Wi-Fi is switched on, reload once as well.
-# Another reload waits until the gateway has answered again, so a router
-# that is really gone does not cause a loop.
+# If the network is still not back, the reload is tried again 5, 15, 30
+# and then every 60 seconds after the last one, while Wi-Fi is switched
+# on (a reload that ran into the one at boot left the driver dead).
 # State for the panel icon: /run/b8k-net/state = up | down | off.
 set -u
 dir=/run/b8k-net
@@ -26,28 +27,51 @@ state() {
 }
 
 reload() {
-	reloaded=1
 	logger -t b8k-netwatch "$1, reloading wlan_mt6628"
 	sh /etc/local.d/00-b8k-modules.start
 	misses=0
 	gone=0
-	sleep 30
+	reloaded=1
+	# shellcheck disable=SC2086 # the delays are separate words
+	set -- $delays
+	retry_at=$(($(date +%s) + $1))
+	[ $# -gt 1 ] && shift
+	delays=$*
+}
+
+# The next try after a reload: once its delay has passed, while Wi-Fi is on
+# and NetworkManager is not in the middle of connecting (association and
+# DHCP take some seconds after a reload).
+retry_due() {
+	[ "$reloaded" = 1 ] && [ "$(date +%s)" -ge "$retry_at" ] &&
+		[ "$(nmcli radio wifi 2>/dev/null)" = enabled ] &&
+		[ "$(nmcli -t -f STATE general 2>/dev/null)" != connecting ]
 }
 
 misses=0
 gone=0
 reloaded=0
 was_up=0
+delays="5 15 30 60"
+retry_at=0
 while :; do
-	sleep 30
+	nap=30
+	if [ "$reloaded" = 1 ]; then
+		nap=$((retry_at - $(date +%s)))
+		[ "$nap" -ge 1 ] || nap=1
+		[ "$nap" -le 30 ] || nap=30
+	fi
+	sleep "$nap"
 	gw=$(ip route show default dev wlan0 2>/dev/null | awk '{ print $3; exit }')
 	carrier=
 	read -r carrier < /sys/class/net/wlan0/carrier 2>/dev/null
 	if [ "$carrier" != 1 ] || [ -z "$gw" ]; then
 		misses=0
 		state off
+		if retry_due; then
+			reload "still no link"
 		# Only a link that was up and vanished; Wi-Fi switched off is left alone.
-		if [ "$was_up" = 1 ] && [ "$reloaded" = 0 ] &&
+		elif [ "$was_up" = 1 ] && [ "$reloaded" = 0 ] &&
 		   [ "$(nmcli radio wifi 2>/dev/null)" = enabled ]; then
 			gone=$((gone + 1))
 			[ "$gone" -ge 2 ] && reload "link gone for a minute"
@@ -58,8 +82,14 @@ while :; do
 	if ping -c 1 -W 3 "$gw" >/dev/null 2>&1; then
 		misses=0
 		reloaded=0
+		delays="5 15 30 60"
 		was_up=1
 		state up
+		continue
+	fi
+	if retry_due; then
+		state down
+		reload "gateway $gw still silent"
 		continue
 	fi
 	misses=$((misses + 1))

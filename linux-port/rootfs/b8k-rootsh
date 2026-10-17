@@ -1,0 +1,6 @@
+#!/bin/sh
+# A root login shell for the terminal of the power menu (b8k-term).
+# --check only tells b8k-term that doas allows it.
+[ "${1:-}" = --check ] && exit 0
+cd /root 2>/dev/null || cd /
+exec /bin/sh -l

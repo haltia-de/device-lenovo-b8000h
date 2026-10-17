@@ -1,0 +1,8 @@
+#!/bin/sh
+# The terminal of the power menu runs a root shell (b8k-rootsh, allowed
+# without a password by a doas rule of the image). Without that rule, the
+# user's own login shell, so PATH still has the sbin directories.
+if doas -n /usr/local/sbin/b8k-rootsh --check 2>/dev/null; then
+	exec doas -n /usr/local/sbin/b8k-rootsh
+fi
+exec /bin/sh -l

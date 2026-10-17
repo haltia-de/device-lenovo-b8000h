@@ -134,6 +134,10 @@ if grep -q '/b8k-battery\.ko$' "/lib/modules/$release/modules.builtin" 2>/dev/nu
 		i=$((i + 1))
 		sleep 1
 	done
+	# One reload at a time: b8k-netwatch and b8k-suspend run this script
+	# too, and two at once left modprobe hanging.
+	exec 8>/run/b8k-wlan.lock
+	flock 8
 	rmmod wlan_mt6628 2>/dev/null || true
 	rmmod wmt 2>/dev/null || true
 	modprobe wmt
@@ -380,6 +384,9 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 644 "$REPO/linux-port/rootfs/fuzzel-ask.ini" "$ROOT/usr/local/share/b8k/fuzzel-ask.ini"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-usb" "$ROOT/usr/local/sbin/b8k-usb"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-rootsh" "$ROOT/usr/local/sbin/b8k-rootsh"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-term" "$ROOT/usr/local/bin/b8k-term"
 	# Without this, reboot turns the tablet off (see the script).
 	install -m 755 "$REPO/linux-port/rootfs/b8k-wdt-exrst" "$ROOT/usr/local/sbin/b8k-wdt-exrst"
 	cat > "$ROOT/etc/local.d/b8k-wdt-exrst.start" <<'EOF'
@@ -469,10 +476,25 @@ EOF
 			rm -f "$ROOT$ubol"
 			ubol=
 		fi
+		# Russian menus: Alpine packages no Firefox language packs, so
+		# Mozilla's signed one, which must match Firefox's version.
+		ru_for=151.0.3
+		ru_sha=61d3a59c7e98798f5bac288964764d1ff6b709ca860088a5d87a39ddc377bc85
+		ru=/usr/local/share/b8k/firefox/langpack-ru.xpi
+		ff_ver=$(sed -n 's/^Version=//p' "$ROOT/usr/lib/firefox/application.ini" | head -1)
+		if [ "$ff_ver" = "$ru_for" ] &&
+			wget -q -O "$ROOT$ru" "https://releases.mozilla.org/pub/firefox/releases/$ru_for/linux-x86_64/xpi/ru.xpi" &&
+			echo "$ru_sha  $ROOT$ru" | sha256sum -c - >/dev/null; then
+			chmod 644 "$ROOT$ru"
+		else
+			echo "warning: no Russian language pack for Firefox $ff_ver (pinned $ru_for)" >&2
+			rm -f "$ROOT$ru"
+			ru=
+		fi
 		mkdir -p "$ROOT/etc/firefox/policies"
 		python3 "$REPO/linux-port/rootfs/firefox/b8k-policies.py" \
 			"$ROOT/usr/lib/firefox/distribution/policies.json" \
-			"$ROOT/etc/firefox/policies/policies.json" $ubol
+			"$ROOT/etc/firefox/policies/policies.json" "$ubol" "$ru"
 		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
 		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
 			cat >> "$mc" <<'EOF'
@@ -612,6 +634,9 @@ EOF
 	cat > "$ROOT/etc/doas.d/z-b8k-power.conf" <<'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
 permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
+permit nopass user cmd /usr/local/sbin/b8k-usb args host
+permit nopass user cmd /usr/local/sbin/b8k-usb args device
+permit nopass user cmd /usr/local/sbin/b8k-rootsh
 EOF
 
 	# Kernel modules, GPU module sets and the GPU island come from outside

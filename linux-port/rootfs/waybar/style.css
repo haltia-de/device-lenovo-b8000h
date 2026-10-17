@@ -3,15 +3,18 @@
    each button's icon to the copy waybar loads. */
 * { font-family: "DejaVu Sans", sans-serif; font-size: 15px; }
 window#waybar { background: #242424; color: #ffffff; }
+/* Seven buttons, the open drawer, the battery, the two-line clock and the
+   hide button fit the 800 px column: 7 x 64 + 46 + 3 x 40 + 44 + 50 + 44
+   = 752. */
 .app {
-  min-height: 26px;
+  min-height: 20px;
   margin: 2px 4px;
-  padding-top: 46px;
+  padding-top: 40px;
   border-radius: 12px;
   background-color: #303030;
   background-repeat: no-repeat;
-  background-position: center 4px;
-  background-size: 40px 40px;
+  background-position: center 3px;
+  background-size: 36px 36px;
 }
 #custom-firefox { background-image: url("/usr/share/icons/hicolor/64x64/apps/firefox.png"); }
 #custom-calc { background-image: url("/usr/share/icons/hicolor/scalable/apps/galculator.svg"); }
@@ -53,23 +56,23 @@ window#waybar { background: #242424; color: #ffffff; }
 #custom-system.w0 { background-image: url("/usr/local/share/b8k/wifi-p0.svg"); }
 #custom-system.wx { background-image: url("/usr/local/share/b8k/wifi-x.svg"); }
 #custom-brightness {
-  min-height: 42px;
+  min-height: 36px;
   margin: 2px 4px;
   padding: 0;
   background-color: #242424;
   background-repeat: no-repeat;
   background-position: center;
-  background-size: 40px 40px;
+  background-size: 34px 34px;
   background-image: url("/usr/local/share/b8k/brightness.svg");
 }
 #custom-volume {
-  min-height: 42px;
+  min-height: 36px;
   margin: 2px 4px;
   padding: 0;
   background-color: #242424;
   background-repeat: no-repeat;
   background-position: center;
-  background-size: 46px 50px;
+  background-size: 37px 40px;
 }
 #custom-volume.v0 { background-image: url("/usr/local/share/b8k/vol-0.svg"); }
 #custom-volume.v1 { background-image: url("/usr/local/share/b8k/vol-1.svg"); }
@@ -85,7 +88,7 @@ window#waybar { background: #242424; color: #ffffff; }
   background-repeat: no-repeat;
   background-position: center;
 }
-#custom-wifi3 { background-size: 45px 34px; }
+#custom-wifi3 { min-height: 36px; background-size: 45px 34px; }
 #custom-battery { background-size: 83px 34px; }
 #custom-wifi3.w0 { background-image: url("/usr/local/share/b8k/wifi-p0.svg"); }
 #custom-wifi3.w1 { background-image: url("/usr/local/share/b8k/wifi-p1.svg"); }

@@ -43,10 +43,19 @@ chosen() {
 
 case ${1:-} in
 power)
-	case $(ask "Питание" "Выключить" "Перезагрузить" "Терминал" "Отмена") in
+	# The USB port is a device until switched to host for a keyboard
+	# (b8k-usb): the item offers the other role.
+	usb=
+	for f in /sys/class/usb_role/*/role; do [ -r "$f" ] && read -r usb <"$f"; done
+	case $usb in
+	host) usb_item="USB: компьютер" usb_to=device ;;
+	*) usb_item="USB: клавиатура" usb_to=host ;;
+	esac
+	case $(ask "Питание" "Выключить" "Перезагрузить" "Терминал" "$usb_item" "Отмена") in
 	0) chosen; doas -n /usr/local/sbin/b8k-poweroff off ;;
 	1) chosen; doas -n /usr/local/sbin/b8k-poweroff reboot ;;
 	2) chosen; /usr/local/bin/b8k-launch start term ;;
+	3) chosen; doas -n /usr/local/sbin/b8k-usb "$usb_to" ;;
 	esac
 	;;
 close | close-webapp)
