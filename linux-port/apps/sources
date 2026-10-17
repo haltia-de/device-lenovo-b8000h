@@ -14,5 +14,5 @@ max        https://github.com/trudenboy/b8k-max.git       v1.3   1e5fe2b12010d5d
 video      https://github.com/trudenboy/b8k-video.git     v1.3   d6e6bed1c04f96ef5db7a9008a5e84de7f76fc52
 music      https://github.com/trudenboy/b8k-music.git     v1.3   31f880f24e044bde5716a45851b747b0a59b70fb
 calendar   https://github.com/trudenboy/b8k-calendar.git  v1.0   eae0fb62ca311c63b938867dbec41afa567135d1
-files      https://github.com/trudenboy/b8k-files.git     v1.0   bd2b061f6be3e779400d6ffeefdf2fbaaaeee878
-text       https://github.com/trudenboy/b8k-text.git      v1.0   4f4dbbf22136b94558651e859f58afc79d5d458a
+files      https://github.com/trudenboy/b8k-files.git     v1.1   2751c7f71bbce83fb9375716383d563954a887f6
+text       https://github.com/trudenboy/b8k-text.git      v1.1   4c19e4fb146bdd0674c9e2dcd1b82a6bb2b7eda5
