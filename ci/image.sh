@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 # Build the root file system and the images ready to flash (ADR 0003),
-# after ci/kernel.sh, in the ci/Dockerfile environment (privileged: chroot
+# from ci/kernel.sh's output in /opt/b8000h/dist (b8000h-boot.img and the
+# kernel tarball), in the ci/Dockerfile environment (privileged: chroot
 # through qemu-arm), with this repository at /src. Output in
 # /opt/b8000h/dist:
 #   b8000h-sd-installer.img.xz   the microSD installer (B8KINST1): write it to
@@ -45,7 +46,12 @@ mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc none /proc/sys/fs
 
 # The root file system: Alpine armv7, the packages of the shell and the
 # programs (apps/packages.lock), the kernel's modules, the GPU set, the island.
-KERNEL=/opt/b8000h/linux-drm GPU_SETS=$OUT/gpu-sets ISLAND=$OUT/island.tgz \
+# The kernel comes as the tarball of ci/kernel.sh (an earlier CI job).
+KP=/opt/b8000h/kernel-pkg
+rm -rf "$KP"
+mkdir -p "$KP"
+tar -xzf "$DIST"/b8000h-kernel-*.tar.gz -C "$KP"
+KERNEL_PKG=$KP ISLAND=$OUT/island.tgz \
 	UI_PROFILE=phosh sh /src/linux-port/build-rootfs.sh
 
 # The release: make-release-rootfs.sh takes a tar of a working system; here

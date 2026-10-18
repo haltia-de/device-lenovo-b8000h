@@ -2,6 +2,9 @@
 # sources under qemu (ci/island.sh, ADR 0003) and released on its own: the
 # image build takes the one linux-port/hybris/island.lock names. Rebuilt
 # rarely, by hand (Run workflow) or by an island-* tag.
+# Two stages: the base (Debian, build dependencies, libhybris, sources) is
+# cached by the hash of what makes it, so a change to phoc's patch or to
+# the trim rebuilds only phoc.
 name: island
 on:
   workflow_dispatch:
@@ -19,16 +22,42 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
           df -h /
+      - name: The base's key
+        id: key
+        run: |
+          # Everything up to the chroot build in ci/island.sh, the libhybris
+          # build and the build environment.
+          h=$( (sed -n '1,/^log "build libhybris/p' ci/island.sh; cat linux-port/hybris/build-hybris.sh linux-port/hybris/tlspad.c ci/Dockerfile) | sha256sum | cut -c1-16)
+          echo "key=island-base-$h" >> "$GITHUB_OUTPUT"
+      - name: Cached base
+        id: base
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/b8000h/island-base.tar.zst
+          key: ${{ steps.key.outputs.key }}
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
         with:
           platforms: arm
       - name: The build environment
-        run: docker build -t b8k-build ci
-      - name: Build the island
+        uses: ./.github/actions/build-env
+      - name: The base
+        if: steps.base.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/b8000h"
-          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+          docker run --rm --privileged -e JOBS=4 -e ISLAND_STAGE=base -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
             b8k-build sh /src/ci/island.sh
+      - name: Keep the base
+        if: steps.base.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/b8000h/island-base.tar.zst
+          key: ${{ steps.key.outputs.key }}
+      - name: Build the island
+        run: |
+          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+            b8k-build sh -c 'rm -rf /opt/b8000h/g5 && mkdir -p /opt/b8000h/g5 &&
+              tar -C /opt/b8000h/g5 -I zstd -xpf /opt/b8000h/island-base.tar.zst --numeric-owner &&
+              sh /src/ci/island.sh'
       - name: The release
         env:
           GH_TOKEN: ${{ github.token }}

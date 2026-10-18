@@ -1,0 +1,20 @@
+# The ci/Dockerfile image as b8k-build, kept in the Actions cache by the
+# Dockerfile's hash so jobs load it instead of building it.
+name: build-env
+description: Load or build the b8k-build image
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ runner.temp }}/b8k-build.tar
+        key: b8k-build-${{ hashFiles('ci/Dockerfile') }}
+    - shell: bash
+      run: |
+        if [ -f "$RUNNER_TEMP/b8k-build.tar" ]; then
+          docker load -i "$RUNNER_TEMP/b8k-build.tar"
+        else
+          docker build -t b8k-build ci
+          docker save -o "$RUNNER_TEMP/b8k-build.tar" b8k-build
+        fi

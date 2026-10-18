@@ -1,7 +1,12 @@
-# The release of the device repository (ADR 0003): on a vX.Y.Z tag, build
-# the kernel, its modules and boot.img (ci/kernel.sh), then the root file
-# system from the locked packages and the pinned island, and the images
-# ready to flash (ci/image.sh), and put them into the tag's GitHub release.
+# The release of the device repository (ADR 0003), in steps that reuse what
+# earlier ones made:
+#   kernel   ci/kernel.sh: kernel, modules, GPU set, boot.img. Cached by the
+#            hash of everything it reads, so a change elsewhere skips it.
+#   rootfs   ci/image.sh on the kernel job's output: root file system from
+#            the locked packages and the pinned island, the images to flash.
+#   release  on a vX.Y.Z tag, both jobs' files into the tag's release.
+# A run without a tag keeps the files as artifacts for a week. "Re-run
+# failed jobs" reuses the artifacts of the jobs that passed.
 name: image
 on:
   push:
@@ -10,49 +15,93 @@ on:
 permissions:
   contents: write
 jobs:
-  image:
+  kernel:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Cached kernel
+        id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: kernel-out
+          key: kernel-${{ hashFiles('ci/Dockerfile', 'ci/sources.sh', 'ci/apply-patches.sh', 'ci/kernel.sh', 'linux-port/patches/**', 'linux-port/drivers/**', 'linux-port/initramfs/**', 'linux-port/build-safe-image.sh', 'tools/mkmtkimage.py', 'tools/fix-legacy-boot-header.py') }}
+      - name: Room on the disk
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
+      - name: The build environment
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/build-env
+      - name: Kernel, modules, boot.img
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/b8000h"
+          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+            b8k-build sh /src/ci/kernel.sh
+          mkdir -p kernel-out
+          sudo cp "$RUNNER_TEMP"/b8000h/dist/* kernel-out/
+          sudo chown -R "$(id -u):$(id -g)" kernel-out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kernel
+          path: kernel-out/
+          retention-days: 7
+
+  rootfs:
+    needs: kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Room on the disk
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
           df -h /
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: kernel
+          path: ${{ runner.temp }}/b8000h/dist
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
         with:
           platforms: arm
       - name: The build environment
-        run: docker build -t b8k-build ci
-      - name: Kernel, modules, boot.img
-        run: |
-          mkdir -p "$RUNNER_TEMP/b8000h"
-          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
-            b8k-build sh /src/ci/kernel.sh
+        uses: ./.github/actions/build-env
       - name: Root file system and images
         run: |
           req=; [ "$GITHUB_REF_TYPE" = tag ] && req=1
           docker run --rm --privileged -e B8K_REQUIRE_ISLAND=$req -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
             b8k-build sh /src/ci/image.sh
+          mkdir -p images
+          sudo mv "$RUNNER_TEMP"/b8000h/dist/b8000h-sd-installer.img.xz "$RUNNER_TEMP"/b8000h/dist/b8000h-root.ext4.xz images/
+          sudo chown -R "$(id -u):$(id -g)" images
           df -h /
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: images
+          path: images/
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    needs: [kernel, rootfs]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: The release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd "$RUNNER_TEMP/b8000h/dist"
+          cd dist
           rel=$(cat kernel-release)
-          sha256sum b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz | sudo tee SHA256SUMS
+          sha256sum b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
           tag=$GITHUB_REF_NAME
           gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
             gh release create "$tag" -R "$GITHUB_REPOSITORY" --title "$tag" --generate-notes \
               --notes "Kernel $rel. Install: docs/INSTALL.md (fastboot flash boot b8000h-boot.img; the unpacked b8000h-sd-installer.img on a microSD card)."
           gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber \
             b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz SHA256SUMS
-      - name: Artifacts of a run without a tag
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: b8000h-image
-          path: ${{ runner.temp }}/b8000h/dist/
-          retention-days: 7

@@ -566,7 +566,16 @@ EOF
 	KERNEL=${KERNEL:-/opt/b8000h/linux-drm}
 	GPU_SETS=${GPU_SETS:-/opt/b8000h/out/gpu-sets}
 	ISLAND=${ISLAND:-/opt/b8000h/out/island.tgz}
-	if [ -f "$KERNEL/include/generated/utsrelease.h" ]; then
+	# KERNEL_PKG instead: a kernel tarball of ci/kernel.sh, unpacked
+	# (lib/modules/<rel>, usr/lib/b8k/kN), for a build without the tree.
+	if [ -n "${KERNEL_PKG:-}" ]; then
+		rel=$(ls "$KERNEL_PKG/lib/modules")
+		install -d -m 755 "$ROOT/lib/modules"
+		cp -a "$KERNEL_PKG/lib/modules/$rel" "$ROOT/lib/modules/"
+		test -e "$ROOT/lib/modules/$rel/kernel/drivers/net/wireless/mediatek/mt6628/wlan_mt6628.ko"
+		echo "kernel modules: $rel"
+		GPU_SETS=$KERNEL_PKG/usr/lib/b8k
+	elif [ -f "$KERNEL/include/generated/utsrelease.h" ]; then
 		rel=$(sed -n 's/^#define UTS_RELEASE "\(.*\)"/\1/p' "$KERNEL/include/generated/utsrelease.h")
 		make -C "$KERNEL" ARCH=arm LLVM=1 modules_install INSTALL_MOD_PATH="$ROOT" >/dev/null
 		rm -f "$ROOT/lib/modules/$rel/build" "$ROOT/lib/modules/$rel/source"

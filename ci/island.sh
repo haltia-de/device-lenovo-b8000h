@@ -22,7 +22,8 @@ ROOT=$G/debian
 SRC=$G/src
 AOSP=$G/aosp
 REPO=/src
-JOBS=$(nproc)
+JOBS=${JOBS:-$(nproc)}
+STAGE=${ISLAND_STAGE:-all}
 
 log() { echo "b8k-island: $*"; }
 
@@ -225,7 +226,7 @@ trap cleanup EXIT
 log "build libhybris and phoc inside the armhf chroot"
 chroot "$ROOT" /usr/bin/env -i HOME=/root TERM=linux \
 	PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-	LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive JOBS="$JOBS" \
+	LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive JOBS="$JOBS" STAGE="$STAGE" \
 	/bin/sh -eu -c '
 		apt-get update
 		apt-get install -y --no-install-recommends \
@@ -235,11 +236,24 @@ chroot "$ROOT" /usr/bin/env -i HOME=/root TERM=linux \
 			sh /root/src/build-hybris.sh
 		fi
 		gcc -O2 -shared -fPIC -o /root/src/libtlspad.so /root/src/tlspad.c
+		[ "$STAGE" = base ] && exit 0
 		if [ ! -x /usr/local/bin/phoc ]; then
 			sh /root/src/build-phoc.sh
 		fi
 		readelf -lW /usr/local/bin/phoc
 	'
+
+# ISLAND_STAGE=base stops here and packs the tree (Debian, build
+# dependencies, libhybris, sources) for the CI cache; a later run unpacked
+# over /opt/b8000h/g5 skips all of that and builds phoc on top.
+if [ "$STAGE" = base ]; then
+	cleanup
+	rm -rf "$ROOT/var/cache/apt/archives/"*.deb
+	tar -C "$G" --numeric-owner -I 'zstd -T0 -3' -cf /opt/b8000h/island-base.tar.zst .
+	ls -l /opt/b8000h/island-base.tar.zst
+	log "BASE_OK"
+	exit 0
+fi
 
 # phoc must have an interpreter and no TLS segment of its own, or libtlspad
 # cannot cover the bionic GL slots.
