@@ -115,7 +115,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 ## Ошибки и вопросы
 
-[Issues](https://github.com/kz-creator/lenovo-b8000h-linux/issues) этого репозитория. Приложите `dmesg`, `/sys/fs/pstore/*`
+[Issues](https://github.com/trudenboy/lenovo-b8000h-linux/issues) этого репозитория. Приложите `dmesg`, `/sys/fs/pstore/*`
 (после падения) и `/var/log/phosh.log`.
 
 ## Благодарности
