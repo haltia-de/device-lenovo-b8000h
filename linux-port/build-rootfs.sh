@@ -61,7 +61,7 @@ case "$UI_PROFILE" in
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
 		py3-gobject3 openssh doas
-		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables" ;;
+		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables ffmpeg py3-mutagen" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
