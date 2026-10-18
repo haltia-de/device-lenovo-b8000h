@@ -7,6 +7,8 @@
 # that program (b8k-apps leaves it off the panel), with a warning.
 #
 # name     repository                                     tag    commit                                    [private]
+# b8k-compat first: the library the programs below import (ADR 0001).
+compat     https://github.com/trudenboy/b8k-compat.git    v1.0   eee5d5b263f91a381977677af8adfe43e10cf202
 paint      https://github.com/trudenboy/b8k-paint.git     v1.0   68eec731bdd112d34601ae7112fc9e533fb7604b
 weather    https://github.com/trudenboy/b8k-weather.git   v1.0   82e12d89ceaaca8eaefb4a5ad7cc4b0923cae7dd
 news       https://github.com/trudenboy/b8k-news.git      v1.0   bf314136b5eef4b4e0924b5266bdae04f521f62e
