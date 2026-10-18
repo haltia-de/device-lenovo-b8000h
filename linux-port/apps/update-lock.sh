@@ -25,8 +25,10 @@ one() { # name repo-url [tag]
 	path=repos/$repo/releases/latest
 	[ -z "${3:-}" ] || path=repos/$repo/releases/tags/$3
 	rel=$(api "$path" 2>/dev/null) || { echo "$name: no release in $repo, lines kept" >&2; return 0; }
-	tag=$(echo "$rel" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))')
-	files=$(echo "$rel" | python3 -c '
+	# printf, not echo: dash's echo turns \n in the release notes into a
+	# raw newline inside a JSON string.
+	tag=$(printf '%s' "$rel" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))')
+	files=$(printf '%s' "$rel" | python3 -c '
 import json, sys
 for a in json.load(sys.stdin).get("assets", []):
     n = a["name"]
