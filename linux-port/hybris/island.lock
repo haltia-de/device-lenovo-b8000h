@@ -1,0 +1,2 @@
+# The Debian island the image build installs (ci/image.sh): URL and sha256
+# of a release of the island workflow (ci/island.sh, ADR 0003).

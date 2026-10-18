@@ -1,0 +1,57 @@
+# The release of the device repository (ADR 0003): on a vX.Y.Z tag, build
+# the kernel, its modules and boot.img (ci/kernel.sh), then the root file
+# system from the locked packages and the pinned island, and the images
+# ready to flash (ci/image.sh), and put them into the tag's GitHub release.
+name: image
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - name: Room on the disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
+          df -h /
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - name: The build environment
+        run: docker build -t b8k-build ci
+      - name: Kernel, modules, boot.img
+        run: |
+          mkdir -p "$RUNNER_TEMP/b8000h"
+          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+            b8k-build sh /src/ci/kernel.sh
+      - name: Root file system and images
+        run: |
+          docker run --rm --privileged -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+            b8k-build sh /src/ci/image.sh
+          df -h /
+      - name: The release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/b8000h/dist"
+          rel=$(cat kernel-release)
+          sha256sum b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz | sudo tee SHA256SUMS
+          tag=$GITHUB_REF_NAME
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --title "$tag" --generate-notes \
+              --notes "Kernel $rel. Install: docs/INSTALL.md (fastboot flash boot b8000h-boot.img; the unpacked b8000h-sd-installer.img on a microSD card)."
+          gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber \
+            b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz SHA256SUMS
+      - name: Artifacts of a run without a tag
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: b8000h-image
+          path: ${{ runner.temp }}/b8000h/dist/
+          retention-days: 7

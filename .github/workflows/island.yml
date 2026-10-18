@@ -1,0 +1,43 @@
+# The Debian island (phoc on the GPU through libhybris), built from public
+# sources under qemu (ci/island.sh, ADR 0003) and released on its own: the
+# image build takes the one linux-port/hybris/island.lock names. Rebuilt
+# rarely, by hand (Run workflow) or by an island-* tag.
+name: island
+on:
+  workflow_dispatch:
+  push:
+    tags: ["island-*"]
+permissions:
+  contents: write
+jobs:
+  island:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - name: Room on the disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
+          df -h /
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - name: The build environment
+        run: docker build -t b8k-build ci
+      - name: Build the island
+        run: |
+          mkdir -p "$RUNNER_TEMP/b8000h"
+          docker run --rm --privileged -e JOBS=4 -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+            b8k-build sh /src/ci/island.sh
+      - name: The release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tag=$GITHUB_REF_NAME; else tag=island-$(date -u +%Y%m%d)-$GITHUB_RUN_NUMBER; fi
+          f=$RUNNER_TEMP/b8000h/dist/b8000h-island.tar.gz
+          sum=$(sha256sum "$f" | cut -d' ' -f1)
+          gh release view "$tag" >/dev/null 2>&1 ||
+            gh release create "$tag" --prerelease --title "$tag" --target "$GITHUB_SHA" \
+              --notes "The Debian island for phoc on the GPU (ci/island.sh). Pin it in linux-port/hybris/island.lock:"$'\n\n'"\`https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/b8000h-island.tar.gz $sum\`"
+          gh release upload "$tag" "$f" --clobber
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/b8000h-island.tar.gz $sum" >> "$GITHUB_STEP_SUMMARY"

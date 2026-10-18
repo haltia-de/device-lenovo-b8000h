@@ -7,8 +7,14 @@
 
 ## 0. Сборка
 
-Сборка целиком ещё не автоматизирована: часть шагов ручная, подробности по каждому —
-в `docs/` и в комментариях скриптов.
+**Готовые образы** — в выпусках репозитория на GitHub (тег `vX.Y.Z`):
+`b8000h-boot.img`, `b8000h-sd-installer.img.xz`, `b8000h-root.ext4.xz`,
+`b8000h-kernel-<версия>.tar.gz`, `SHA256SUMS`. Их собирает GitHub Actions
+(workflow `image`, ADR 0003 — `docs/adr/0003-ci-image.md`) теми же сценариями
+из `ci/`, что описаны ниже. Своя сборка: `docker build -t b8k-build ci`, затем
+в привилегированном контейнере с репозиторием в `/src` и рабочим каталогом в
+`/opt/b8000h` — `sh /src/ci/kernel.sh` и `sh /src/ci/image.sh` (остров —
+`sh /src/ci/island.sh`, часы под qemu). Ниже — что делает каждый шаг.
 
 1. **Окружение.** Linux или WSL с Alpine 3.24 (clang/LLVM, `mkbootimg`, `python3`).
 2. **Ядро.** [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1)
