@@ -22,10 +22,13 @@
  *    second strike and is dropped (Ignore Repeat); a quick double tap is
  *    one tap. 400 ms and 150 units (some 86 px) by default.
  *  - a second finger while one is down is ignored: one finger at a time.
- *  - buzz_ms: every touch that counts buzzes the motor (the
- *    regulator-haptic input device) this long, 70 ms by default, 0 for
- *    none: the shell's tap feedback for every program alike (ADR 0001),
- *    so programs need no buzzing of their own.
+ *  - buzz_ms: a tap buzzes the motor (the regulator-haptic input device)
+ *    this long, 70 ms by default, 0 for none: the shell's tap feedback for
+ *    every program alike (ADR 0001), so programs need no buzzing of their
+ *    own. A tap is a touch lifted within tap_radius of where it landed; a
+ *    finger that moves farther scrolls or drags, and does not buzz. A
+ *    finger held still for long_ms buzzes once then (a long press, as
+ *    its menu opens) and not again on the lift.
  *
  * Measured on the B8000-H: a finger is size 5 of 15, pressure ~48, 75-120
  * ms; a palm is 12-15, 120-143, with 3-6 contacts and ghost contacts of
@@ -64,9 +67,13 @@ struct slot {
 
 static struct {
 	int hold_ms, repeat_ms, repeat_radius, palm_major, palm_pressure, palm_contacts;
-	int palm_grace_ms, buzz_ms;
-} cfg = { 60, 400, 150, 11, 100, 3, 300, 70 };
+	int palm_grace_ms, buzz_ms, tap_radius, long_ms;
+} cfg = { 60, 400, 150, 11, 100, 3, 300, 70, 80, 600 };
 static int haptic_fd = -1, haptic_effect = -1;
+/* The touch handed to the session: when it went down, whether it moved
+ * past tap_radius (a scroll: no buzz), whether it has buzzed (long press). */
+static long long touch_start;
+static int touch_down, touch_moved, touch_buzzed;
 static int debug; /* B8K_TOUCHGUARD_DEBUG=1: every decision to stderr */
 
 static struct slot slots[SLOTS];
@@ -126,6 +133,10 @@ static void read_config(const char *path)
 			cfg.palm_grace_ms = v;
 		else if (!strcmp(key, "buzz_ms"))
 			cfg.buzz_ms = v < 0 ? 0 : (v > 500 ? 500 : v);
+		else if (!strcmp(key, "tap_radius"))
+			cfg.tap_radius = v;
+		else if (!strcmp(key, "long_ms"))
+			cfg.long_ms = v;
 	}
 	fclose(f);
 }
@@ -304,11 +315,17 @@ static void out_down(struct slot *s)
 	emit(EV_ABS, ABS_Y, s->y0);
 	emit(EV_ABS, ABS_PRESSURE, s->pressure);
 	sync_out();
-	buzz(); /* the touch counts: the hand feels it at once */
+	touch_down = 1;
+	touch_start = now_ms();
+	touch_moved = touch_buzzed = 0;
 }
 
 static void out_move(struct slot *s)
 {
+	long long dx = s->x - s->x0, dy = s->y - s->y0;
+
+	if (dx * dx + dy * dy > (long long)cfg.tap_radius * cfg.tap_radius)
+		touch_moved = 1; /* a scroll or a drag: no buzz */
 	emit(EV_ABS, ABS_MT_SLOT, 0);
 	emit(EV_ABS, ABS_MT_POSITION_X, s->x);
 	emit(EV_ABS, ABS_MT_POSITION_Y, s->y);
@@ -332,6 +349,18 @@ static void out_up(int as_palm)
 	emit(EV_KEY, BTN_TOUCH, 0);
 	emit(EV_ABS, ABS_PRESSURE, 0);
 	sync_out();
+	if (touch_down && !as_palm && !touch_moved && !touch_buzzed)
+		buzz(); /* a tap, felt as it is lifted (when it is taken) */
+	touch_down = 0;
+}
+
+/* A finger held still this long: the long press buzzes now, once. */
+static void check_long(long long t)
+{
+	if (touch_down && !touch_moved && !touch_buzzed && t - touch_start >= cfg.long_ms) {
+		touch_buzzed = 1;
+		buzz();
+	}
 }
 
 static int is_palm(const struct slot *s)
@@ -474,8 +503,14 @@ int main(int argc, char **argv)
 		struct pollfd pf = { in_fd, POLLIN, 0 };
 		int timeout = -1;
 
+		check_long(now_ms()); /* a still finger keeps sending events too */
+
 		if (primary >= 0 && slots[primary].state == PENDING) {
 			long long left = slots[primary].start + cfg.hold_ms - now_ms();
+
+			timeout = left > 0 ? (int)left : 0;
+		} else if (touch_down && !touch_moved && !touch_buzzed) {
+			long long left = touch_start + cfg.long_ms - now_ms();
 
 			timeout = left > 0 ? (int)left : 0;
 		}
@@ -488,6 +523,7 @@ int main(int argc, char **argv)
 			break;
 		if (!(pf.revents & POLLIN)) {
 			check_hold(now_ms());
+			check_long(now_ms());
 			continue;
 		}
 		ssize_t n = read(in_fd, evs, sizeof(evs));
