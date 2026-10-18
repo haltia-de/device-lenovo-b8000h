@@ -31,7 +31,8 @@ jobs:
             b8k-build sh /src/ci/kernel.sh
       - name: Root file system and images
         run: |
-          docker run --rm --privileged -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+          req=; [ "$GITHUB_REF_TYPE" = tag ] && req=1
+          docker run --rm --privileged -e B8K_REQUIRE_ISLAND=$req -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
             b8k-build sh /src/ci/image.sh
           df -h /
       - name: The release

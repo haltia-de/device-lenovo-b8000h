@@ -20,13 +20,21 @@ mkdir -p "$OUT" "$DIST"
 	wget -q -O "$OUT/wpa_supplicant-2.11.tar.gz" https://w1.fi/releases/wpa_supplicant-2.11.tar.gz
 sh /src/linux-port/wifi/build-wpa-nm.sh
 
-# The island, as pinned.
-read -r island_url island_sum <<EOF
-$(grep -v '^#' /src/linux-port/hybris/island.lock | head -1)
-EOF
-[ -f "$OUT/island.tgz" ] && echo "$island_sum  $OUT/island.tgz" | sha256sum -c - >/dev/null 2>&1 ||
-	wget -q -O "$OUT/island.tgz" "$island_url"
-echo "$island_sum  $OUT/island.tgz" | sha256sum -c -
+# The island, as pinned. A release needs it (B8K_REQUIRE_ISLAND=1); a test
+# build without one gets a session that draws on the CPU.
+island=$(grep -v '^#' /src/linux-port/hybris/island.lock | grep . | head -1 || true)
+rm -f "$OUT/island.tgz.pinned"
+if [ -n "$island" ]; then
+	island_url=${island%% *}
+	island_sum=${island##* }
+	[ -f "$OUT/island.tgz" ] && echo "$island_sum  $OUT/island.tgz" | sha256sum -c - >/dev/null 2>&1 ||
+		wget -q -O "$OUT/island.tgz" "$island_url"
+	echo "$island_sum  $OUT/island.tgz" | sha256sum -c -
+else
+	[ -z "${B8K_REQUIRE_ISLAND:-}" ] || { echo "no island in linux-port/hybris/island.lock" >&2; exit 1; }
+	echo "warning: no island pinned, the image draws on the CPU" >&2
+	rm -f "$OUT/island.tgz"
+fi
 
 # qemu-arm for the chroot steps (the host registered binfmt with the F flag).
 [ -e /proc/sys/fs/binfmt_misc/qemu-arm ] || {
