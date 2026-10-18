@@ -842,7 +842,7 @@ index 9a967eb..bdbbd3c 100644
  #include <wayland-server-protocol.h>
  #include <wayland-util.h>
  #include <wlr/render/egl.h>
-@@ -27,6 +28,95 @@ struct wlr_gles2_texture *gles2_get_texture(
+@@ -27,6 +28,102 @@ struct wlr_gles2_texture *gles2_get_texture(
  	return texture;
  }
  
