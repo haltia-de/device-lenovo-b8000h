@@ -14,11 +14,13 @@ the Wi-Fi drivers out of the way.
 The key shares its input device with Home. The device is grabbed so
 elogind cannot power the tablet off, and Home is passed through.
 
-A program of the session holds the screen on, or the system awake, with a
-file in $XDG_RUNTIME_DIR/b8k-awake/ named after its pid: <pid>.screen keeps
-the idle timer from turning the lamp off (a video), <pid>.suspend keeps
-the system from sleeping while the lamp is off (music). A file whose
-process is gone counts for nothing.
+A program holds the screen on, or the system awake, as on any desktop:
+with a logind inhibitor in "block" mode — "idle" keeps the idle timer from
+turning the lamp off (a video), "sleep" keeps the system from sleeping
+while the lamp is off (music); b8k-compat's Awake takes "sleep:idle".
+The shell's older way still counts: a file in $XDG_RUNTIME_DIR/b8k-awake/
+named after the program's pid, <pid>.screen or <pid>.suspend; a file
+whose process is gone counts for nothing.
 """
 import ctypes
 import errno
@@ -290,8 +292,31 @@ def session_user():
         return "root"
 
 
+def inhibited(what):
+    """True while some process holds a logind "block" inhibitor for what
+    ("idle" or "sleep"). Delay inhibitors (NetworkManager's) do not count."""
+    try:
+        from gi.repository import Gio, GLib
+
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        res = bus.call_sync("org.freedesktop.login1", "/org/freedesktop/login1",
+                            "org.freedesktop.login1.Manager", "ListInhibitors", None,
+                            GLib.VariantType("(a(ssssuu))"), Gio.DBusCallFlags.NONE,
+                            3000, None)
+    except Exception as exc:  # no logind or no gi: the files alone decide
+        log("INHIBIT_LIST_FAIL %s" % type(exc).__name__)
+        return False
+    for whats, _who, _why, mode, _uid, _pid in res.unpack()[0]:
+        if mode == "block" and what in whats.split(":"):
+            return True
+    return False
+
+
 def awake_held(kind):
-    """True while a live program of the session holds a <pid>.<kind> file."""
+    """True while a program keeps the screen on ("screen") or the system up
+    ("suspend"): a logind block inhibitor, or a live <pid>.<kind> file."""
+    if inhibited("idle" if kind == "screen" else "sleep"):
+        return True
     try:
         uid = pwd.getpwnam(session_user()).pw_uid
         names = os.listdir("/run/user/%d/b8k-awake" % uid)

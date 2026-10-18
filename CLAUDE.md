@@ -87,6 +87,7 @@ The session in `/etc/local.d/desktop.start` runs `phoc-gpu -C /usr/local/share/b
   - Python GTK3 programs must call `gi.require_version("Gdk", "3.0")` as well as `Gtk`: GTK4 is installed too, and gi otherwise loads Gdk 4.
 - **Power key** (`b8k-sleep.py`, root, nice -10).
   - A short press toggles the backlight on release. A one-second hold opens `b8k-ask power`. Ten minutes without input from any device (read ungrabbed) turn the screen off the same way (`IDLE_OFF`). 30 s after the screen goes off, `b8k-suspend` runs s2idle.
+  - Programs keep the screen on or the system up with a logind "block" inhibitor (`idle` / `sleep`; b8k-compat's `Awake` takes `sleep:idle`), which `b8k-sleep.py` reads through `ListInhibitors` (delay ones, NetworkManager's, do not count); the older `$XDG_RUNTIME_DIR/b8k-awake/<pid>.screen|.suspend` files still count.
   - BLS latches a new PWM duty only at the start of a frame, so after each change the handler runs `grim` into `/dev/null` to make phoc draw one.
   - Programs for the session start with the uid and an allowlisted environment of the real `/usr/bin/waybar` process. That uid must belong to `/etc/b8k/session-user`.
   - `b8k-ask power` calls `doas -n /usr/local/sbin/b8k-poweroff off|reboot`. The doas rule is written by `make-release-rootfs.sh`.
