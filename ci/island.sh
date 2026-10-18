@@ -203,6 +203,8 @@ printf '%s\n' \
 	'deb https://deb.debian.org/debian-security trixie-security main' \
 	> "$ROOT/etc/apt/sources.list"
 cp /etc/resolv.conf "$ROOT/etc/resolv.conf"
+# deb.debian.org resets a connection now and then; apt retries the file.
+echo 'Acquire::Retries "10";' > "$ROOT/etc/apt/apt.conf.d/80-b8k-retries"
 
 mkdir -p "$ROOT/root/src" "$ROOT/proc" "$ROOT/sys" "$ROOT/dev/pts" "$ROOT/tmp"
 mountpoint -q "$ROOT/proc" || mount -t proc proc "$ROOT/proc"
@@ -272,7 +274,7 @@ inside /bin/sh -eu -c '
 '
 cleanup
 trap - EXIT
-rm -rf "$ROOT/root/src" "$ROOT/etc/resolv.conf"
+rm -rf "$ROOT/root/src" "$ROOT/etc/resolv.conf" "$ROOT/etc/apt/apt.conf.d/80-b8k-retries"
 mkdir -p "$ROOT/root/src"
 # The trimmed island must still start phoc's dynamic linking.
 inside /usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 \
