@@ -42,6 +42,11 @@ fetch_app() {
 			exit 1
 		fi
 	fi
+	# A program with a C part builds it first against the tablet's sysroot
+	# (Видео's vplay/build.sh: b8k-vplay; it needs the keyboard's sysroot).
+	if [ -f "$dir/vplay/build.sh" ]; then
+		sh "$dir/vplay/build.sh" || echo "build-rootfs: $name: vplay not built" >&2
+	fi
 	B8K_CACHE=/opt/b8000h/out sh "$dir/install.sh" "$ROOT"
 }
 IMG=/opt/b8000h/out/b8000h-sd.img
@@ -347,10 +352,6 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# (tools-arm/build-b8k-splash.sh).
 	if [ -x /opt/b8000h/tools/b8k-splash ]; then
 		install -m 755 /opt/b8000h/tools/b8k-splash "$ROOT/usr/local/bin/b8k-splash"
-	fi
-	# The video window (tools-arm/build-b8k-vplay.sh), played into by Видео.
-	if [ -x /opt/b8000h/tools/b8k-vplay ]; then
-		install -m 755 /opt/b8000h/tools/b8k-vplay "$ROOT/usr/local/bin/b8k-vplay"
 	fi
 	# The filter for accidental touches (tools-arm/build-b8k-touchguard.sh),
 	# on from the first boot; settings in /etc/b8k/touchguard.conf.

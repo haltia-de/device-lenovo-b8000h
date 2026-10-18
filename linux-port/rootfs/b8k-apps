@@ -139,6 +139,8 @@ def fields_of(app_id, entry):
         return None
     binary = os.path.basename(command.split()[0])
     ids = [x for x in (entry.get("StartupWMClass"), app_id, binary) if x]
+    # Windows of helper programs that belong to it (Видео: b8k-vplay).
+    ids += [w for w in re.split(r"[;\s]+", entry.get("X-B8K-Windows", "")) if w]
     return {
         "label": entry.get("Name[ru]") or entry.get("Name") or app_id,
         "icon": find_icon(entry.get("Icon", "")),
