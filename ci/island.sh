@@ -214,7 +214,11 @@ mountpoint -q "$ROOT/dev/pts" || mount --bind /dev/pts "$ROOT/dev/pts"
 mountpoint -q "$ROOT/root/src" || mount --bind "$SRC" "$ROOT/root/src"
 
 cleanup() {
-	umount "$ROOT/root/src" "$ROOT/dev/pts" "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" 2>/dev/null || true
+	# /dev and /sys are recursive binds: their submounts go first (-R).
+	for m in root/src dev/pts dev proc sys; do
+		mountpoint -q "$ROOT/$m" && umount -R "$ROOT/$m"
+	done
+	return 0
 }
 trap cleanup EXIT
 
@@ -281,6 +285,11 @@ inside /usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 \
 	--library-path /usr/local/hybris/lib:/usr/local/lib/arm-linux-gnueabihf:/usr/lib/arm-linux-gnueabihf \
 	--list /usr/local/bin/phoc | grep -q "not found" && { log "FAIL a library of phoc is gone"; exit 1; }
 
+if grep -q " $ROOT/" /proc/mounts; then
+	log "FAIL still mounted inside the island"
+	grep " $ROOT/" /proc/mounts
+	exit 1
+fi
 mkdir -p /opt/b8000h/dist
 tar -C "$G" --numeric-owner -czf /opt/b8000h/dist/b8000h-island.tar.gz debian
 sha256sum /opt/b8000h/dist/b8000h-island.tar.gz
