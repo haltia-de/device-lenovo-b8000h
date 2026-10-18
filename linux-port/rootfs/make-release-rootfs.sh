@@ -122,13 +122,18 @@ rm -f "$R"/usr/local/bin/*.bak* "$R/usr/local/lib/b8k-nonroot-uid.so" \
 [ -e "$R/etc/local.d/resize-emmc-root.done" ] &&
 	mv "$R/etc/local.d/resize-emmc-root.done" "$R/etc/local.d/resize-emmc-root.start"
 # GPU island: runtime only (no build tree, toolchain, headers, docs).
-rm -rf "$R"/opt/debian/root/* "$R"/opt/debian/tmp/* \
-	"$R"/opt/debian/var/cache/apt/* "$R"/opt/debian/var/lib/apt/lists/* \
-	"$R"/opt/debian/usr/share/doc "$R"/opt/debian/usr/share/man \
-	"$R"/opt/debian/usr/share/info "$R"/opt/debian/usr/include \
-	"$R"/opt/debian/usr/local/include "$R"/opt/debian/usr/lib/gcc
-find "$R/opt/debian" -name '*.a' -type f -delete
-: > "$R/opt/debian/etc/resolv.conf"
+# A test image without one draws on the CPU.
+if [ -d "$R/opt/debian" ]; then
+	rm -rf "$R"/opt/debian/root/* "$R"/opt/debian/tmp/* \
+		"$R"/opt/debian/var/cache/apt/* "$R"/opt/debian/var/lib/apt/lists/* \
+		"$R"/opt/debian/usr/share/doc "$R"/opt/debian/usr/share/man \
+		"$R"/opt/debian/usr/share/info "$R"/opt/debian/usr/include \
+		"$R"/opt/debian/usr/local/include "$R"/opt/debian/usr/lib/gcc
+	find "$R/opt/debian" -name '*.a' -type f -delete
+	: > "$R/opt/debian/etc/resolv.conf"
+else
+	echo "warning: no GPU island in the image" >&2
+fi
 
 # --- accounts: root locked, admin through doas for wheel ----------------
 sed -i 's/^root:[^:]*:/root:*:/' "$R/etc/shadow"
