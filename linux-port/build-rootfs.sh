@@ -545,6 +545,10 @@ EOF
 		fi
 	fi
 	# Aisleriot for fingers: no menu bar or title, a large toolbar and chooser.
+	# The shell's GTK theme for every program of the session (b8k-launcher).
+	install -d -m 755 "$ROOT/usr/share/themes/b8k/gtk-3.0"
+	install -m 644 "$REPO/linux-port/rootfs/themes/b8k/gtk-3.0/gtk.css" \
+		"$ROOT/usr/share/themes/b8k/gtk-3.0/gtk.css"
 	install -d -m 755 "$ROOT/usr/share/themes/b8k-cards/gtk-3.0"
 	install -m 644 "$REPO/linux-port/rootfs/themes/b8k-cards/gtk-3.0/gtk.css" \
 		"$ROOT/usr/share/themes/b8k-cards/gtk-3.0/gtk.css"

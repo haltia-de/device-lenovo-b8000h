@@ -279,7 +279,7 @@ class Lamp:
 # Only these variables reach the menu; anything else in the panel's
 # environment (LD_PRELOAD, PATH...) is not trusted by a root process.
 SESSION_VARS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
-                "LANG", "NO_AT_BRIDGE", "GTK_A11Y")
+                "LANG", "NO_AT_BRIDGE", "GTK_A11Y", "GTK_THEME")
 
 
 def session_user():

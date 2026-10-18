@@ -10,6 +10,11 @@ rm -f "$run"/b8k-drawer-open
 # No screen reader runs here. Without these GTK starts the at-spi bus and
 # its registry for every session.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
+# The shell's GTK theme (themes/b8k): tall headers with room for «✕», large
+# questions. A program with a theme of its own (env= in apps.conf) keeps it.
+if [ -f /usr/share/themes/b8k/gtk-3.0/gtk.css ]; then
+	export GTK_THEME=b8k
+fi
 # The programs and the panel as set in ~/.config/b8k (b8k-apps): the
 # session's apps.conf, read by everything started below, and the panel's
 # config and style. Without them, the built-in ones.
@@ -31,7 +36,7 @@ fi
 # The brightness chosen last time (b8k-brightness keeps it).
 /usr/local/bin/b8k-brightness --restore >"$run"/b8k-brightness.log 2>&1
 # Settings starts through D-Bus activation and takes the bus environment.
-dbus-update-activation-environment NO_AT_BRIDGE GTK_A11Y 2>/dev/null
+dbus-update-activation-environment NO_AT_BRIDGE GTK_A11Y ${GTK_THEME:+GTK_THEME} 2>/dev/null
 # Volume keys. Without this nothing handles them, and a muted sink at 0%
 # has no way back.
 if [ -x /usr/local/bin/b8k-volume ]; then

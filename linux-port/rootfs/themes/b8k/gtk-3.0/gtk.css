@@ -1,0 +1,73 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* b8k: the tablet shell's GTK theme (ADR 0001). Adwaita, with what makes
+   a program fit a touch screen held by an older hand: a tall header with
+   the right end left free for the shell's close button (b8k-close, 110 px),
+   and large questions. Programs draw only their content; in GNOME or KDE
+   the same programs simply look like Adwaita ones.
+
+   The selectors stay off what waybar draws (the panel runs with this
+   theme too): headers, dialogs and b8k-compat's classes only. */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+
+/* --- the header --------------------------------------------------------- */
+headerbar {
+  background-color: #dcdcda;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-height: 88px;
+  padding: 8px 110px 8px 16px;
+}
+headerbar label.title { font-size: 30px; font-weight: bold; color: #2e3436; }
+headerbar label.subtitle { font-size: 18px; color: #5e5c64; }
+/* Every header button fills its 88 px, as the close button does; an icon
+   alone makes a square. */
+headerbar button {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 72px;
+  min-width: 72px;
+  padding: 7px 16px;
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 26px;
+  color: #2e3436;
+}
+headerbar button.image-button { padding: 7px; }
+headerbar button:active, headerbar button:checked { background-color: #c4dcf7; }
+headerbar button.suggested-action { background-color: #3584e4; border-color: #3584e4;
+  color: #ffffff; }
+headerbar button.destructive-action { background-color: #e01b24; border-color: #e01b24;
+  color: #ffffff; }
+
+/* --- questions (b8k-compat's dialogs, and GTK's own) --------------------- */
+dialog, messagedialog { font-size: 24px; }
+dialog .b8k-title, messagedialog label.title { font-size: 28px; font-weight: bold;
+  color: #2e3436; margin: 8px 8px 12px 8px; }
+dialog button, messagedialog button {
+  min-height: 72px;
+  min-width: 140px;
+  padding: 0 28px;
+  font-size: 24px;
+  border-radius: 16px;
+}
+dialog button.b8k-choice { min-height: 76px; font-size: 26px; }
+dialog button.b8k-choice.current { background-image: none; background-color: #c4dcf7; }
+dialog entry { min-height: 64px; font-size: 26px; }
+/* A dialog's own title bar would only repeat the program's name: a thin
+   edge instead, the question being the large label inside. */
+dialog headerbar.titlebar, messagedialog headerbar.titlebar,
+dialog .titlebar, messagedialog .titlebar {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+}
+dialog .titlebar label.title, messagedialog .titlebar label.title { font-size: 1px;
+  color: transparent; }
+dialog .titlebar button.titlebutton, messagedialog .titlebar button.titlebutton {
+  min-height: 0; min-width: 0; padding: 0; border: none; background: none;
+  color: transparent; }
