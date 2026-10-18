@@ -347,8 +347,35 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# linux-port/apps/sources (ADR 0001). A repository with a build.sh (the
 	# shell) builds its C parts first, against the keyboard's sysroot.
 	# They live in repositories of their own (linux-port/apps/sources).
+	# Released packages first (ADR 0002): apps/packages.lock names each
+	# package file of a GitHub release and its sha256; apk checks the
+	# project's signature (apk-keys/) and brings the dependencies from
+	# Alpine. A repository the lock does not name, or every one with
+	# B8K_FROM_SOURCE=1, is built from its tag in sources as before.
+	install -D -m 644 "$REPO"/linux-port/apk-keys/*.rsa.pub -t "$ROOT/etc/apk/keys/"
+	lock=$REPO/linux-port/apps/packages.lock
+	locked=
+	if [ -z "${B8K_FROM_SOURCE:-}" ] && [ -f "$lock" ]; then
+		cache=/opt/b8000h/out/apks
+		mkdir -p "$cache"
+		files=
+		while read -r name repo version file sum; do
+			case $name in ''|'#'*) continue ;; esac
+			[ -f "$cache/$file" ] && echo "$sum  $cache/$file" | sha256sum -c - >/dev/null 2>&1 ||
+				wget -q -O "$cache/$file" "https://github.com/$repo/releases/download/v$version/$file"
+			echo "$sum  $cache/$file" | sha256sum -c - >/dev/null || {
+				echo "$file: sha256 is not the lock's" >&2
+				exit 1
+			}
+			files="$files $cache/$file"
+			locked="$locked $name "
+		done <"$lock"
+		# shellcheck disable=SC2086 # the file list
+		apk --root "$ROOT" --arch armv7 add $files
+	fi
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
+		case $locked in *" $name "*) continue ;; esac
 		fetch_app "$name" "$url" "$tag" "$commit" "$private"
 	done
 	# Speaker: hardware gain fixed at the clean top step, software volume.
