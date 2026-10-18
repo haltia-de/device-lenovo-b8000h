@@ -20,9 +20,13 @@ split. The decision behind them: docs/adr/0001-three-layers.md.
 - **Программа** (program; a repository of its own each): Видео, Музыка, MAX,
   Файлы/Галерея, Блокнот, Календарь, Раскраска, Погода, Новости. Built and
   installed on its own, at home in GNOME or KDE as in the shell.
+- **Кастомизация Firefox** (repository `b8k-firefox`): Firefox for a touch
+  screen and weak hardware — large toolbar buttons (`userChrome.css`),
+  autoconfig scripts (lean, ram, web-app windows), policies; usable without
+  the shell, which only switches on room for «✕».
 - **Библиотека программ** (`b8k-compat`, Python module `b8k_compat`, GTK3):
   the code programs share — questions and menus as in-window GTK dialogs,
-  settings, sound on libmpv, the photo viewer and small pictures, a fake
+  settings (ini, `configparser`), sound on libmpv, the photo viewer and small pictures, a fake
   player for tests. It knows nothing of the shell.
 - **Id программы** (program id): one reverse-DNS name, `io.github.trudenboy.<Program>`,
   for the `.desktop` file, the GApplication and the Wayland window.
