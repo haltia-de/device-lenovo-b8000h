@@ -79,56 +79,19 @@ aliases_of() { field "$1" app_ids; }
 # Firefox reads these from the profile, so they must be there before the
 # first start: otherwise the large buttons only came with the second one.
 install_firefox_chrome() {
-	[ -f /usr/local/share/b8k/userChrome.css ] || return 0
 	home=${HOME:-/home/user}
-	root=$home/.config/mozilla/firefox
-	if [ ! -e "$root/profiles.ini" ] && [ ! -e "$home/.mozilla/firefox/profiles.ini" ]; then
-		mkdir -p "$root/b8k.default"
-		printf '%s\n' '[Profile0]' 'Name=default' 'IsRelative=1' 'Path=b8k.default' \
-			'Default=1' '' '[General]' 'StartWithLastProfile=1' 'Version=2' >"$root/profiles.ini"
+	# The profiles: b8k-firefox's large toolbar and prefs, with room for
+	# the close button in the corner (--shell).
+	if command -v b8k-firefox-profile >/dev/null; then
+		b8k-firefox-profile --shell || true
 	fi
+	root=$home/.config/mozilla/firefox
 	# Firefox passes over a profile it did not make itself and makes its own
 	# default-release, unless it keeps to the profiles.ini default. Only for
 	# the profile made here: an older one stays as Firefox chose it.
 	if [ -f "$root/profiles.ini" ] && ! grep -q '^\[Install' "$root/profiles.ini"; then
 		export MOZ_LEGACY_PROFILES=1
 	fi
-	for root in "$home/.config/mozilla/firefox" "$home/.mozilla/firefox"; do
-		[ -d "$root" ] || continue
-		for prof in "$root"/*.*; do
-			[ -d "$prof" ] || continue
-			mkdir -p "$prof/chrome"
-			for css in userChrome.css userContent.css; do
-				src=/usr/local/share/b8k/$css
-				[ -f "$src" ] || continue
-				if ! cmp -s "$src" "$prof/chrome/$css" 2>/dev/null; then
-					cp "$src" "$prof/chrome/$css"
-					chmod 644 "$prof/chrome/$css" 2>/dev/null || true
-				fi
-			done
-			js=$prof/user.js
-			touch "$js"
-			line='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("browser.tabs.tabClipWidth", 1);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("browser.tabs.tabMinWidth", 240);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("dom.ipc.processCount", 1);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("dom.ipc.processCount.webIsolated", 1);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("fission.autostart", false);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("dom.ipc.keepProcessesAlive.web", 0);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			line='user_pref("browser.sessionstore.resume_from_crash", false);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-			sed -i 's/user_pref("browser.startup.page", 0);/user_pref("browser.startup.page", 1);/g' "$js"
-			line='user_pref("browser.startup.page", 1);'
-			grep -qxF "$line" "$js" || printf '%s\n' "$line" >> "$js"
-		done
-	done
 }
 
 # An old shell id a program with a .desktop file took over (b8k-apps writes

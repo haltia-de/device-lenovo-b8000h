@@ -9,6 +9,7 @@
 # name     repository                                     tag    commit                                    [private]
 # b8k-compat first: the library the programs below import (ADR 0001).
 compat     https://github.com/trudenboy/b8k-compat.git    v1.2   ba2734f75c29bbcc1abea56b423b0f906ce49556
+firefox    https://github.com/trudenboy/b8k-firefox.git   v1.1   0dbdf9ce8d8aec7a99436d3f373ab43f0766c04b
 paint      https://github.com/trudenboy/b8k-paint.git     v3.0   b1efb815aa27cb394e4373cc587b79632fee9a4c
 weather    https://github.com/trudenboy/b8k-weather.git   v1.1   512b4ad95a9ef4ea3fd835f87ed2165e1e811224
 news       https://github.com/trudenboy/b8k-news.git      v1.1   77a70e9f2f6cf5e3103819c356e3593114950650

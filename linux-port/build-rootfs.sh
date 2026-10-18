@@ -485,68 +485,11 @@ EOF
 	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
 	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
 	install -m 644 "$REPO/linux-port/rootfs/phoc.ini" "$ROOT/usr/local/share/b8k/phoc.ini"
-	install -m 644 "$REPO/linux-port/rootfs/firefox/userChrome.css" "$ROOT/usr/local/share/b8k/userChrome.css"
-	install -m 644 "$REPO/linux-port/rootfs/firefox/userContent.css" "$ROOT/usr/local/share/b8k/userContent.css"
 	# The program registry read by b8k-launch, b8k-focus, b8k-ask and b8k-webapp.js.
 	install -m 644 "$REPO/linux-port/rootfs/apps.conf" "$ROOT/usr/local/share/b8k/apps.conf"
 	install -m 644 "$REPO/linux-port/rootfs/panel" "$ROOT/usr/local/share/b8k/panel"
-	install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.js" "$ROOT/usr/local/share/b8k/b8k-webapp.js"
-	if [ -d "$ROOT/usr/lib/firefox/defaults/pref" ]; then
-		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-webapp.cfg" \
-			"$ROOT/usr/lib/firefox/b8k-webapp.cfg"
-		install -m 644 "$REPO/linux-port/rootfs/firefox/zz-b8k-webapp.js" \
-			"$ROOT/usr/lib/firefox/defaults/pref/zz-b8k-webapp.js"
-		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-ram.js" \
-			"$ROOT/usr/lib/firefox/defaults/pref/b8k-ram.js"
-		install -m 644 "$REPO/linux-port/rootfs/firefox/b8k-lean.js" \
-			"$ROOT/usr/lib/firefox/defaults/pref/b8k-lean.js"
-		# uBlock Origin Lite in complete mode instead of uBlock Origin, in a
-		# copy of mobile-config-firefox's policies that Firefox reads instead.
-		# The extension goes into the image: addons.mozilla.org answers 406
-		# from some networks, and Firefox then never installed it. The
-		# release on GitHub is the same file, signed by Mozilla.
-		ubol_ver=2026.1012.1545
-		ubol_sha=0a55b67791c0987bae74ae4648cd2034e47fcc33ebd2a45e2ea0706b13af0e3d
-		ubol=/usr/local/share/b8k/firefox/ubol.xpi
-		install -d -m 755 "$ROOT${ubol%/*}"
-		if wget -q -O "$ROOT$ubol" "https://github.com/uBlockOrigin/uBOL-home/releases/download/$ubol_ver/uBOLite_$ubol_ver.firefox.signed.xpi" &&
-			echo "$ubol_sha  $ROOT$ubol" | sha256sum -c - >/dev/null; then
-			chmod 644 "$ROOT$ubol"
-		else
-			echo "warning: no uBlock Origin Lite $ubol_ver, Firefox will download it" >&2
-			rm -f "$ROOT$ubol"
-			ubol=
-		fi
-		# Russian menus: Alpine packages no Firefox language packs, so
-		# Mozilla's signed one, which must match Firefox's version.
-		ru_for=151.0.3
-		ru_sha=61d3a59c7e98798f5bac288964764d1ff6b709ca860088a5d87a39ddc377bc85
-		ru=/usr/local/share/b8k/firefox/langpack-ru.xpi
-		ff_ver=$(sed -n 's/^Version=//p' "$ROOT/usr/lib/firefox/application.ini" | head -1)
-		if [ "$ff_ver" = "$ru_for" ] &&
-			wget -q -O "$ROOT$ru" "https://releases.mozilla.org/pub/firefox/releases/$ru_for/linux-x86_64/xpi/ru.xpi" &&
-			echo "$ru_sha  $ROOT$ru" | sha256sum -c - >/dev/null; then
-			chmod 644 "$ROOT$ru"
-		else
-			echo "warning: no Russian language pack for Firefox $ff_ver (pinned $ru_for)" >&2
-			rm -f "$ROOT$ru"
-			ru=
-		fi
-		mkdir -p "$ROOT/etc/firefox/policies"
-		python3 "$REPO/linux-port/rootfs/firefox/b8k-policies.py" \
-			"$ROOT/usr/lib/firefox/distribution/policies.json" \
-			"$ROOT/etc/firefox/policies/policies.json" "$ubol" "$ru"
-		mc="$ROOT/usr/lib/firefox/mobile-config-autoconfig.js"
-		if [ -f "$mc" ] && ! grep -q 'b8k-webapp.js' "$mc"; then
-			cat >> "$mc" <<'EOF'
-try {
-  Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
-    .getService(Components.interfaces.mozIJSSubScriptLoader)
-    .loadSubScript("file:///usr/local/share/b8k/b8k-webapp.js");
-} catch (e) {}
-EOF
-		fi
-	fi
+	# Firefox's customization (large toolbar, prefs, policies, uBlock Origin
+	# Lite) is b8k-firefox, installed with the programs (apps/sources).
 	# Aisleriot for fingers: no menu bar or title, a large toolbar and chooser.
 	# The shell's GTK theme for every program of the session (b8k-launcher).
 	install -d -m 755 "$ROOT/usr/share/themes/b8k/gtk-3.0"
