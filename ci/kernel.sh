@@ -45,8 +45,11 @@ done
 I=/opt/b8000h/initramfs
 if [ ! -x "$I/bin/busybox" ]; then
 	tmp=$(mktemp -d)
+	# Signed by Alpine: the index and the package are checked against
+	# Alpine's armv7 keys.
 	apk fetch -q --arch armv7 --repository https://dl-cdn.alpinelinux.org/alpine/v3.24/main \
-		--allow-untrusted -o "$tmp" busybox-static
+		--keys-dir /usr/share/apk/keys/armv7 -o "$tmp" busybox-static
+	apk verify --keys-dir /usr/share/apk/keys/armv7 "$tmp"/busybox-static-*.apk
 	tar -xzf "$tmp"/busybox-static-*.apk -C "$tmp" bin/busybox.static 2>/dev/null
 	install -D -m 755 "$tmp/bin/busybox.static" "$I/bin/busybox"
 	rm -rf "$tmp"

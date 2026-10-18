@@ -122,6 +122,8 @@ PY
 if [ ! -d "$SRC/libhybris/hybris" ]; then
 	fetch "https://github.com/libhybris/libhybris/archive/7079712a42ea2754adf747e70c6cc75764c8596e.tar.gz" \
 		"$G/libhybris-7079712.tar.gz"
+	echo "5ea95bd6596bfac95414f911289dee8fbf8a7e076d274e07fa338d335b0205dc  $G/libhybris-7079712.tar.gz" |
+		sha256sum -c -
 	rm -rf "$G/libhybris-src"
 	tar -C "$G" -xzf "$G/libhybris-7079712.tar.gz"
 	mv "$G"/libhybris-7079712a42ea2754adf747e70c6cc75764c8596e "$SRC/libhybris"
@@ -130,7 +132,7 @@ test -f "$SRC/libhybris/hybris/autogen.sh"
 log "libhybris $(cat "$SRC/libhybris/hybris/../.git" 2>/dev/null || echo 7079712a42ea2754adf747e70c6cc75764c8596e)"
 
 clone_aosp() {
-	url=$1 dest=$2
+	url=$1 dest=$2 commit=$3
 	if [ -d "$dest/.git" ] || [ -f "$dest/MODULE_LICENSE_APACHE2" ] || [ -d "$dest/include" ]; then
 		log "have aosp $(basename "$dest")"
 		return 0
@@ -139,14 +141,20 @@ clone_aosp() {
 	mkdir -p "$(dirname "$dest")"
 	log "clone $url"
 	git clone --depth 1 --branch android-4.4.2_r1 "$url" "$dest"
+	# The tag must still be the commit it was when the island was made.
+	[ "$(git -C "$dest" rev-parse HEAD)" = "$commit" ] || {
+		log "FAIL $url android-4.4.2_r1 is not $commit"
+		exit 1
+	}
 }
 
-clone_aosp https://android.googlesource.com/platform/hardware/libhardware "$AOSP/hardware/libhardware"
-clone_aosp https://android.googlesource.com/platform/hardware/libhardware_legacy "$AOSP/hardware/libhardware_legacy"
-clone_aosp https://android.googlesource.com/platform/system/core "$AOSP/system/core"
-clone_aosp https://android.googlesource.com/platform/system/media "$AOSP/system/media"
-clone_aosp https://android.googlesource.com/platform/bionic "$AOSP/bionic"
-clone_aosp https://android.googlesource.com/platform/external/kernel-headers "$AOSP/external/kernel-headers"
+A=https://android.googlesource.com/platform
+clone_aosp $A/hardware/libhardware "$AOSP/hardware/libhardware" 7ccf148f5066ceb1a161f0d7a7d66f75c6e8d420
+clone_aosp $A/hardware/libhardware_legacy "$AOSP/hardware/libhardware_legacy" 18fc094c0ed41851be3d746423c6695dd28d48e1
+clone_aosp $A/system/core "$AOSP/system/core" e65b7ea8801145626504c724c28aedd0e5038a28
+clone_aosp $A/system/media "$AOSP/system/media" 52a64a571f037c5b519b98c69a3b47466d4accce
+clone_aosp $A/bionic "$AOSP/bionic" 5ab8d33aa64a4ca12172dba92df172f70629874d
+clone_aosp $A/external/kernel-headers "$AOSP/external/kernel-headers" 908d3fd0e36f0ce4670003975da491b71c9401ff
 
 if [ ! -f "$SRC/android-headers-19/cutils/native_handle.h" ]; then
 	log "extract android 4.4.2 headers"
