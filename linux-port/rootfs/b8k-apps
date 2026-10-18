@@ -7,15 +7,23 @@
     b8k-apps list       the ids one can put on the panel
     b8k-apps pin ID     put a program on the panel (last), and reload
     b8k-apps unpin ID   take it off, and reload
+    b8k-apps autostart  start the XDG autostart entries meant for this shell
+                        (b8k-launcher, once per session)
 
-Four sources, later ones winning:
+Five sources, later ones winning:
   /usr/local/share/b8k/apps.conf  the programs of the shell itself
   /usr/local/share/b8k/apps.d/    one file per program installed on its
                                   own (weather.conf, ...), in name order
   ~/.config/b8k/apps.conf         one's own programs and sites, or changes
                                   to the built-in ones (same fields)
+  .desktop files with X-B8K-Home=true  programs that bring their own
+                                  .desktop file (ADR 0001), under its id
+                                  (io.github.trudenboy.Max); X-B8K-Replaces
+                                  names the old shell id(s) it takes over,
+                                  so a pinned button moves with it
   installed programs              any id with a .desktop file, e.g. "gimp"
-                                  for /usr/share/applications/gimp.desktop
+                                  for /usr/share/applications/gimp.desktop,
+                                  when pinned by that id
 and the pinned buttons from top to bottom, one id per line:
 ~/.config/b8k/panel, or else /usr/local/share/b8k/panel. Every program is
 on the home screen (b8k-home) anyway; under the pinned ones the panel has
@@ -93,36 +101,80 @@ def find_icon(name):
     return ""
 
 
-def desktop_app(app_id):
-    """A program's fields from its .desktop file, or None."""
-    for d in DESKTOP_DIRS:
-        path = os.path.join(d, app_id + ".desktop")
-        if not os.path.exists(path):
-            continue
-        entry = {}
-        section = None
+def read_desktop(path):
+    """The [Desktop Entry] keys of a .desktop file ({} if unreadable)."""
+    entry = {}
+    section = None
+    try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if line.startswith("["):
                     section = line
                     continue
-                if section != "[Desktop Entry]" or "=" not in line:
+                if section != "[Desktop Entry]" or "=" not in line or line.startswith("#"):
                     continue
                 key, value = line.split("=", 1)
                 entry[key.strip()] = value.strip()
-        command = re.sub(r"\s%[a-zA-Z]", "", entry.get("Exec", "")).strip()
-        if not command:
-            return None
-        binary = os.path.basename(command.split()[0])
-        ids = [x for x in (entry.get("StartupWMClass"), app_id, binary) if x]
-        return {
-            "label": entry.get("Name[ru]") or entry.get("Name") or app_id,
-            "icon": find_icon(entry.get("Icon", "")),
-            "app_ids": " ".join(dict.fromkeys(ids)),
-            "exec": command,
-        }
+    except OSError:
+        return {}
+    return entry
+
+
+def command_of(entry):
+    """Exec without its field codes (%f, %U, ...), or ""."""
+    return re.sub(r"\s%[a-zA-Z]", "", entry.get("Exec", "")).strip()
+
+
+def fields_of(app_id, entry):
+    command = command_of(entry)
+    if not command or entry.get("Type", "Application") != "Application":
+        return None
+    binary = os.path.basename(command.split()[0])
+    ids = [x for x in (entry.get("StartupWMClass"), app_id, binary) if x]
+    return {
+        "label": entry.get("Name[ru]") or entry.get("Name") or app_id,
+        "icon": find_icon(entry.get("Icon", "")),
+        "app_ids": " ".join(dict.fromkeys(ids)),
+        "exec": command,
+    }
+
+
+def desktop_app(app_id):
+    """A program's fields from its .desktop file, or None."""
+    for d in DESKTOP_DIRS:
+        path = os.path.join(d, app_id + ".desktop")
+        if os.path.exists(path):
+            return fields_of(app_id, read_desktop(path))
     return None
+
+
+def is_true(value):
+    return (value or "").strip().lower() == "true"
+
+
+def desktop_programs():
+    """{id: (fields, [old ids])} of the .desktop files that ask to be on the
+    home screen (X-B8K-Home=true); one's own folder wins over the system's."""
+    found = {}
+    for d in reversed(DESKTOP_DIRS):
+        try:
+            names = sorted(n for n in os.listdir(d) if n.endswith(".desktop"))
+        except OSError:
+            continue
+        for name in names:
+            app_id = name[:-len(".desktop")]
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", app_id):
+                continue
+            entry = read_desktop(os.path.join(d, name))
+            if not is_true(entry.get("X-B8K-Home")) or is_true(entry.get("Hidden")):
+                found.pop(app_id, None)
+                continue
+            fields = fields_of(app_id, entry)
+            if fields:
+                old = [w for w in re.split(r"[;\s]+", entry.get("X-B8K-Replaces", "")) if w]
+                found[app_id] = (fields, old)
+    return found
 
 
 def programs():
@@ -158,13 +210,17 @@ def read_panel(path):
     return ids
 
 
-def panel_ids(apps):
+def panel_ids(apps, replaced=None):
+    """The ids to pin, an old id a .desktop program replaces mapped to its
+    new one."""
+    replaced = replaced or {}
     if os.path.exists(USER_PANEL):
-        return read_panel(USER_PANEL)
+        return list(dict.fromkeys(replaced.get(i, i) for i in read_panel(USER_PANEL)))
     # The default panel: the shell's list, where a program not installed
     # is left out. Everything else is on the home screen.
     if os.path.exists(SYSTEM_PANEL):
-        return [i for i in read_panel(SYSTEM_PANEL) if i in apps]
+        ids = [replaced.get(i, i) for i in read_panel(SYSTEM_PANEL)]
+        return list(dict.fromkeys(i for i in ids if i in apps))
     return []
 
 
@@ -183,7 +239,17 @@ def signals():
 
 def build():
     apps, order = programs()
-    wanted = panel_ids(apps)
+    replaced = {}
+    for app_id, (fields, old) in desktop_programs().items():
+        for gone in old:  # the program left its old shell id behind
+            replaced[gone] = app_id
+            if gone in apps:
+                apps.pop(gone)
+                order.remove(gone)
+        if app_id not in apps:
+            apps[app_id] = fields
+            order.append(app_id)
+    wanted = panel_ids(apps, replaced)
     panel = []
     for app_id in wanted:
         if not re.fullmatch(r"[A-Za-z0-9._-]+", app_id):
@@ -352,8 +418,55 @@ def pin(app_id, on):
     return True
 
 
+AUTOSTART_DIRS = ("/etc/xdg/autostart", os.path.expanduser("~/.config/autostart"))
+
+
+def autostart_entries():
+    """{file name: entry} to start: one's own ~/.config/autostart entries,
+    and the system's that carry X-B8K-Autostart=true (the rest there are a
+    full desktop's helpers this shell does without); one's own file of the
+    same name wins, and Hidden=true switches an entry off."""
+    chosen = {}
+    for d in AUTOSTART_DIRS:
+        mine = d.startswith(os.path.expanduser("~"))
+        try:
+            names = sorted(n for n in os.listdir(d) if n.endswith(".desktop"))
+        except OSError:
+            continue
+        for name in names:
+            entry = read_desktop(os.path.join(d, name))
+            if is_true(entry.get("Hidden")) or not (mine or is_true(entry.get("X-B8K-Autostart"))):
+                chosen.pop(name, None)
+                continue
+            if entry.get("Type", "Application") == "Application" and command_of(entry):
+                chosen[name] = entry
+    return chosen
+
+
+def autostart():
+    import shlex
+
+    run = os.environ.get("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache")
+    for name, entry in autostart_entries().items():
+        try:
+            argv = shlex.split(command_of(entry))
+        except ValueError:
+            continue
+        log = os.path.join(run, "b8k-autostart-%s.log" % name[:-len(".desktop")])
+        try:
+            with open(log, "w") as out:
+                subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                 start_new_session=True)
+            print("autostart: %s" % name)
+        except OSError as exc:
+            sys.stderr.write("b8k-apps: autostart %s: %s\n" % (name, exc))
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "autostart":
+        autostart()
+        return 0
     if cmd in ("pin", "unpin") and len(sys.argv) > 2:
         if not pin(sys.argv[2], cmd == "pin"):
             return 1

@@ -45,6 +45,10 @@ fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
+# Counts on buttons from programs' Unity LauncherEntry signals.
+if [ -x /usr/local/bin/b8k-badges ]; then
+	setsid /usr/local/bin/b8k-badges >"$run"/b8k-badges.log 2>&1 &
+fi
 # Wi-Fi passwords: NetworkManager asks a secret agent, which GNOME keeps
 # in its shell. Without one, a tap on a protected network in Settings
 # does nothing. The session restarts with waybar; one agent is enough.
@@ -52,9 +56,15 @@ if command -v nm-applet >/dev/null && ! pgrep -x -u "$(id -u)" nm-applet >/dev/n
 	setsid nm-applet >"$run"/nm-applet.log 2>&1 &
 fi
 # MAX lives in the background: messages buzz and the button counts them
-# with no window open.
-if [ -x /usr/local/bin/b8k-max ] && [ -s "$HOME/.local/share/b8k-max/web.db" ]; then
+# with no window open. (Until MAX brings an XDG autostart file of its own.)
+if [ -x /usr/local/bin/b8k-max ] && [ -s "$HOME/.local/share/b8k-max/web.db" ] &&
+	[ ! -e /etc/xdg/autostart/io.github.trudenboy.Max.desktop ]; then
 	setsid /usr/local/bin/b8k-max --background >"$run"/b8k-max.log 2>&1 &
+fi
+# Programs started in the background the standard way: XDG autostart
+# entries marked X-B8K-Autostart=true, and one's own ~/.config/autostart.
+if [ -x /usr/local/bin/b8k-apps ]; then
+	/usr/local/bin/b8k-apps autostart >"$run"/b8k-autostart.log 2>&1
 fi
 if [ -x /usr/local/bin/b8k-keyboard ]; then
 	pidof wvkbd-b8k >/dev/null 2>&1 || \

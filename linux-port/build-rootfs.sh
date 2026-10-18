@@ -398,6 +398,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-badges" "$ROOT/usr/local/bin/b8k-badges"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
