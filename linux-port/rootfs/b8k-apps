@@ -52,11 +52,15 @@ USER_APPS = os.path.expanduser("~/.config/b8k/apps.conf")
 USER_PANEL = os.path.expanduser("~/.config/b8k/panel")
 WAYBAR_CONFIG = "/etc/xdg/waybar/config"
 WAYBAR_STYLE = "/etc/xdg/waybar/style.css"
-DESKTOP_DIRS = (os.path.expanduser("~/.local/share/applications"), "/usr/share/applications")
-ICON_DIRS = ("/usr/share/icons/hicolor/scalable/apps", "/usr/share/icons/hicolor/256x256/apps",
-             "/usr/share/icons/hicolor/128x128/apps", "/usr/share/icons/hicolor/96x96/apps",
-             "/usr/share/icons/hicolor/64x64/apps", "/usr/share/icons/hicolor/48x48/apps",
-             "/usr/share/pixmaps")
+# The XDG data folders, one's own first: programs installed with a prefix of
+# /usr/local (install.sh) or /usr (a package) are found alike.
+DATA_DIRS = [os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")] + \
+    [d for d in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+     if d]
+DESKTOP_DIRS = tuple(os.path.join(d, "applications") for d in DATA_DIRS)
+ICON_DIRS = tuple(os.path.join(d, "icons/hicolor", size, "apps") for d in DATA_DIRS
+                  for size in ("scalable", "256x256", "128x128", "96x96", "64x64", "48x48")) + \
+    ("/usr/share/pixmaps",)
 # Programs without an icon of their own: a globe for a site, tiles otherwise.
 SITE_ICON = "/usr/local/share/b8k/site.svg"
 APP_ICON = "/usr/local/share/b8k/app.svg"

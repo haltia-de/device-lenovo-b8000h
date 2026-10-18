@@ -21,8 +21,9 @@ headerbar {
 headerbar label.title { font-size: 30px; font-weight: bold; color: #2e3436; }
 headerbar label.subtitle { font-size: 18px; color: #5e5c64; }
 /* Every header button fills its 88 px, as the close button does; an icon
-   alone makes a square. */
-headerbar button {
+   alone makes a square. The :not() outweighs Adwaita's own header-button
+   rules. */
+headerbar button:not(.b8k-any) {
   background-image: none;
   background-color: #f2f2f0;
   border: 1px solid #c0bfbc;
@@ -36,7 +37,7 @@ headerbar button {
   font-size: 26px;
   color: #2e3436;
 }
-headerbar button.image-button { padding: 7px; }
+headerbar button.image-button:not(.b8k-any) { min-width: 72px; padding: 7px; }
 headerbar button:active, headerbar button:checked { background-color: #c4dcf7; }
 headerbar button.suggested-action { background-color: #3584e4; border-color: #3584e4;
   color: #ffffff; }
