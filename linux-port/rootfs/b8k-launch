@@ -131,6 +131,18 @@ install_firefox_chrome() {
 	done
 }
 
+# An old shell id a program with a .desktop file took over (b8k-apps writes
+# "old new" lines: X-B8K-Replaces), so the clock, the home screen and
+# anyone's own settings still reach it by the old id.
+if [ -n "${2:-}" ] && [ -f "$run/b8k/aliases" ]; then
+	new=$(awk -v id="$2" '$1 == id { print $2; exit }' "$run/b8k/aliases")
+	if [ -n "$new" ]; then
+		cmd=$1
+		shift 2
+		set -- "$cmd" "$new" "$@"
+	fi
+fi
+
 case ${1:-} in
 status)
 	id=${2:-}

@@ -36,6 +36,8 @@ Written to $XDG_RUNTIME_DIR/b8k/:
   waybar.json  the panel: /etc/xdg/waybar/config with these buttons
   style.css    /etc/xdg/waybar/style.css and each program's icon
   slots        the waybar signal of each slot, one per line (b8k-focus)
+  aliases      "old new" per line: old shell ids taken over by .desktop
+               programs (b8k-launch maps them)
 """
 import configparser
 import json
@@ -74,6 +76,7 @@ FULL_SIZE = 5
 # At least this many slots for open programs, even with a long panel.
 MIN_SLOTS = 2
 FIELDS = ("label", "icon", "app_ids", "exec", "env", "url", "host")
+ALIASES = {}  # old shell id -> the .desktop program that replaced it (build())
 
 
 def out_dir():
@@ -277,6 +280,8 @@ def build():
                          % (MAX_BUTTONS - MIN_SLOTS))
         panel = panel[:MAX_BUTTONS - MIN_SLOTS]
 
+    ALIASES.clear()
+    ALIASES.update(replaced)
     gen = signals()
     for app_id in order:
         apps[app_id]["signal"] = "0"
@@ -488,6 +493,9 @@ def main():
     write_apps(os.path.join(d, "apps.conf"), apps, order)
     write_waybar(os.path.join(d, "waybar.json"), apps, panel, slots)
     write_style(os.path.join(d, "style.css"), apps, order, panel, slots)
+    with open(os.path.join(d, "aliases.new"), "w", encoding="utf-8") as fh:
+        fh.write("".join("%s %s\n" % kv for kv in sorted(ALIASES.items())))
+    os.replace(os.path.join(d, "aliases.new"), os.path.join(d, "aliases"))
     with open(os.path.join(d, "slots.new"), "w", encoding="utf-8") as fh:
         fh.write("".join("%d\n" % sig for sig in slots))
     os.replace(os.path.join(d, "slots.new"), os.path.join(d, "slots"))
