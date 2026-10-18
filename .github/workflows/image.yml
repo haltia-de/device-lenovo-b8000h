@@ -14,12 +14,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Room on the disk
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache
           df -h /
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
         with:
           platforms: arm
       - name: The build environment
@@ -50,7 +50,7 @@ jobs:
             b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz SHA256SUMS
       - name: Artifacts of a run without a tag
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: b8000h-image
           path: ${{ runner.temp }}/b8000h/dist/
