@@ -37,8 +37,8 @@ else
 fi
 
 # qemu-arm for the chroot steps (the host registered binfmt with the F flag).
+mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc none /proc/sys/fs/binfmt_misc
 [ -e /proc/sys/fs/binfmt_misc/qemu-arm ] || {
-	mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc none /proc/sys/fs/binfmt_misc
 	echo ':qemu-arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm:F' \
 		>/proc/sys/fs/binfmt_misc/register
 }

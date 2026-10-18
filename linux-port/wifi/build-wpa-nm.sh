@@ -74,7 +74,9 @@ export CC="clang --target=armv7-alpine-linux-musleabihf --sysroot=$S -B$G -L$G -
 make -C "$SRC/wpa_supplicant" clean
 make -C "$SRC/wpa_supplicant" -j"$(nproc)" LIBDIR=/lib BINDIR=/sbin wpa_supplicant wpa_cli wpa_passphrase
 
-obj=$(find "$SRC/wpa_supplicant" -name dbus_new_handlers.o)
+# 2.11 puts its objects under build/, next to wpa_supplicant/.
+obj=$(find "$SRC" -name dbus_new_handlers.o | head -1)
+[ -n "$obj" ] || { echo "error: dbus_new_handlers.o not built" >&2; exit 1; }
 strings "$obj" | grep -qx pmf && {
 	echo "error: dbus capability object still contains pmf" >&2
 	exit 1
