@@ -8,7 +8,7 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library b8k-compat (ADR 0001).
-shell      https://github.com/trudenboy/b8k-shell.git     v1.0.1 be094c404f1997ee2ac7b5deee06dbc41c34a096
+shell      https://github.com/trudenboy/b8k-shell.git     v1.1.0 1f33c0aacbb13d9c5318c50aabad84f5b7ef9141
 # b8k-compat first: the library the programs below import (ADR 0001).
 compat     https://github.com/trudenboy/b8k-compat.git    v1.2.1 bbe2a34f9d8c4de5830688ddaca2b49d0f6b5cea
 firefox    https://github.com/trudenboy/b8k-firefox.git   v1.1   0dbdf9ce8d8aec7a99436d3f373ab43f0766c04b
