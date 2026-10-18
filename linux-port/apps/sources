@@ -8,7 +8,7 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # b8k-compat first: the library the programs below import (ADR 0001).
-compat     https://github.com/trudenboy/b8k-compat.git    v1.1.2 a8c04e10de711b30328ef16ba9fbf087cc69b424
+compat     https://github.com/trudenboy/b8k-compat.git    v1.2   ba2734f75c29bbcc1abea56b423b0f906ce49556
 paint      https://github.com/trudenboy/b8k-paint.git     v3.0   b1efb815aa27cb394e4373cc587b79632fee9a4c
 weather    https://github.com/trudenboy/b8k-weather.git   v1.1   512b4ad95a9ef4ea3fd835f87ed2165e1e811224
 news       https://github.com/trudenboy/b8k-news.git      v1.1   77a70e9f2f6cf5e3103819c356e3593114950650
@@ -16,5 +16,5 @@ max        https://github.com/trudenboy/b8k-max.git       v1.16.1 67c7eacb537f31
 video      https://github.com/trudenboy/b8k-video.git     v1.12.1 546523b1c02f1ea7c9196e17d4330d5023233851
 music      https://github.com/trudenboy/b8k-music.git     v1.7   d044321737a2a70045a05213b009ccbf8db29463
 calendar   https://github.com/trudenboy/b8k-calendar.git  v1.2   61ad62cd5fd242dc09126ea46229cd970a8f8e56
-files      https://github.com/trudenboy/b8k-files.git     v1.4   d4ef63efe41a3eac956f8724ed6c078a151cdbaa
+files      https://github.com/trudenboy/b8k-files.git     v1.4.1 605a4fd8fccdedb519b0cb397600d1fd8c587e16
 text       https://github.com/trudenboy/b8k-text.git      v1.2   c5ead31ec3e6c4e385333a65dd6b0f54df3a5428
