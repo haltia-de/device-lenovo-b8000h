@@ -1,6 +1,0 @@
-# The panel's pinned buttons from top to bottom, one program id per line,
-# for whoever has no ~/.config/b8k/panel (a long press on a tile of the
-# home screen writes that). Installed as /usr/local/share/b8k/panel. An id
-# that is not installed is skipped. Every program is on the home screen.
-firefox
-max

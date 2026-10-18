@@ -42,11 +42,13 @@ fetch_app() {
 			exit 1
 		fi
 	fi
-	# A program with a C part builds it first against the tablet's sysroot
-	# (Видео's vplay/build.sh: b8k-vplay; it needs the keyboard's sysroot).
-	if [ -f "$dir/vplay/build.sh" ]; then
-		sh "$dir/vplay/build.sh" || echo "build-rootfs: $name: vplay not built" >&2
-	fi
+	# A repository with C parts builds them first against the tablet's
+	# sysroot (the shell's build.sh: keyboard and tools; Видео's
+	# vplay/build.sh: b8k-vplay, which needs the keyboard's sysroot).
+	for b in "$dir/build.sh" "$dir/vplay/build.sh"; do
+		[ -f "$b" ] || continue
+		sh "$b" || echo "build-rootfs: $name: ${b#$dir/} failed, parts left out" >&2
+	done
 	B8K_CACHE=/opt/b8000h/out sh "$dir/install.sh" "$ROOT"
 }
 IMG=/opt/b8000h/out/b8000h-sd.img
@@ -339,48 +341,11 @@ if [ "$UI_PROFILE" = phosh ]; then
 	install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
 		"$ROOT/etc/init.d/b8k-android-system"
 	install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$ROOT/usr/local/bin/phoc-gpu"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-launcher" "$ROOT/usr/local/bin/b8k-launcher"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-keyboard" "$ROOT/usr/local/bin/b8k-keyboard"
-	if [ -x /opt/b8000h/out/wvkbd-b8k ]; then
-		install -m 755 /opt/b8000h/out/wvkbd-b8k "$ROOT/usr/local/bin/wvkbd-b8k"
-	fi
-	# Tap feedback on the panel (tools-arm/build-b8k-press.sh).
-	if [ -x /opt/b8000h/tools/b8k-press ]; then
-		install -m 755 /opt/b8000h/tools/b8k-press "$ROOT/usr/local/bin/b8k-press"
-	fi
-	# The curtain with the program's icon while it starts
-	# (tools-arm/build-b8k-splash.sh).
-	if [ -x /opt/b8000h/tools/b8k-splash ]; then
-		install -m 755 /opt/b8000h/tools/b8k-splash "$ROOT/usr/local/bin/b8k-splash"
-	fi
-	# The filter for accidental touches (tools-arm/build-b8k-touchguard.sh),
-	# on from the first boot; settings in /etc/b8k/touchguard.conf.
-	if [ -x /opt/b8000h/tools/b8k-touchguard ]; then
-		install -m 755 /opt/b8000h/tools/b8k-touchguard "$ROOT/usr/local/sbin/b8k-touchguard"
-		install -m 755 "$REPO/linux-port/rootfs/b8k-touchguard.initd" "$ROOT/etc/init.d/b8k-touchguard"
-		install -D -m 644 "$REPO/linux-port/rootfs/touchguard.conf" "$ROOT/etc/b8k/touchguard.conf"
-		ln -sf /etc/init.d/b8k-touchguard "$ROOT/etc/runlevels/default/b8k-touchguard"
-	fi
-	# The close button in the top right corner (tools-arm/build-b8k-close.sh).
-	if [ -x /opt/b8000h/tools/b8k-close ]; then
-		install -m 755 /opt/b8000h/tools/b8k-close "$ROOT/usr/local/bin/b8k-close"
-	fi
-	# The home screen (tools-arm/build-b8k-home.sh).
-	if [ -x /opt/b8000h/tools/b8k-home ]; then
-		install -m 755 /opt/b8000h/tools/b8k-home "$ROOT/usr/local/bin/b8k-home"
-	fi
-	# The tab that brings the hidden panel back (tools-arm/build-b8k-tab.sh).
-	if [ -x /opt/b8000h/tools/b8k-tab ]; then
-		install -m 755 /opt/b8000h/tools/b8k-tab "$ROOT/usr/local/bin/b8k-tab"
-	fi
-	install -m 755 "$REPO/linux-port/rootfs/b8k-launch" "$ROOT/usr/local/bin/b8k-launch"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-volume" "$ROOT/usr/local/bin/b8k-volume"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-brightness" "$ROOT/usr/local/bin/b8k-brightness"
-	# The programs on the panel that are not the shell itself: each has its
-	# own install.sh, which adds its section to /usr/local/share/b8k/apps.d/.
-	# They use the shell's shared module b8k_ui when it is there.
-	install -D -m 644 "$REPO/linux-port/rootfs/python/b8k_ui.py" \
-		"$ROOT/usr/local/share/b8k/python/b8k_ui.py"
+	# The shell (b8k-shell: panel, home screen, close button, keyboard, touch
+	# filter, power key, theme), the program library, Firefox's
+	# customization and the programs: repositories of their own, pinned in
+	# linux-port/apps/sources (ADR 0001). A repository with a build.sh (the
+	# shell) builds its C parts first, against the keyboard's sysroot.
 	# They live in repositories of their own (linux-port/apps/sources).
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
@@ -398,19 +363,8 @@ if [ "$UI_PROFILE" = phosh ]; then
 		"$ROOT/etc/pulse/daemon.conf.d/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-badges" "$ROOT/usr/local/bin/b8k-badges"
-	install -D -m 644 "$REPO/linux-port/rootfs/mako.conf" "$ROOT/usr/local/share/b8k/mako.conf"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-apps" "$ROOT/usr/local/bin/b8k-apps"
-	install -m 644 "$REPO/linux-port/rootfs/fuzzel-ask.ini" "$ROOT/usr/local/share/b8k/fuzzel-ask.ini"
 	install -d -m 755 "$ROOT/usr/local/sbin"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-poweroff" "$ROOT/usr/local/sbin/b8k-poweroff"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-usb" "$ROOT/usr/local/sbin/b8k-usb"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-rootsh" "$ROOT/usr/local/sbin/b8k-rootsh"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-term" "$ROOT/usr/local/bin/b8k-term"
 	# The DPI bypass for YouTube, off until "b8k-zapret on" (kernel 25 has
 	# the netfilter it needs). nfqws is the static ARM build of a zapret
 	# release, checked against the release archive's sha256.
@@ -450,11 +404,8 @@ start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
 	--pidfile /run/b8k-netwatch.pid --make-pidfile
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-netwatch.start"
-	# Panel refresh from root helpers, and the NetworkManager hook that uses it.
-	install -m 755 "$REPO/linux-port/rootfs/b8k-panel-signal" "$ROOT/usr/local/sbin/b8k-panel-signal"
-	install -d -m 755 "$ROOT/etc/NetworkManager/dispatcher.d"
-	install -m 755 "$REPO/linux-port/rootfs/nm-dispatcher-b8k-panel" \
-		"$ROOT/etc/NetworkManager/dispatcher.d/90-b8k-panel"
+	# (b8k-panel-signal and the NetworkManager hook that refreshes the panel
+	# are the shell's, b8k-shell.)
 	# The empty microSD slot polls for a card every second; switch it off.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-sdslot" "$ROOT/usr/local/sbin/b8k-sdslot"
 	cat > "$ROOT/etc/local.d/b8k-sdslot.start" <<'EOF'
@@ -462,56 +413,13 @@ EOF
 /usr/local/sbin/b8k-sdslot </dev/null >/dev/null 2>&1 &
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-sdslot.start"
-	# The power key turns the screen off; 30 s later b8k-suspend puts the
-	# system into s2idle. elogind's default would power the tablet off.
-	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep.py" "$ROOT/usr/local/sbin/b8k-sleep.py"
-	install -m 755 "$REPO/linux-port/rootfs/b8k-sleep-loop" "$ROOT/usr/local/sbin/b8k-sleep-loop"
+	# The power key's handling is the shell's (b8k-sleep.py); it puts the
+	# system to sleep through this device's b8k-suspend (s2idle, Wi-Fi
+	# drivers out of the way).
 	install -m 755 "$REPO/linux-port/rootfs/b8k-suspend" "$ROOT/usr/local/sbin/b8k-suspend"
-	cat > "$ROOT/etc/local.d/b8k-sleep.start" <<'EOF'
-#!/bin/sh
-start-stop-daemon --start --background \
-	--exec /usr/local/sbin/b8k-sleep-loop \
-	--pidfile /run/b8k-sleep.pid --make-pidfile \
-	--stdout /var/log/b8k-sleep.log --stderr /var/log/b8k-sleep.log
-EOF
-	chmod +x "$ROOT/etc/local.d/b8k-sleep.start"
-	install -d -m 755 "$ROOT/etc/elogind/logind.conf.d"
-	cat > "$ROOT/etc/elogind/logind.conf.d/b8k-power-key.conf" <<'EOF'
-[Login]
-HandlePowerKey=ignore
-HandlePowerKeyLongPress=ignore
-EOF
 	install -d -m 755 "$ROOT/usr/local/share/b8k"
-	install -m 644 "$REPO"/linux-port/rootfs/icons/*.svg "$REPO"/linux-port/rootfs/icons/*.png "$ROOT/usr/local/share/b8k/"
-	install -m 644 "$REPO/linux-port/rootfs/foot.ini" "$ROOT/usr/local/share/b8k/foot.ini"
-	install -m 644 "$REPO/linux-port/rootfs/phoc.ini" "$ROOT/usr/local/share/b8k/phoc.ini"
-	# The program registry read by b8k-launch, b8k-focus, b8k-ask and b8k-webapp.js.
-	install -m 644 "$REPO/linux-port/rootfs/apps.conf" "$ROOT/usr/local/share/b8k/apps.conf"
-	install -m 644 "$REPO/linux-port/rootfs/panel" "$ROOT/usr/local/share/b8k/panel"
 	# Firefox's customization (large toolbar, prefs, policies, uBlock Origin
 	# Lite) is b8k-firefox, installed with the programs (apps/sources).
-	# Aisleriot for fingers: no menu bar or title, a large toolbar and chooser.
-	# The shell's GTK theme for every program of the session (b8k-launcher).
-	install -d -m 755 "$ROOT/usr/share/themes/b8k/gtk-3.0"
-	install -m 644 "$REPO/linux-port/rootfs/themes/b8k/gtk-3.0/gtk.css" \
-		"$ROOT/usr/share/themes/b8k/gtk-3.0/gtk.css"
-	install -d -m 755 "$ROOT/usr/share/themes/b8k-cards/gtk-3.0"
-	install -m 644 "$REPO/linux-port/rootfs/themes/b8k-cards/gtk-3.0/gtk.css" \
-		"$ROOT/usr/share/themes/b8k-cards/gtk-3.0/gtk.css"
-	install -d -m 755 "$ROOT/usr/share/themes/b8k-galculator/gtk-3.0"
-	install -m 644 "$REPO/linux-port/rootfs/themes/b8k-galculator/gtk-3.0/gtk.css" \
-		"$ROOT/usr/share/themes/b8k-galculator/gtk-3.0/gtk.css"
-	install -d -m 755 "$ROOT/etc/skel/.config/galculator"
-	install -m 644 "$REPO/linux-port/rootfs/galculator.conf" \
-		"$ROOT/etc/skel/.config/galculator/galculator.conf"
-	if [ -d "$ROOT/home/user" ]; then
-		install -d -m 755 -o 1000 -g 1000 "$ROOT/home/user/.config/galculator"
-		install -m 644 -o 1000 -g 1000 "$REPO/linux-port/rootfs/galculator.conf" \
-			"$ROOT/home/user/.config/galculator/galculator.conf"
-	fi
-	install -d -m 755 "$ROOT/etc/xdg/waybar"
-	install -m 644 "$REPO/linux-port/rootfs/waybar/config" "$ROOT/etc/xdg/waybar/config"
-	install -m 644 "$REPO/linux-port/rootfs/waybar/style.css" "$ROOT/etc/xdg/waybar/style.css"
 	ln -sfn /etc/init.d/b8k-android-system "$ROOT/etc/runlevels/default/b8k-android-system"
 	ln -sfn /etc/init.d/b8k-gpu "$ROOT/etc/runlevels/default/b8k-gpu"
 	ln -sfn /opt/debian/usr/lib/arm-linux-gnueabihf "$ROOT/usr/lib/arm-linux-gnueabihf"
@@ -554,11 +462,7 @@ while :; do
 	sleep 2
 done ) >/dev/null 2>&1 &
 EOF
-	mkdir -p "$ROOT/etc/pam.d"
-	printf 'auth     sufficient pam_permit.so\naccount  sufficient pam_permit.so\nsession  include    base-session\n' \
-		> "$ROOT/etc/pam.d/b8k-session"
-	# Built by linux-port/tools-arm/build-b8k-session.sh (armv7 musl, -lpam).
-	install -m 755 /opt/b8000h/tools/b8k-session "$ROOT/usr/local/bin/b8k-session"
+	# b8k-session and its PAM service come with the shell (b8k-shell).
 
 	# Russian UI: install the -lang subpackages of everything installed,
 	# then keep only the ru catalogs (the full set is ~50 MB).
@@ -619,12 +523,12 @@ EOF
 	install -d "$ROOT/etc/doas.d"
 	echo 'permit persist :wheel' > "$ROOT/etc/doas.d/wheel.conf"
 	# z- sorts after wheel.conf. doas uses the last matching rule.
-	cat > "$ROOT/etc/doas.d/z-b8k-power.conf" <<'EOF'
-permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
-permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
+	# The power menu and root terminal rules are the shell's
+	# (z-b8k-shell.conf); the USB role switch is this device's.
+	rm -f "$ROOT/etc/doas.d/z-b8k-power.conf"
+	cat > "$ROOT/etc/doas.d/z-b8k-device.conf" <<'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-usb args host
 permit nopass user cmd /usr/local/sbin/b8k-usb args device
-permit nopass user cmd /usr/local/sbin/b8k-rootsh
 EOF
 
 	# Kernel modules, GPU module sets and the GPU island come from outside

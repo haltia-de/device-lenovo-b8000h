@@ -30,24 +30,23 @@
 5. **wpa_supplicant для этой сети** — `sh linux-port/wifi/build-wpa-nm.sh`
    (официальный архив 2.11). Сборка выключает PMF/SAE/FILS/OWE и не
    объявляет capability `pmf`. Без этого NetworkManager не подключается.
-6. **Отклик кнопок панели** — `linux-port/tools-arm/build-b8k-press.sh`
-   (`/opt/b8000h/tools/b8k-press`: подсветка нажатия и вибрация).
-   **Экранная клавиатура** — `linux-port/wvkbd/build.sh` в контейнере сборки
-   (wvkbd 0.21 с патчами и крупной раскладкой). Результат —
-   `/opt/b8000h/out/wvkbd-b8k`; без него в системе не будет экранной клавиатуры.
-   После клавиатуры (им нужны её sysroot и протоколы) — **язычок скрытой панели**
-   `linux-port/tools-arm/build-b8k-tab.sh` и **заставка запуска программ**
-   `linux-port/tools-arm/build-b8k-splash.sh` (значок и название программы,
-   пока она открывается). Результаты — в `/opt/b8000h/tools/`.
+6. **Оболочка** — отдельный репозиторий
+   [b8k-shell](https://github.com/trudenboy/b8k-shell). Шаг 7 сам клонирует её
+   по тегу из `linux-port/apps/sources` и запускает её `build.sh` (экранная
+   клавиатура wvkbd 0.21 с патчами и C-утилиты: домашний экран, «✕», заставка,
+   язычок панели, отклик нажатий, фильтр касаний; кросс-сборка в контейнере
+   `b8000h-build:3.24`, результаты в `/opt/b8000h/out` и `/opt/b8000h/tools`),
+   затем `install.sh`. Так же — программы, библиотека `b8k-compat` и
+   настройки Firefox `b8k-firefox`.
 7. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
    armv7. Нужны сеть и `git`: программы из своих репозиториев
    (`linux-port/apps/sources`) скрипт клонирует по тегам. Профиль называется `phosh` по старой памяти, но сессия запускает свою
-   оболочку — панель waybar слева на phoc ([shell.md](shell.md)). Скрипт ставит
+   оболочку b8k-shell — панель waybar слева на phoc ([shell.md](shell.md)). Скрипт ставит
    собранный wpa_supplicant, конфиг NetworkManager, повторную загрузку MT6628 после
    появления прошивки (с постоянным MAC из `/etc/machine-id`), службы
-   `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку,
-   тему Firefox и её политики (uBlock Origin Lite вместо uBlock Origin,
-   `/etc/firefox/policies/policies.json`), `earlyoom`, Aisleriot и исправление
+   `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку
+   b8k-shell, настройки Firefox b8k-firefox (uBlock Origin Lite вместо uBlock
+   Origin, `/etc/firefox/policies/policies.json`), `earlyoom`, Aisleriot и исправление
    перезагрузки (`b8k-wdt-exrst`). Погоду, Новости, Раскраску и MAX он
    клонирует из их репозиториев по тегам из `linux-port/apps/sources`; MAX
    (закрытый репозиторий) ставится, только если у git есть к нему доступ.

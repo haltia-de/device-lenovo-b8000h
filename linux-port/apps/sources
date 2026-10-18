@@ -7,6 +7,8 @@
 # that program (b8k-apps leaves it off the panel), with a warning.
 #
 # name     repository                                     tag    commit                                    [private]
+# The shell first, then the program library b8k-compat (ADR 0001).
+shell      https://github.com/trudenboy/b8k-shell.git     v1.0.1 be094c404f1997ee2ac7b5deee06dbc41c34a096
 # b8k-compat first: the library the programs below import (ADR 0001).
 compat     https://github.com/trudenboy/b8k-compat.git    v1.2   ba2734f75c29bbcc1abea56b423b0f906ce49556
 firefox    https://github.com/trudenboy/b8k-firefox.git   v1.1   0dbdf9ce8d8aec7a99436d3f373ab43f0766c04b

@@ -83,7 +83,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
   Wi-Fi (`linux-port/drivers/mt6628`), звук.
 - Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7, `UI_PROFILE=phosh`:
   профиль по-прежнему так называется, но вместо Phosh запускает свою оболочку).
-- Экранная клавиатура — `linux-port/wvkbd/build.sh` (wvkbd 0.21 с патчами).
+- Оболочка (панель, домашний экран, экранная клавиатура wvkbd 0.21 с патчами) — отдельный репозиторий [b8k-shell](https://github.com/trudenboy/b8k-shell); сборка образа ставит её сама.
 - GPU-стек: Debian armhf «островок» с libhybris (`linux-port/hybris/build-hybris.sh`) и phoc
   0.55.1 с патчем wlroots под Android EGL (`linux-port/hybris/build-phoc.sh`,
   `wlroots-0.20-hybris.patch`); устройство и замеры — [docs/g4-hybris.md](docs/g4-hybris.md).
@@ -98,7 +98,6 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | `linux-port/gpu/` | запуск Services PowerVR, служба `b8k-gpu`, демо |
 | `linux-port/initramfs/` | init с установщиком с microSD и заставкой |
 | `linux-port/rootfs/` | оболочка (`b8k-*`), waybar, тема Firefox, сборка чистого образа |
-| `linux-port/wvkbd/` | патчи и раскладка экранной клавиатуры |
 | `tools/` | SP Flash Tool readback/download-конфиги, сборка образов |
 | `docs/` | заметки по узлам (GPU, звук, Wi-Fi, батарея…) |
 
