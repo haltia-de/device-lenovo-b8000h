@@ -60,6 +60,9 @@ run_py() {
 		sed "s|/mnt/c/Users/<user>/src/lenovo-b8000h-linux|$REPO|" "$src" > /tmp/0018.py
 		src=/tmp/0018.py
 	fi
+	# 0044 and later expect the build number in a .config they find, and
+	# skip a missing one: the stub has served 0022-0039 and goes now.
+	case $f in 004[4-9]*|00[5-9]*) rm -f .config ;; esac
 	python3 "$src"
 	# 0019 writes the C string with a real newline because its Python
 	# literal is not raw, so "\n" becomes a line break inside the quotes.

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 An experimental port of Linux 7.1 + Alpine 3.24 armv7 to the Lenovo YOGA Tablet 10 **B8000-H** (MT8389/MT6589, 3G only, board `BLADE10_ROW_3GDATA`, stock firmware `B8000_A442_001_020_140620_WW_3GDATA`). Alpha quality. Until early October (kernel 22 era) the kernel crashed every 10–40 minutes with memory corruption; kernel 23 passed a one-hour full-load soak at 1.2 GHz with a 150 MB memory-pattern check and no errors. User-facing docs (`README.md`, `docs/*.md`) are written in **Russian**. Code comments and commit messages are in English: full-sentence subjects for fixes ("Pin the RDMA FIFO threshold that stops the Firefox scroll copies."), with `G5 step N:` / `kernel NN:` / `docs:` / `build-phoc:` prefixes for milestone work.
 
-There is no test suite, no linter and no CI. A change is verified by building the images and running them on the tablet. The tablet gives you `dmesg` (often flooded by MSDC debug lines), `/sys/fs/pstore/*` after a crash or reboot, and `/var/log/phosh.log` (the session log; the name is left over from Phosh).
+There is no test suite and no linter; CI only builds (see "Build pipeline"). A change is verified by building the images and running them on the tablet. The tablet gives you `dmesg` (often flooded by MSDC debug lines), `/sys/fs/pstore/*` after a crash or reboot, and `/var/log/phosh.log` (the session log; the name is left over from Phosh).
 
 ## Working on a connected tablet
 
