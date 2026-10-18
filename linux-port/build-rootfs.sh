@@ -61,7 +61,7 @@ case "$UI_PROFILE" in
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
 		py3-gobject3 openssh doas
-		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables ffmpeg py3-mutagen" ;;
+		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables ffmpeg py3-mutagen mako" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
 esac
 
@@ -399,6 +399,7 @@ if [ "$UI_PROFILE" = phosh ]; then
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-focus" "$ROOT/usr/local/bin/b8k-focus"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-badges" "$ROOT/usr/local/bin/b8k-badges"
+	install -D -m 644 "$REPO/linux-port/rootfs/mako.conf" "$ROOT/usr/local/share/b8k/mako.conf"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-meter" "$ROOT/usr/local/bin/b8k-meter"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-clock" "$ROOT/usr/local/bin/b8k-clock"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-ask" "$ROOT/usr/local/bin/b8k-ask"

@@ -12,7 +12,7 @@ compat     https://github.com/trudenboy/b8k-compat.git    v1.1.2 a8c04e10de711b3
 paint      https://github.com/trudenboy/b8k-paint.git     v1.0   68eec731bdd112d34601ae7112fc9e533fb7604b
 weather    https://github.com/trudenboy/b8k-weather.git   v1.1   512b4ad95a9ef4ea3fd835f87ed2165e1e811224
 news       https://github.com/trudenboy/b8k-news.git      v1.1   77a70e9f2f6cf5e3103819c356e3593114950650
-max        https://github.com/trudenboy/b8k-max.git       v1.15  57c21fbc527db7c2079cfe10b6a15d6d60888590
+max        https://github.com/trudenboy/b8k-max.git       v1.16  06fd03d4919a8ef351c3fb14e436e7ac626b4bad
 video      https://github.com/trudenboy/b8k-video.git     v1.11  4d8c5774bf9c3c689fdbcd0d4f0d8e2718cbabea
 music      https://github.com/trudenboy/b8k-music.git     v1.6   0270fbcc7e50f1b6313c431fe89008a58409a235
 calendar   https://github.com/trudenboy/b8k-calendar.git  v1.2   61ad62cd5fd242dc09126ea46229cd970a8f8e56

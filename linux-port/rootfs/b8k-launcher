@@ -45,6 +45,11 @@ fi
 if [ -x /usr/local/bin/b8k-focus ]; then
 	setsid /usr/local/bin/b8k-focus watch >"$run"/b8k-focus-watch.log 2>&1 &
 fi
+# Notifications (org.freedesktop.Notifications): large cards at the top
+# that buzz once; a tap opens what they are about.
+if command -v mako >/dev/null && ! pgrep -x -u "$(id -u)" mako >/dev/null; then
+	setsid mako -c /usr/local/share/b8k/mako.conf >"$run"/mako.log 2>&1 &
+fi
 # Counts on buttons from programs' Unity LauncherEntry signals.
 if [ -x /usr/local/bin/b8k-badges ]; then
 	setsid /usr/local/bin/b8k-badges >"$run"/b8k-badges.log 2>&1 &
