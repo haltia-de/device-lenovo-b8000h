@@ -56,10 +56,19 @@ for variant in firstboot:ROOTFS recovery:RECOVERY; do
 	python3 "$REPO/tools/fix-legacy-boot-header.py" "$IMG" --second-addr 0x10f00000
 
 	# Round-trip check: unpacked payloads must equal the inputs.
-	rm -rf /opt/b8000h/unpacked-safe && mkdir /opt/b8000h/unpacked-safe
-	unpack_bootimg --boot_img "$IMG" --out /opt/b8000h/unpacked-safe >/dev/null
-	cmp "$OUT/kernel-safe-mtk.bin" /opt/b8000h/unpacked-safe/kernel
-	cmp "$RD" /opt/b8000h/unpacked-safe/ramdisk
+	# Header v0: sizes at 8 and 16, page size at 36; the kernel starts at
+	# the second page, the ramdisk at the next page boundary after it.
+	python3 - "$IMG" "$OUT/kernel-safe-mtk.bin" "$RD" <<'PY'
+import struct, sys
+img, kernel, ramdisk = (open(f, "rb").read() for f in sys.argv[1:])
+assert img[:8] == b"ANDROID!", "no boot magic"
+ksize, = struct.unpack_from("<I", img, 8)
+rsize, = struct.unpack_from("<I", img, 16)
+page, = struct.unpack_from("<I", img, 36)
+roff = page + (ksize + page - 1) // page * page
+assert img[page:page + ksize] == kernel, "kernel differs"
+assert img[roff:roff + rsize] == ramdisk, "ramdisk differs"
+PY
 	cp "$IMG" "$DST/"
 	sha256sum "$IMG"
 done
