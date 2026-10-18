@@ -329,13 +329,8 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# in /opt/debian is built on the tablet (linux-port/hybris/). The
 	# musl phoc stays the fallback; phoc-gpu sets WLR_RENDERER=gles2
 	# only for the glibc phoc. Clients keep drawing on the CPU.
-	install -d -m 755 "$ROOT/usr/lib/b8k/k22" "$ROOT/usr/local/bin" "$ROOT/etc/skel"
-	install -m 644 "$REPO/linux-port/drivers/ion-legacy/ion_legacy.ko" \
-		"$ROOT/usr/lib/b8k/k22/ion_legacy.ko"
-	install -m 644 "$REPO/linux-port/drivers/pvrsrvkm/pvrsrvkm.ko" \
-		"$ROOT/usr/lib/b8k/k22/pvrsrvkm.ko"
-	install -m 644 "$REPO/linux-port/drivers/dc_nohw/dc_nohw.ko" \
-		"$ROOT/usr/lib/b8k/k22/dc_nohw.ko"
+	# The module sets (usr/lib/b8k/kN) come with the kernel, below.
+	install -d -m 755 "$ROOT/usr/lib/b8k" "$ROOT/usr/local/bin" "$ROOT/etc/skel"
 	install -m 755 "$REPO/linux-port/gpu/pvr-run.sh" "$ROOT/usr/lib/b8k/pvr-run.sh"
 	install -m 755 "$REPO/linux-port/gpu/b8k-gpu.initd" "$ROOT/etc/init.d/b8k-gpu"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-android-system.initd" \
