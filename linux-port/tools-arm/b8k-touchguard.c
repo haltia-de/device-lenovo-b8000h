@@ -22,6 +22,10 @@
  *    second strike and is dropped (Ignore Repeat); a quick double tap is
  *    one tap. 400 ms and 150 units (some 86 px) by default.
  *  - a second finger while one is down is ignored: one finger at a time.
+ *  - buzz_ms: every touch that counts buzzes the motor (the
+ *    regulator-haptic input device) this long, 70 ms by default, 0 for
+ *    none: the shell's tap feedback for every program alike (ADR 0001),
+ *    so programs need no buzzing of their own.
  *
  * Measured on the B8000-H: a finger is size 5 of 15, pressure ~48, 75-120
  * ms; a palm is 12-15, 120-143, with 3-6 contacts and ghost contacts of
@@ -60,8 +64,9 @@ struct slot {
 
 static struct {
 	int hold_ms, repeat_ms, repeat_radius, palm_major, palm_pressure, palm_contacts;
-	int palm_grace_ms;
-} cfg = { 60, 400, 150, 11, 100, 3, 300 };
+	int palm_grace_ms, buzz_ms;
+} cfg = { 60, 400, 150, 11, 100, 3, 300, 70 };
+static int haptic_fd = -1, haptic_effect = -1;
 static int debug; /* B8K_TOUCHGUARD_DEBUG=1: every decision to stderr */
 
 static struct slot slots[SLOTS];
@@ -119,6 +124,8 @@ static void read_config(const char *path)
 			cfg.palm_contacts = v;
 		else if (!strcmp(key, "palm_grace_ms"))
 			cfg.palm_grace_ms = v;
+		else if (!strcmp(key, "buzz_ms"))
+			cfg.buzz_ms = v < 0 ? 0 : (v > 500 ? 500 : v);
 	}
 	fclose(f);
 }
@@ -220,6 +227,68 @@ static void sync_out(void)
 	emit(EV_SYN, SYN_REPORT, 0);
 }
 
+/* The motor, opened once with its effect uploaded; a later failure (the
+ * device gone) closes it, and the next touch looks for it again. */
+static void haptic_open(void)
+{
+	DIR *dir;
+	struct dirent *de;
+
+	if (haptic_fd >= 0 || cfg.buzz_ms <= 0 || !(dir = opendir("/sys/class/input")))
+		return;
+	while ((de = readdir(dir)) && haptic_fd < 0) {
+		char path[300], name[128] = "";
+		FILE *f;
+
+		if (strncmp(de->d_name, "event", 5))
+			continue;
+		snprintf(path, sizeof(path), "/sys/class/input/%s/device/name", de->d_name);
+		if (!(f = fopen(path, "r")))
+			continue;
+		if (!fgets(name, sizeof(name), f))
+			name[0] = '\0';
+		fclose(f);
+		name[strcspn(name, "\n")] = '\0';
+		if (strcmp(name, "regulator-haptic"))
+			continue;
+		snprintf(path, sizeof(path), "/dev/input/%s", de->d_name);
+		haptic_fd = open(path, O_RDWR | O_CLOEXEC | O_NONBLOCK);
+	}
+	closedir(dir);
+	if (haptic_fd >= 0) {
+		struct ff_effect effect;
+
+		memset(&effect, 0, sizeof(effect));
+		effect.type = FF_RUMBLE;
+		effect.id = -1;
+		effect.u.rumble.strong_magnitude = 0xffff;
+		effect.replay.length = (unsigned short)cfg.buzz_ms;
+		if (ioctl(haptic_fd, EVIOCSFF, &effect) == 0) {
+			haptic_effect = effect.id;
+		} else {
+			close(haptic_fd);
+			haptic_fd = -1;
+		}
+	}
+}
+
+static void buzz(void)
+{
+	struct input_event play;
+
+	haptic_open();
+	if (haptic_fd < 0)
+		return;
+	memset(&play, 0, sizeof(play));
+	play.type = EV_FF;
+	play.code = (unsigned short)haptic_effect;
+	play.value = 1;
+	if (write(haptic_fd, &play, sizeof(play)) != (ssize_t)sizeof(play)) {
+		close(haptic_fd);
+		haptic_fd = -1;
+	}
+}
+
 static void out_down(struct slot *s)
 {
 	emit(EV_ABS, ABS_MT_SLOT, 0);
@@ -235,6 +304,7 @@ static void out_down(struct slot *s)
 	emit(EV_ABS, ABS_Y, s->y0);
 	emit(EV_ABS, ABS_PRESSURE, s->pressure);
 	sync_out();
+	buzz(); /* the touch counts: the hand feels it at once */
 }
 
 static void out_move(struct slot *s)
@@ -375,6 +445,7 @@ int main(int argc, char **argv)
 	struct input_event evs[64];
 
 	read_config(argc > 1 ? argv[1] : "/etc/b8k/touchguard.conf");
+	haptic_open(); /* found now, not on the first touch */
 	debug = getenv("B8K_TOUCHGUARD_DEBUG") != NULL;
 	signal(SIGTERM, on_signal);
 	signal(SIGINT, on_signal);
