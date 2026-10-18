@@ -1,2 +1,3 @@
 # The Debian island the image build installs (ci/image.sh): URL and sha256
 # of a release of the island workflow (ci/island.sh, ADR 0003).
+https://github.com/trudenboy/lenovo-b8000h-linux/releases/download/island-2026.10.18/b8000h-island.tar.gz 0d50db8ed63ea8100b4f35166a9503a22afb69970817cdb4d3800e18d95d61d9
