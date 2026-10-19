@@ -9,7 +9,7 @@ secs=${1:-30}
 echo "b8k: kmsdemo start ($secs s)" > /dev/kmsg
 
 pkill -f /etc/local.d/desktop.start
-pkill -f /usr/bin/b8k-session
+pkill -f /usr/bin/haltia-session
 pkill phoc
 pkill phosh
 sleep 2

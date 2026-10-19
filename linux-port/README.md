@@ -13,7 +13,7 @@ Device work for the Lenovo YOGA Tablet 10 B8000-H (machine type 60047, board
 | `drivers/` | Out-of-tree modules: PowerVR `pvrsrvkm` (DDK 1.12), `dc_nohw`, `ion-legacy`, MT6628 Wi-Fi, audio, battery |
 | `wifi/` | wpa_supplicant 2.11 without PMF/SAE, NetworkManager config |
 | `gpu/`, `hybris/` | PowerVR services, libhybris and the phoc/wlroots GLES2 build in the Debian armhf chroot |
-| `build-rootfs.sh` | Alpine 3.24 armv7 root file system; `UI_PROFILE=phosh` installs the tablet shell (see [../docs/shell.md](../docs/shell.md)), `labwc` a rescue desktop |
+| `build-rootfs.sh` | Alpine 3.24 armv7 root file system; `UI_PROFILE=shell` installs the tablet shell (Haltia) (see [../docs/shell.md](../docs/shell.md)), `labwc` a rescue desktop |
 | `rootfs/` | Shell scripts (`b8k-*`), waybar, Firefox theme and web-app script, galculator theme, icons; `make-release-rootfs.sh` builds the public image from a tar of a working tablet |
 | `wvkbd/` | On-screen keyboard: patches and layout for wvkbd 0.21, `build.sh` |
 | `build-emmc-root-image.sh`, `install-root-to-emmc.sh` | eMMC root image and the guarded USRDATA writer |

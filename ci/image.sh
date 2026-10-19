@@ -52,7 +52,7 @@ rm -rf "$KP"
 mkdir -p "$KP"
 tar -xzf "$DIST"/b8000h-kernel-*.tar.gz -C "$KP"
 KERNEL_PKG=$KP ISLAND=$OUT/island.tgz \
-	UI_PROFILE=phosh sh /src/linux-port/build-rootfs.sh
+	UI_PROFILE=shell sh /src/linux-port/build-rootfs.sh
 
 # The release: make-release-rootfs.sh takes a tar of a working system; here
 # the freshly built one. It leaves no development access, locks root and

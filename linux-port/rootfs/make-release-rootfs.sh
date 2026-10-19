@@ -94,7 +94,6 @@ chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 find "$R/root" -mindepth 1 -delete
 rm -rf "$R/home/user"
 install -d -m 750 -o 1000 -g 1000 "$R/home/user"
-install -m 644 -o 1000 -g 1000 "$REPO/linux-port/hybris/phoshdebug" "$R/home/user/.phoshdebug"
 find "$R/etc/NetworkManager/system-connections" -type f -delete
 rm -rf "$R"/var/lib/NetworkManager/* "$R"/var/lib/upower/* "$R"/var/lib/bluetooth/*
 rm -f "$R"/etc/ssh/ssh_host_* "$R/etc/machine-id" "$R/var/lib/dbus/machine-id"
@@ -148,10 +147,10 @@ echo 'permit persist :wheel' > "$R/etc/doas.d/wheel.conf"
 # the root terminal without a password prompt. It cannot run any other
 # command.
 # z- sorts after wheel.conf. doas uses the last matching rule.
-# The shell's rules come with its package (z-b8k-shell.conf); these are
+# The shell's rules come with its package (z-haltia-shell.conf); these are
 # the device's.
 rm -f "$R/etc/doas.d/z-b8k-power.conf"
-[ -f "$R/etc/doas.d/z-b8k-shell.conf" ] ||
+[ -f "$R/etc/doas.d/z-haltia-shell.conf" ] ||
 	echo "warning: no z-b8k-shell.conf: the power menu will ask for a password" >&2
 cat > "$R/etc/doas.d/z-b8k-device.conf" << 'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-usb args host

@@ -9,7 +9,7 @@ echo "b8k: fbdemo start ($secs s)" > /dev/kmsg
 
 # The respawn loop first, then the session it started.
 pkill -f /etc/local.d/desktop.start
-pkill -f /usr/bin/b8k-session
+pkill -f /usr/bin/haltia-session
 pkill phoc
 pkill phosh
 sleep 2

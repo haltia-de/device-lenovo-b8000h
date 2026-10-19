@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build an Alpine armv7 root filesystem for the B8000-H microSD card.
-# UI_PROFILE=labwc (known-good rescue desktop) or phosh (the tablet shell on
+# UI_PROFILE=labwc (known-good rescue desktop) or shell (Haltia, the tablet shell on
 # phoc; the name is historical, Phosh itself is not installed).
 # Runs inside WSL B8000Build. Output: artifacts/linux-port/b8000h-sd.img
 set -eu
@@ -55,10 +55,12 @@ IMG=/opt/b8000h/out/b8000h-sd.img
 MIRROR=https://dl-cdn.alpinelinux.org/alpine/v3.24
 IMG_MB=3072
 UI_PROFILE=${UI_PROFILE:-labwc}
+# "phosh" is the profile's name before ADR 0004 (it never ran Phosh).
+[ "$UI_PROFILE" = phosh ] && UI_PROFILE=shell
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
-	phosh) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc network-manager-applet
+	shell) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc network-manager-applet
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
@@ -69,7 +71,7 @@ case "$UI_PROFILE" in
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
 		py3-gobject3 openssh doas
 		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables ffmpeg py3-mutagen mako" ;;
-	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or phosh)" >&2; exit 2 ;;
+	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or shell)" >&2; exit 2 ;;
 esac
 
 apk add --no-cache qemu-arm e2fsprogs sfdisk alpine-keys git kmod make tar >/dev/null
@@ -111,7 +113,7 @@ done
 for s in seatd local; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 done
-if [ "$UI_PROFILE" = phosh ]; then
+if [ "$UI_PROFILE" = shell ]; then
 	for s in dbus elogind polkit openrc-settingsd networkmanager sshd ntpd; do
 		[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 	done
@@ -295,7 +297,7 @@ chmod +x "$ROOT/usr/local/bin/b8k-kbd" "$ROOT/usr/local/bin/b8k-power"
 
 # Start the selected desktop from OpenRC local.d as root on seat0.
 rm -f "$ROOT/etc/local.d/weston.start"
-if [ "$UI_PROFILE" = phosh ]; then
+if [ "$UI_PROFILE" = shell ]; then
 	# Patched wpa_supplicant: Alpine's binary advertises "pmf", so
 	# NetworkManager appends WPA-PSK-SHA256 and the MT6628 driver
 	# rejects the association. No saved network is installed.
@@ -459,12 +461,6 @@ EOF
 	ln -sfn /etc/init.d/b8k-gpu "$ROOT/etc/runlevels/default/b8k-gpu"
 	ln -sfn /opt/debian/usr/lib/arm-linux-gnueabihf "$ROOT/usr/lib/arm-linux-gnueabihf"
 	ln -sfn /opt/debian/usr/local/hybris "$ROOT/usr/local/hybris"
-	install -m 644 "$REPO/linux-port/hybris/phoshdebug" "$ROOT/etc/skel/.phoshdebug"
-	install -m 644 "$REPO/linux-port/hybris/phoshdebug" "$ROOT/root/.phoshdebug"
-	if [ -d "$ROOT/home/user" ]; then
-		install -m 644 -o 1000 -g 1000 "$REPO/linux-port/hybris/phoshdebug" \
-			"$ROOT/home/user/.phoshdebug"
-	fi
 
 	cat > "$ROOT/etc/local.d/desktop.start" <<'EOF'
 #!/bin/sh
@@ -472,16 +468,16 @@ export HOME=/root XDG_RUNTIME_DIR=/run/user/0
 # simpledrm names the panel "Unknown-1"; fake-builtin makes phoc map the
 # touchscreen to it so touch follows screen rotation.
 # WLR_RENDERER=pixman applies to the musl /usr/bin/phoc fallback.
-# phoc-gpu (selected by ~/.phoshdebug) sets gles2 for the glibc phoc only.
+# phoc-gpu sets gles2 for the glibc phoc only.
 export PHOC_DEBUG=fake-builtin WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
-export XDG_SESSION_DESKTOP=phosh LANG=ru_RU.UTF-8
+export XDG_SESSION_DESKTOP=haltia LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# b8k-session opens a PAM session (pam_elogind) so the session has a
+# haltia-session opens a PAM session (pam_elogind) so the session has a
 # logind session: brightness goes through login1.Session.SetBrightness.
 # Restart the session if phoc crashes instead of leaving a dead screen.
-# The session user is read from /etc/b8k/session-user on every start (root
+# The session user is read from /etc/haltia/session-user on every start (root
 # when the file or the user is missing), so switching needs no reboot.
 # pipewire-launcher's own cleanup (pkill -u "$USER" -fx) misses under
 # busybox: stale audio daemons of the last session would fight the new ones
@@ -490,14 +486,14 @@ chmod 700 "$XDG_RUNTIME_DIR"
 # subshell, so it outlives the shell of the local service that starts it.
 ( trap '' HUP
 while :; do
-	u=$(cat /etc/b8k/session-user 2>/dev/null)
+	u=$(cat /etc/haltia/session-user 2>/dev/null || cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
-	/usr/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/share/b8k/phoc.ini -E /usr/bin/b8k-launcher >>/var/log/phosh.log 2>&1
+	/usr/bin/haltia-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/share/haltia/phoc.ini -E /usr/bin/haltia-launcher >>/var/log/session.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
 done ) >/dev/null 2>&1 &
 EOF
-	# b8k-session and its PAM service come with the shell (b8k-shell).
+	# haltia-session and its PAM service come with the shell (haltia-shell).
 
 	# Russian UI: install the -lang subpackages of everything installed,
 	# then keep only the ru catalogs (the full set is ~50 MB).
@@ -553,13 +549,13 @@ EOF
 	done
 	chroot "$ROOT" passwd -d user >/dev/null
 	chmod 750 "$ROOT/home/user"
-	mkdir -p "$ROOT/etc/b8k"
-	echo user > "$ROOT/etc/b8k/session-user"
+	mkdir -p "$ROOT/etc/haltia"
+	echo user > "$ROOT/etc/haltia/session-user"
 	install -d "$ROOT/etc/doas.d"
 	echo 'permit persist :wheel' > "$ROOT/etc/doas.d/wheel.conf"
 	# z- sorts after wheel.conf. doas uses the last matching rule.
 	# The power menu and root terminal rules are the shell's
-	# (z-b8k-shell.conf); the USB role switch is this device's.
+	# (z-haltia-shell.conf); the USB role switch is this device's.
 	rm -f "$ROOT/etc/doas.d/z-b8k-power.conf"
 	cat > "$ROOT/etc/doas.d/z-b8k-device.conf" <<'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-usb args host

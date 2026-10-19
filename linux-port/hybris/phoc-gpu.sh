@@ -10,8 +10,8 @@
 #   /usr/local/hybris            -> /opt/debian/usr/local/hybris
 # Falls back to the packaged /usr/bin/phoc (pixman) when the GPU is not ready
 # (b8k-gpu service) or after 3 starts in a row that did not last a minute.
-# Installed as /usr/local/bin/phoc-gpu; phosh-session picks it up through
-# ~/.phoshdebug.  Runs as the session user (groups video, seat, input).
+# Installed as /usr/local/bin/phoc-gpu; the session loop in desktop.start
+# runs it. Runs as the session user (groups video, seat, input).
 D=/opt/debian
 LDSO=$D/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
 PHOC=$D/usr/local/bin/phoc

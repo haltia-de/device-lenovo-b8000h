@@ -7,7 +7,7 @@
 # off and stops advertising "pmf", so Phosh can connect with plain WPA-PSK.
 #
 # Place the official 2.11 tarball at $TARBALL first. The image build
-# (linux-port/build-rootfs.sh, UI_PROFILE=phosh) installs the result
+# (linux-port/build-rootfs.sh, UI_PROFILE=shell) installs the result
 # over the Alpine binary.
 set -eu
 
