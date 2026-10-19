@@ -66,7 +66,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		foot grim py3-pillow py3-cairo font-noto-emoji
+		foot grim py3-pillow py3-cairo font-noto-emoji gtk+3.0-lang
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
@@ -552,6 +552,25 @@ EOF
 	done
 	chroot "$ROOT" passwd -d user >/dev/null
 	chmod 750 "$ROOT/home/user"
+	# The person's folders in Russian (xdg-user-dirs has no translations on
+	# Alpine): programs find pictures, downloads and music there, and the
+	# file chooser lists them. No desktop, templates or public folder.
+	for d in Загрузки Документы Изображения Музыка Видео; do
+		install -d -m 755 -o 1000 -g 1000 "$ROOT/home/user/$d"
+	done
+	install -d -m 755 -o 1000 -g 1000 "$ROOT/home/user/.config"
+	cat > "$ROOT/home/user/.config/user-dirs.dirs" <<'EOF'
+XDG_DESKTOP_DIR="$HOME"
+XDG_DOWNLOAD_DIR="$HOME/Загрузки"
+XDG_TEMPLATES_DIR="$HOME"
+XDG_PUBLICSHARE_DIR="$HOME"
+XDG_DOCUMENTS_DIR="$HOME/Документы"
+XDG_MUSIC_DIR="$HOME/Музыка"
+XDG_PICTURES_DIR="$HOME/Изображения"
+XDG_VIDEOS_DIR="$HOME/Видео"
+EOF
+	echo ru_RU > "$ROOT/home/user/.config/user-dirs.locale"
+	chown 1000:1000 "$ROOT/home/user/.config/user-dirs.dirs" "$ROOT/home/user/.config/user-dirs.locale"
 	mkdir -p "$ROOT/etc/haltia"
 	echo user > "$ROOT/etc/haltia/session-user"
 	install -d "$ROOT/etc/doas.d"

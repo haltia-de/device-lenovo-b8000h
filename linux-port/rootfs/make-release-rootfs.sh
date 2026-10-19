@@ -94,6 +94,22 @@ chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 find "$R/root" -mindepth 1 -delete
 rm -rf "$R/home/user"
 install -d -m 750 -o 1000 -g 1000 "$R/home/user"
+# The person's folders in Russian, as build-rootfs.sh makes them.
+for d in Загрузки Документы Изображения Музыка Видео .config; do
+	install -d -m 755 -o 1000 -g 1000 "$R/home/user/$d"
+done
+cat > "$R/home/user/.config/user-dirs.dirs" <<'EOF'
+XDG_DESKTOP_DIR="$HOME"
+XDG_DOWNLOAD_DIR="$HOME/Загрузки"
+XDG_TEMPLATES_DIR="$HOME"
+XDG_PUBLICSHARE_DIR="$HOME"
+XDG_DOCUMENTS_DIR="$HOME/Документы"
+XDG_MUSIC_DIR="$HOME/Музыка"
+XDG_PICTURES_DIR="$HOME/Изображения"
+XDG_VIDEOS_DIR="$HOME/Видео"
+EOF
+echo ru_RU > "$R/home/user/.config/user-dirs.locale"
+chown 1000:1000 "$R/home/user/.config/user-dirs.dirs" "$R/home/user/.config/user-dirs.locale"
 find "$R/etc/NetworkManager/system-connections" -type f -delete
 rm -rf "$R"/var/lib/NetworkManager/* "$R"/var/lib/upower/* "$R"/var/lib/bluetooth/*
 rm -f "$R"/etc/ssh/ssh_host_* "$R/etc/machine-id" "$R/var/lib/dbus/machine-id"
