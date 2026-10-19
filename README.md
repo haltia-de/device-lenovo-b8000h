@@ -1,12 +1,23 @@
-# Linux (Alpine) для Lenovo YOGA Tablet 10 B8000-H
+# Pertin Haltia для Lenovo YOGA Tablet 10 B8000-H
+
+Современный Linux и спокойная сенсорная среда [Haltia](https://github.com/haltia-de)
+для Lenovo YOGA Tablet 10 B8000-H.
+
+> Haltia началась с одного планшета. Отцу автора 73 года, и он очень любит
+> свою Lenovo YOGA Tablet 10. Lenovo давно перестала её обновлять, браузер и
+> программы перестали работать. Вместо нового планшета на нём теперь
+> современный Linux и спокойная среда, сделанная под его руки и глаза.
+> Халтия в финских и карельских сказках — дух-хранитель, который тихо
+> присматривает за домом и его хозяевами. Pertin haltia — хранитель избы:
+> так называются готовые образы для планшетов.
 
 *English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
 kernel + 45 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
 **B8000-H** (MT8389/MT6589, 3G). Display, multitouch, Wi-Fi, speakers and charging
 work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
-stock Android 4.4 blobs; a small touch shell (a waybar panel on the left with large program
-buttons, b8k-shell) runs on it, with its own GTK3 programs. Ready-to-flash
-images are built by GitHub Actions and published as releases. Until early October the kernel crashed every 10–40
+stock Android 4.4 blobs; the Haltia touch desktop (a waybar panel on the left with large program
+buttons, haltia-de/shell) runs on it, with its own GTK3 programs. Ready-to-flash
+images (Pertin Haltia) are built by GitHub Actions and published as releases. Until early October the kernel crashed every 10–40
 minutes; kernel 23 ran an hour of full load at 1.2 GHz without a crash or a
 memory error.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
@@ -30,8 +41,8 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Загрузка с eMMC, ядро 7.1 | работает (BOOT прошивается fastboot'ом, система — в разделе USRDATA) |
 | Экран 1280×800, подсветка, яркость | работает (mediatek-drm, DSI); яркость — ползунок на панели, сохраняется |
 | GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
-| Оболочка: домашний экран с плитками программ, панель слева, кнопка закрытия, яркость, громкость, Wi-Fi, батарея, часы | работает ([b8k-shell](https://github.com/haltia-de/shell)) |
-| Программы: Firefox, MAX, Видео, Музыка, Файлы с галереей, Текст, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine; MAX — собственный клиент со счётчиком непрочитанных на кнопке |
+| Оболочка: домашний экран с плитками программ, панель слева, кнопка закрытия, яркость, громкость, Wi-Fi, батарея, часы | работает ([Haltia](https://github.com/haltia-de/shell)) |
+| Программы: Firefox, Сообщения (MAX), Видео, Музыка, Файлы с галереей, Блокнот, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine из [репозитория Haltia](https://haltia-de.github.io/packages/); «Сообщения» — собственный клиент MAX со счётчиком непрочитанных и отметкой проигрывания на кнопке |
 | Видео | 480p H.264 — 30 к/с (программный декодер), 720p — нет |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | работает, до 10 касаний: щипок и прокрутка двумя пальцами (GTK, Раскраска). Фильтр касаний оболочки отсекает ладонь и случайные касания и даёт вибро-отклик; мультитач в нём отключается. В Firefox щипок пока не масштабирует страницу |
@@ -65,17 +76,18 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 ## Установка
 
 Готовые образы — в [выпусках](https://github.com/haltia-de/device-lenovo-b8000h/releases)
-(тег `vX.Y.Z`): `b8000h-boot.img` (ядро с установщиком), `b8000h-sd-installer.img.xz`
-(установщик для microSD), `b8000h-root.ext4.xz` (система отдельно),
-`b8000h-kernel-<версия>.tar.gz` (ядро, модули и модули GPU для обновления без
-переустановки), `SHA256SUMS`. Пошагово — [docs/INSTALL.md](docs/INSTALL.md). Кратко:
+(тег `vX.Y.Z`, с v2.0.0 — Pertin Haltia), файлы `pertin-haltia-lenovo-b8000h-<версия>-…`: `-boot.img` (ядро с
+установщиком), `-sd-installer.img.xz` (установщик для microSD), `-root.ext4.xz`
+(система отдельно), `-kernel-<ядро>.tar.gz` (ядро, модули и модули GPU для
+обновления без переустановки), `SHA256SUMS`. Выпуски до v2.0.0 называли файлы
+`b8000h-…`. Пошагово — [docs/INSTALL.md](docs/INSTALL.md). Кратко:
 
 1. **Сделайте резервную копию уникальных разделов** (NVRAM, PRO_INFO, PROTECT_F/S)
    через SP Flash Tool → Readback. Без неё при неудаче можно потерять IMEI и калибровки.
 2. Скачайте стоковую прошивку `B8000_A442_001_020_140620_WW_3GDATA` — она нужна для
    возврата на Android.
 3. Проверьте суммы (`sha256sum -c SHA256SUMS`) и запишите установщик на microSD.
-4. Прошейте ядро: `fastboot flash boot b8000h-boot.img`.
+4. Прошейте ядро: `fastboot flash boot pertin-haltia-lenovo-b8000h-<версия>-boot.img`.
 5. Включите планшет с картой: установщик сам скопирует систему в раздел USRDATA
    (прогресс на экране) и загрузит рабочий стол.
 
@@ -93,8 +105,9 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
   (`linux-port/drivers/pvrsrvkm`, `dc_nohw`, `ion-legacy`).
 - Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7) и выпускной
   `linux-port/rootfs/make-release-rootfs.sh` (`ci/image.sh`).
-- Оболочка, программы, библиотека `b8k-compat` и настройки Firefox `b8k-firefox` — отдельные
-  репозитории ([ADR 0001](docs/adr/0001-three-layers.md)); образ ставит их подписанные пакеты
+- Среда Haltia — оболочка, программы, библиотека `haltia-kit` и настройки Firefox `haltia-firefox` —
+  отдельные репозитории организации [haltia-de](https://github.com/haltia-de) ([ADR 0001](docs/adr/0001-three-layers.md),
+  [ADR 0004](docs/adr/0004-de-apart-from-device.md)); образ ставит их подписанные пакеты
   по `linux-port/apps/packages.lock` ([ADR 0002](docs/adr/0002-versions-and-releases.md)).
 - GPU-стек: Debian armhf «остров» с libhybris и phoc 0.55.1 с патчем wlroots под Android
   EGL и патчем phoc для отмены касаний (`ci/island.sh`, `linux-port/hybris/`), выпускается отдельно и закреплён в

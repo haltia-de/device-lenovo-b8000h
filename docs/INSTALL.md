@@ -8,8 +8,8 @@
 ## 0. Сборка
 
 **Готовые образы** — в выпусках репозитория на GitHub (тег `vX.Y.Z`):
-`b8000h-boot.img`, `b8000h-sd-installer.img.xz`, `b8000h-root.ext4.xz`,
-`b8000h-kernel-<версия>.tar.gz`, `SHA256SUMS`. Их собирает GitHub Actions
+`pertin-haltia-lenovo-b8000h-<версия>-boot.img`, `-sd-installer.img.xz`, `-root.ext4.xz`,
+`-kernel-<ядро>.tar.gz`, `SHA256SUMS` (до v2.0.0 — `b8000h-…`). Их собирает GitHub Actions
 (workflow `image`, ADR 0003 — `docs/adr/0003-ci-image.md`) теми же сценариями
 из `ci/`, что описаны ниже. Своя сборка: `docker build -t b8k-build ci`, затем
 в привилегированном контейнере с репозиторием в `/src` и рабочим каталогом в
@@ -88,7 +88,7 @@
   - драйверы MediaTek USB VCOM и SP Flash Tool v5 — для резервной копии и возврата;
   - стоковая прошивка `B8000_A442_001_020_140620_WW_3GDATA` (Android 4.4.2, тема B8000
     на 4pda) — в ней scatter-файл и стоковые `boot.img`/`recovery.img`.
-- Из выпуска: `b8000h-boot.img`, `b8000h-sd-installer.img.xz` и `SHA256SUMS`
+- Из выпуска: `pertin-haltia-lenovo-b8000h-<версия>-boot.img`, `pertin-haltia-lenovo-b8000h-<версия>-sd-installer.img.xz` и `SHA256SUMS`
   (проверка: `sha256sum -c --ignore-missing SHA256SUMS`) — или свои из §0.
 
 ## 1. Резервная копия уникальных разделов
@@ -104,8 +104,8 @@ SP Flash Tool → Readback: загрузите scatter стоковой прош
 ## 2. Образ установщика на microSD
 
 Запишите образ установщика на карту целиком: balenaEtcher принимает `.img.xz` как есть;
-для Rufus (режим DD) или `dd` сначала распакуйте (`xz -d b8000h-sd-installer.img.xz`,
-затем `dd if=b8000h-sd-installer.img of=/dev/sdX bs=4M conv=fsync` в Linux).
+для Rufus (режим DD) или `dd` сначала распакуйте (`xz -d pertin-haltia-lenovo-b8000h-<версия>-sd-installer.img.xz`,
+затем `dd if=pertin-haltia-lenovo-b8000h-<версия>-sd-installer.img of=/dev/sdX bs=4M conv=fsync` в Linux).
 Разделы на карте создавать не нужно.
 
 ## 3. Ядро в раздел BOOT
@@ -119,7 +119,7 @@ SP Flash Tool → Readback: загрузите scatter стоковой прош
    ответ должен быть `BLADE10_ROW_3GDATA`.
 3. Прошить ядро:
    ```
-   fastboot flash boot b8000h-boot.img
+   fastboot flash boot pertin-haltia-lenovo-b8000h-<версия>-boot.img
    ```
    (`fastboot boot` — загрузка без прошивки — загрузчик этого планшета не умеет.)
 

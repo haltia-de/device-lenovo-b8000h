@@ -44,7 +44,9 @@ sha256).
 по ADR 0002): `b8000h-boot.img`, `b8000h-sd-installer.img.xz`,
 `b8000h-root.ext4.xz`, `b8000h-kernel-<версия>.tar.gz` (zImage, DTB, конфиг,
 модули, набор GPU — обновить ядро без переустановки) и `SHA256SUMS`. Запуск
-вручную без тега оставляет те же файлы артефактом на неделю.
+вручную без тега оставляет те же файлы артефактом на неделю. С v2.0.0
+(ADR 0004) выпуск называется Pertin Haltia, а файлы —
+`pertin-haltia-lenovo-b8000h-<версия>-{boot.img,sd-installer.img.xz,root.ext4.xz,kernel-<ядро>.tar.gz}`.
 
 **Шаги и переиспользование.** Workflow `image` — три задачи: `kernel`
 (результат кэшируется по хешу всего, что читает `ci/kernel.sh`: патчи,

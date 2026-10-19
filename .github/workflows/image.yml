@@ -4,7 +4,8 @@
 #            hash of everything it reads, so a change elsewhere skips it.
 #   rootfs   ci/image.sh on the kernel job's output: root file system from
 #            the locked packages and the pinned island, the images to flash.
-#   release  on a vX.Y.Z tag, both jobs' files into the tag's release.
+#   release  on a vX.Y.Z tag, both jobs' files into the tag's release, named
+#            pertin-haltia-lenovo-b8000h-<version>-* (ADR 0004).
 # A run without a tag keeps the files as artifacts for a week. "Re-run
 # failed jobs" reuses the artifacts of the jobs that passed.
 name: image
@@ -97,11 +98,18 @@ jobs:
         run: |
           cd dist
           rel=$(cat kernel-release)
-          sha256sum b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz > SHA256SUMS
-          cat SHA256SUMS
           tag=$GITHUB_REF_NAME
+          # Pertin Haltia (ADR 0004): the images carry the line's, the
+          # device's and the version's names.
+          p=pertin-haltia-lenovo-b8000h-${tag#v}
+          mv b8000h-boot.img "$p-boot.img"
+          mv b8000h-sd-installer.img.xz "$p-sd-installer.img.xz"
+          mv b8000h-root.ext4.xz "$p-root.ext4.xz"
+          mv b8000h-kernel-"$rel".tar.gz "$p-kernel-$rel.tar.gz"
+          sha256sum "$p-boot.img" "$p-sd-installer.img.xz" "$p-root.ext4.xz" "$p-kernel-$rel.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
           gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
-            gh release create "$tag" -R "$GITHUB_REPOSITORY" --title "$tag" --generate-notes \
-              --notes "Kernel $rel. Install: docs/INSTALL.md (fastboot flash boot b8000h-boot.img; the unpacked b8000h-sd-installer.img on a microSD card)."
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --title "Pertin Haltia $tag" --generate-notes \
+              --notes "Haltia for the Lenovo YOGA Tablet 10 B8000-H. Kernel $rel. Install: docs/INSTALL.md (fastboot flash boot $p-boot.img; the unpacked $p-sd-installer.img on a microSD card)."
           gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber \
-            b8000h-boot.img b8000h-sd-installer.img.xz b8000h-root.ext4.xz b8000h-kernel-*.tar.gz SHA256SUMS
+            "$p-boot.img" "$p-sd-installer.img.xz" "$p-root.ext4.xz" "$p-kernel-$rel.tar.gz" SHA256SUMS
