@@ -3,7 +3,7 @@
 
 The panel stride on this tablet is 5120 bytes (1280 pixels, 32 bpp).
 Bytes in memory are B, G, R, X. The picture is Haltia's sign (ADR 0004),
-the Karelian rhombus with horns, on the screen of the build's device (a
+the Karelian rhombus with horns in rowan red with an amber light, on the screen of the build's device (a
 tablet here), and the word Haltia in Golos Text, on a dark field. Flat colors keep the gzip small enough
 for the BOOT partition.
 """
@@ -17,7 +17,8 @@ STRIDE = W * 4
 
 FIELD = (0x1E, 0x1D, 0x1B)
 HOUSE = (0xEE, 0xE8, 0xDC)
-WINDOW = (0xF6, 0xBB, 0x3C)
+ROWAN = (0xD9, 0x54, 0x2B)
+AMBER = (0xF6, 0xBB, 0x3C)
 
 
 def px(rgb):
@@ -94,11 +95,12 @@ def main():
             rect(x0 + inset, y, x1 - inset, y + 1, rgb)
 
     def amulet(cx, cy, r):
-        """Haltia's sign: the rhombus with horns, a light at its heart."""
+        """Haltia's sign: the rhombus with horns in rowan red, an amber
+        light at its heart."""
         w = max(4, r * 23 // 100)
-        rhombus(cx, cy, r, w, WINDOW)
-        horns(cx, cy, r, w * 9 // 10, r * 33 // 100, WINDOW)
-        rhombus(cx, cy, r * 37 // 100, 0, HOUSE)
+        rhombus(cx, cy, r, w, ROWAN)
+        horns(cx, cy, r, w * 9 // 10, r * 33 // 100, ROWAN)
+        rhombus(cx, cy, r * 47 // 100, 0, AMBER)
 
     cx, word_y = 640, 570
     dy = 70  # the picture's middle, now that nothing lies below the word
