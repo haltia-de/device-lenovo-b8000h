@@ -12,12 +12,12 @@ shell      https://github.com/haltia-de/shell.git     v2.2.0 03901ab587fecc9bceb
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
 kit        https://github.com/haltia-de/kit.git    v2.0.0 5ab3fce00fee7596f69c8bc83ca0e68ea2805796
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
-paint      https://github.com/haltia-de/paint.git     v4.0.0 1a0d0a296124bb45584c642118182dbe2cf9cf89
+paint      https://github.com/haltia-de/paint.git     v4.0.1 c972effb77f3e997b763f07dd9f767f75b69a979
 weather    https://github.com/haltia-de/weather.git   v2.0.1 b0d296868923b5573aba1d0725ecbd64a390e198
 news       https://github.com/haltia-de/news.git      v2.0.1 9fa8aa33e8ddf18f770cfb5901f183563c56ccd2
-messenger        https://github.com/haltia-de/messenger.git       v2.1.0 c64435531947966be475ec8263ec93dca38e2b99
+messenger        https://github.com/haltia-de/messenger.git       v2.1.1 
 video      https://github.com/haltia-de/video.git     v2.0.0 467d9f1470cb7acb5c9d5d10b4e2c9a5b2eca302
-music      https://github.com/haltia-de/music.git     v2.0.0 fdd38ed16a225568e092c1c310a8da938a507d95
+music      https://github.com/haltia-de/music.git     v2.0.1 
 calendar   https://github.com/haltia-de/calendar.git  v2.0.1 e6f0f603a1d03f5005562db41a76e6bf01cc4c83
 files      https://github.com/haltia-de/files.git     v2.0.1 55a5a1a065313c9948f3ebc7becf50a6f5b2b7eb
 text       https://github.com/haltia-de/text.git      v2.0.1 fc878b04c86321f8078a5b3a5f02b108694f5f24

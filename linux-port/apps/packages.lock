@@ -4,10 +4,10 @@ calendar haltia-de/calendar 2.0.1 haltia-calendar-2.0.1-r0.apk 2f7954f4c2ffe11be
 files haltia-de/files 2.0.1 haltia-files-2.0.1-r0.apk 09a3f424c8fabd2cd4d90966f34ae5b0790179cd04e02547dd93ced68cb53edb
 firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
 kit haltia-de/kit 2.0.0 py3-haltia-kit-2.0.0-r0.apk 252e3838ce8148cad742b8a8a64eb56c5e456d86437223bd2a2275c8891bd719
-messenger haltia-de/messenger 2.1.0 haltia-messenger-2.1.0-r0.apk 73af0bfa629ad532397211136deb401943f5f24e04d16f2f8c817a03eb8ee5fe
-music haltia-de/music 2.0.0 haltia-music-2.0.0-r0.apk 1efbd577965aaf4da58ccf90194ecec7f4bf6e3dab93f0da47d5852dff43c506
+messenger haltia-de/messenger 2.1.1 haltia-messenger-2.1.1-r0.apk 8aaa3aee19deaebcfe64118987188ec3601835c208fe05c8f76b153a7b7767f7
+music haltia-de/music 2.0.1 haltia-music-2.0.1-r0.apk ea03f2226f0ea51d89903e4a6c1b38854d6d9be488f977798d7c91888190483e
 news haltia-de/news 2.0.1 haltia-news-2.0.1-r0.apk ead5b2c6e1df1994fa25d45300bda2232f800ff8b7fd3c3dc5cb15d4d86c4e48
-paint haltia-de/paint 4.0.0 haltia-paint-4.0.0-r0.apk bcf2e65b83d82dc61cc27a96c9e024d829443af1007c57f86d79e59474cda7b0
+paint haltia-de/paint 4.0.1 haltia-paint-4.0.1-r0.apk 0df7b4a234cd8bf7be662f9fb44f97ec9a9fbb3648d535775e70b93cc8249989
 shell haltia-de/shell 2.2.0 haltia-shell-2.2.0-r0.apk ee676a83c82b4e9389fe85f5ab8b83300aadbc4477d5c2093a9d353b940f2c4e
 text haltia-de/text 2.0.1 haltia-text-2.0.1-r0.apk e9842ca4329c5f58928a219bfbd221e9450fb11bed7debf7111a8030e37b5b80
 video haltia-de/video 2.0.0 haltia-video-2.0.0-r0.apk 871dd2befc4dced0852d5dc008473af7b5b231c692b3e1f7e9ebba9f7e6fe07b
