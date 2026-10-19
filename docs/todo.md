@@ -52,10 +52,10 @@
 
 Исследование 19 октября 2026 года; результаты и план — в issues:
 
-- Звук: наушники, микрофон, дрожание тона, переход на ASoC — [#1](https://github.com/trudenboy/lenovo-b8000h-linux/issues/1).
-- GPS через MT6628 и стоковую библиотеку MNL — [#2](https://github.com/trudenboy/lenovo-b8000h-linux/issues/2).
-- Модем 3G (MD1, CCCI) — [#3](https://github.com/trudenboy/lenovo-b8000h-linux/issues/3).
-- Камеры (A5142, OV9726/OV9760) — [#4](https://github.com/trudenboy/lenovo-b8000h-linux/issues/4).
+- Звук: наушники, микрофон, дрожание тона, переход на ASoC — [#1](https://github.com/haltia-de/device-lenovo-b8000h/issues/1).
+- GPS через MT6628 и стоковую библиотеку MNL — [#2](https://github.com/haltia-de/device-lenovo-b8000h/issues/2).
+- Модем 3G (MD1, CCCI) — [#3](https://github.com/haltia-de/device-lenovo-b8000h/issues/3).
+- Камеры (A5142, OV9726/OV9760) — [#4](https://github.com/haltia-de/device-lenovo-b8000h/issues/4).
 - Мультитач: сделан в b8k-shell 1.3.0 (фильтр касаний пропускает до 10
   пальцев). Щипок в Firefox пока не масштабирует страницу — настройки
   b8k-firefox.

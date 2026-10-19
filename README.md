@@ -30,8 +30,8 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Загрузка с eMMC, ядро 7.1 | работает (BOOT прошивается fastboot'ом, система — в разделе USRDATA) |
 | Экран 1280×800, подсветка, яркость | работает (mediatek-drm, DSI); яркость — ползунок на панели, сохраняется |
 | GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
-| Оболочка: домашний экран с плитками программ, панель слева, кнопка закрытия, яркость, громкость, Wi-Fi, батарея, часы | работает ([b8k-shell](https://github.com/trudenboy/b8k-shell)) |
-| Программы: Firefox, MAX, Видео, Музыка, Файлы с галереей, Текст, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором. Свои программы — лёгкие GTK3, каждая в своём репозитории `trudenboy/b8k-*`, ставятся подписанными пакетами Alpine; MAX — собственный клиент со счётчиком непрочитанных на кнопке |
+| Оболочка: домашний экран с плитками программ, панель слева, кнопка закрытия, яркость, громкость, Wi-Fi, батарея, часы | работает ([b8k-shell](https://github.com/haltia-de/shell)) |
+| Программы: Firefox, MAX, Видео, Музыка, Файлы с галереей, Текст, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine; MAX — собственный клиент со счётчиком непрочитанных на кнопке |
 | Видео | 480p H.264 — 30 к/с (программный декодер), 720p — нет |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | работает, до 10 касаний: щипок и прокрутка двумя пальцами (GTK, Раскраска). Фильтр касаний оболочки отсекает ладонь и случайные касания и даёт вибро-отклик; мультитач в нём отключается. В Firefox щипок пока не масштабирует страницу |
@@ -40,11 +40,11 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Звук через динамики | работает; громкость — кнопками, индикатор на панели. Чистый тон на большой громкости дрожит ([sound-mt6589.md](docs/sound-mt6589.md)) |
 | Батарея, зарядка до 2 А | работает; процент во время зарядки завышен |
 | SSH, USB | работает |
-| Наушники, микрофон | нет ([#1](https://github.com/trudenboy/lenovo-b8000h-linux/issues/1)) |
+| Наушники, микрофон | нет ([#1](https://github.com/haltia-de/device-lenovo-b8000h/issues/1)) |
 | Bluetooth | нет (не портирован) |
-| GPS | нет; возможен через стоковую библиотеку MNL ([#2](https://github.com/trudenboy/lenovo-b8000h-linux/issues/2)) |
-| 3G-модем | нет ([#3](https://github.com/trudenboy/lenovo-b8000h-linux/issues/3)) |
-| Камеры | нет ([#4](https://github.com/trudenboy/lenovo-b8000h-linux/issues/4)) |
+| GPS | нет; возможен через стоковую библиотеку MNL ([#2](https://github.com/haltia-de/device-lenovo-b8000h/issues/2)) |
+| 3G-модем | нет ([#3](https://github.com/haltia-de/device-lenovo-b8000h/issues/3)) |
+| Камеры | нет ([#4](https://github.com/haltia-de/device-lenovo-b8000h/issues/4)) |
 | Сон (suspend) | s2idle через 30 с после того, как экран погашен кнопкой Power; глубокого сна нет ([shell.md](docs/shell.md)) |
 | GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
 | Аппаратное декодирование видео | нет |
@@ -64,7 +64,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 ## Установка
 
-Готовые образы — в [выпусках](https://github.com/trudenboy/lenovo-b8000h-linux/releases)
+Готовые образы — в [выпусках](https://github.com/haltia-de/device-lenovo-b8000h/releases)
 (тег `vX.Y.Z`): `b8000h-boot.img` (ядро с установщиком), `b8000h-sd-installer.img.xz`
 (установщик для microSD), `b8000h-root.ext4.xz` (система отдельно),
 `b8000h-kernel-<версия>.tar.gz` (ядро, модули и модули GPU для обновления без
@@ -117,7 +117,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 ## Ошибки и вопросы
 
-[Issues](https://github.com/trudenboy/lenovo-b8000h-linux/issues) этого репозитория. Приложите `dmesg`, `/sys/fs/pstore/*`
+[Issues](https://github.com/haltia-de/device-lenovo-b8000h/issues) этого репозитория. Приложите `dmesg`, `/sys/fs/pstore/*`
 (после падения) и `/var/log/phosh.log`.
 
 ## Благодарности
