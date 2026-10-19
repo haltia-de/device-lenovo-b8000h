@@ -72,7 +72,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 <p>
 <img src="docs/img/haltia-home.png" width="49%" alt="Домашний экран Haltia: часы, погода, плитки программ">
-<img src="docs/img/haltia-video.png" width="49%" alt="Видео: подписки">
+<img src="docs/img/haltia-video.png" width="49%" alt="Видео: новое в подписках">
 <img src="docs/img/haltia-music.png" width="32%" alt="Музыка: играет Chris Rea, The Road To Hell. Part 2">
 <img src="docs/img/haltia-paint.png" width="32%" alt="Раскраска по номерам">
 <img src="docs/img/haltia-calendar.png" width="32%" alt="Календарь">
