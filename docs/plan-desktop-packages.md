@@ -165,6 +165,16 @@ cookies. Делаются до упаковки, каждый в своём ре
   и установлен на ПК: работает в Pantheon, настройки и кэш — в
   `~/.var/app/io.github.haltia_de.Weather/`. deb собран в контейнерах noble
   и trixie, lintian — только «нет man-страницы».
+- **Новости:** манифест с feedparser и sgmllib3k модулем (колесо и sdist с
+  PyPI по sha256), Flatpak работает на ПК; deb зависит от
+  `python3-feedparser` дистрибутива (6.0.10 в noble, 6.0.11 в trixie).
+- **haltia-kit:** deb `python3-haltia-kit` (pybuild) для noble и trixie,
+  ставится вместе с `python3-mpv` и `python3-mutagen`. Для Flatpak —
+  модуль `packaging/flatpak/haltia-kit.yml` (kit по тегу, python-mpv,
+  mutagen), программа подключает его в свой манифест. libmpv и ffmpeg в
+  модуль не входят: их добавляет программа, которой нужен звук.
+- **Сборка Flatpak на ПК:** `flatpak-builder` из Flatpak не видит `/tmp`;
+  манифесты собирать из каталога под `/mnt/data` или `$HOME`.
 - **Папки пользователя на планшете** — русские (`user-dirs.dirs`), GTK
   переведён (`gtk+3.0-lang`).
 
