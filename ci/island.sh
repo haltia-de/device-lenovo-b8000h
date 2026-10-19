@@ -224,6 +224,10 @@ cleanup() {
 trap cleanup EXIT
 
 log "build libhybris and phoc inside the armhf chroot"
+# phoc's own patch is copied here, after the line that ends the base
+# stage's cache key (.github/workflows/island.yml), as build-phoc.sh is
+# not part of it either.
+cp "$REPO/linux-port/hybris/phoc-0.55.1-touch-cancel.patch" "$SRC/g5/"
 chroot "$ROOT" /usr/bin/env -i HOME=/root TERM=linux \
 	PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
 	LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive JOBS="$JOBS" STAGE="$STAGE" \

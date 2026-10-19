@@ -1,0 +1,115 @@
+diff -ru a/src/cursor.c b/src/cursor.c
+--- a/src/cursor.c	2026-06-01 10:50:19.000000000 +0300
++++ b/src/cursor.c	2026-10-19 09:16:02.150849583 +0300
+@@ -999,6 +999,7 @@
+   wl_list_remove (&self->touch_down.link);
+   wl_list_remove (&self->touch_up.link);
+   wl_list_remove (&self->touch_motion.link);
++  wl_list_remove (&self->touch_cancel.link);
+   wl_list_remove (&self->touch_frame.link);
+   wl_list_remove (&self->tool_axis.link);
+   wl_list_remove (&self->tool_tip.link);
+@@ -1634,6 +1635,49 @@
+ }
+ 
+ 
++/*
++ * libinput cancels a touch (a palm: MT_TOOL_PALM) instead of lifting it.
++ * Forget the point like a lift, so its id can go down again, and tell the
++ * client the sequence is cancelled rather than ended: wl_touch.cancel, which
++ * the protocol applies to all of that client's touch points.
++ */
++void
++phoc_cursor_handle_touch_cancel (PhocCursor                    *self,
++                                 struct wlr_touch_cancel_event *event)
++{
++  struct wlr_touch_point *point = wlr_seat_touch_get_point (self->seat->seat, event->touch_id);
++  PhocTouchPoint *touch_point;
++  PhocCursorPrivate *priv = phoc_cursor_get_instance_private (self);
++  struct wlr_surface *surface = point ? point->surface : NULL;
++
++  g_assert (PHOC_IS_CURSOR (self));
++
++  touch_point = phoc_cursor_get_touch_point (self, event->touch_id);
++  if (!touch_point)
++    return;
++
++  handle_gestures_for_event_at (self, touch_point->lx, touch_point->ly,
++                                PHOC_EVENT_TOUCH_CANCEL, event, sizeof (*event));
++  phoc_cursor_remove_touch_point (self, event->touch_id);
++
++  if (self->seat->touch_id == event->touch_id)
++    self->seat->touch_id = -1;
++
++  if (!surface)
++    return;
++
++  if (priv->mode != PHOC_CURSOR_PASSTHROUGH) {
++    if (priv->view_state.view)
++      phoc_cursor_submit_pending_view_state_change (self);
++
++    priv->mode = PHOC_CURSOR_PASSTHROUGH;
++    phoc_cursor_update_focus (self);
++  }
++
++  send_touch_cancel (self->seat, surface);
++}
++
++
+ void
+ phoc_cursor_handle_touch_motion (PhocCursor                    *self,
+                                  struct wlr_touch_motion_event *event)
+diff -ru a/src/cursor.h b/src/cursor.h
+--- a/src/cursor.h	2026-06-01 10:50:19.000000000 +0300
++++ b/src/cursor.h	2026-10-19 09:16:02.149618531 +0300
+@@ -83,6 +83,7 @@
+   struct wl_listener                touch_down;
+   struct wl_listener                touch_up;
+   struct wl_listener                touch_motion;
++  struct wl_listener                touch_cancel;
+   struct wl_listener                touch_frame;
+ 
+   struct wl_listener                tool_axis;
+@@ -106,6 +107,8 @@
+                                          struct wlr_touch_up_event                       *event);
+ void        phoc_cursor_handle_touch_motion (PhocCursor                                  *self,
+                                              struct wlr_touch_motion_event               *event);
++void        phoc_cursor_handle_touch_cancel (PhocCursor                                  *self,
++                                             struct wlr_touch_cancel_event               *event);
+ void        phoc_cursor_handle_tool_axis (PhocCursor                                     *self,
+                                           struct wlr_tablet_tool_axis_event              *event);
+ void        phoc_cursor_handle_tool_tip (PhocCursor                                      *self,
+diff -ru a/src/seat.c b/src/seat.c
+--- a/src/seat.c	2026-06-01 10:50:19.000000000 +0300
++++ b/src/seat.c	2026-10-19 09:16:02.152023869 +0300
+@@ -244,6 +244,20 @@
+ 
+ 
+ static void
++handle_touch_cancel (struct wl_listener *listener, void *data)
++{
++  PhocCursor *cursor = wl_container_of (listener, cursor, touch_cancel);
++  struct wlr_touch_cancel_event *event = data;
++
++  if (!phoc_cursor_is_active_touch_id (cursor, event->touch_id))
++    return;
++
++  phoc_cursor_handle_touch_cancel (cursor, event);
++  phoc_seat_notify_activity (cursor->seat);
++}
++
++
++static void
+ handle_touch_motion (struct wl_listener *listener, void *data)
+ {
+   PhocCursor *cursor = wl_container_of (listener, cursor, touch_motion);
+@@ -598,6 +612,9 @@
+   wl_signal_add (&wlr_cursor->events.touch_motion, &seat->cursor->touch_motion);
+   seat->cursor->touch_motion.notify = handle_touch_motion;
+ 
++  wl_signal_add (&wlr_cursor->events.touch_cancel, &seat->cursor->touch_cancel);
++  seat->cursor->touch_cancel.notify = handle_touch_cancel;
++
+   wl_signal_add (&wlr_cursor->events.tablet_tool_axis, &seat->cursor->tool_axis);
+   seat->cursor->tool_axis.notify = handle_tool_axis;
+ 

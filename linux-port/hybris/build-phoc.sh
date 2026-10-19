@@ -14,6 +14,7 @@
 #   wayland_1.26.0.orig.tar.xz, pixman_0.46.4.orig.tar.gz,
 #   libdrm_2.4.134.orig.tar.xz, libxkbcommon_1.13.1.orig.tar.gz,
 #   wayland-protocols_1.49.orig.tar.xz        (Debian pool, sha256 from .dsc)
+# Our phoc patch: phoc-0.55.1-touch-cancel.patch (next to this script).
 # Result: /usr/local/bin/phoc; wlroots/gmobile are linked in statically.
 # Usage: build-phoc.sh [deps|phoc]   (default: both)
 set -eu
@@ -104,6 +105,13 @@ if [ "$what" != deps ]; then
 	if [ ! -e "$w/.b8k-hybris-patched" ]; then
 		patch -d "$w" -p1 -N < "$S/wlroots-0.20-hybris.patch"
 		touch "$w/.b8k-hybris-patched"
+	fi
+	# phoc itself: a cancelled touch (a palm) is forgotten and sent to the
+	# client as wl_touch.cancel (phoc-0.55.1-touch-cancel.patch).
+	p=$S/src/phoc-0.55.1
+	if [ ! -e "$p/.b8k-touch-cancel-patched" ]; then
+		patch -d "$p" -p1 -N < "$S/phoc-0.55.1-touch-cancel.patch"
+		touch "$p/.b8k-touch-cancel-patched"
 	fi
 	# gmobile.wrap is a git wrap (gitlab.gnome.org is unreachable from
 	# here); a directory of that name makes meson use it as is.
