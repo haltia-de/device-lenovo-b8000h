@@ -171,7 +171,7 @@
 |---|---|---|---|
 | kit | `py3-b8k-compat` → `py3-haltia-kit` (модуль `haltia_kit`, переходник `b8k_compat`) | 2.0.0 | — |
 | shell | `b8k-shell` → `haltia-shell` | 2.0.0 | — → `io.github.haltia_de.Shell`, `b8k-touchguard-setup` → `io.github.haltia_de.TouchSettings` |
-| max | `b8k-max` → `haltia-max` | 2.0.0 | `io.github.trudenboy.Max` → `io.github.haltia_de.Messenger` |
+| max → messenger | `b8k-max` → `haltia-messenger` (команда `haltia-messenger`, название «Сообщения», репозиторий `haltia-de/messenger`) | 2.0.0 | `io.github.trudenboy.Max` → `io.github.haltia_de.Messenger` |
 | paint | `b8k-paint` → `haltia-paint` | 4.0.0 | `…trudenboy.Paint` → `…haltia_de.Paint` |
 | video | `b8k-video` → `haltia-video` | 2.0.0 | `…trudenboy.Video` → `…haltia_de.Video` |
 | music | `b8k-music` → `haltia-music` | 2.0.0 | `…trudenboy.Music` → `…haltia_de.Music` |
