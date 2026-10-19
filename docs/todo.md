@@ -61,3 +61,6 @@
   `haltia-firefox`.
 - Haltia в списке оболочек `pmbootstrap`: пакет `postmarketos-ui-haltia` готов
   в репозитории Haltia; нужен merge request в pmaports.
+- Музыка: значок проигрывания на кнопке панели (MPRIS) — задача у сеанса
+  Музыки.
+- Чистая установка Pertin Haltia v2.1.0 с карты ещё не проверялась.

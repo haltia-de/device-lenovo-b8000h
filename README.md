@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/haltia-de/.github/main/brand/pertin-haltia-tablet.svg" width="96" alt="Pertin Haltia"></p>
+
 # Pertin Haltia для Lenovo YOGA Tablet 10 B8000-H
 
 Современный Linux и спокойная сенсорная среда [Haltia](https://github.com/haltia-de)
@@ -127,7 +129,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | `linux-port/drivers/` | исходники драйверов: PowerVR KM (DDK 1.12), ION, MT6628, звук, батарея |
 | `linux-port/hybris/` | libhybris, phoc-gpu, патч wlroots, закреплённый остров, тесты GPU |
 | `linux-port/gpu/` | запуск Services PowerVR, служба `b8k-gpu`, демо |
-| `linux-port/initramfs/` | init с установщиком с microSD и заставкой |
+| `linux-port/initramfs/` | init с установщиком с microSD и заставкой со знаком Haltia (`splash.py`, надпись — `haltia-wordmark.pgm` из `tools/render-wordmark.py`) |
 | `linux-port/rootfs/` | службы устройства (`b8k-*`: Wi-Fi, сон, USB, zram…), сборка чистого образа |
 | `linux-port/apps/`, `linux-port/apk-keys/` | версии пакетов оболочки и программ, ключ их подписи |
 | `tools/` | SP Flash Tool readback/download-конфиги, сборка образов |
