@@ -32,7 +32,9 @@ one() { # name repo-url [tag]
 import json, sys
 for a in json.load(sys.stdin).get("assets", []):
     n = a["name"]
-    if n.endswith(".apk") and "-pyc-" not in n:
+    # armv7 and noarch only: the files of other architectures carry
+    # theirs in the name (name.aarch64.apk).
+    if n.endswith(".apk") and "-pyc-" not in n and not n.endswith((".aarch64.apk", ".x86_64.apk")):
         print(n, a["browser_download_url"])')
 	[ -n "$files" ] || { echo "$name: no apk in $repo $tag, lines kept" >&2; return 0; }
 	sums=$(curl -fsSL "https://github.com/$repo/releases/download/$tag/SHA256SUMS")
