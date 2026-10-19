@@ -342,35 +342,42 @@ if [ "$UI_PROFILE" = phosh ]; then
 	# linux-port/apps/sources (ADR 0001). A repository with a build.sh (the
 	# shell) builds its C parts first, against the keyboard's sysroot.
 	# They live in repositories of their own (linux-port/apps/sources).
-	# Released packages first (ADR 0002, 0004): the Haltia apk repository
-	# (haltia-de/packages) serves every released package, signed; the
-	# image takes the meta packages haltia-desktop and haltia-desktop-ru
-	# and pins each package to the version apps/packages.lock names, so
-	# a newer release does not slip in. haltia-keys leaves the repository
-	# line in /etc/apk/repositories.d for updates on the tablet. A
-	# repository the lock does not name, or every one with
+	# Released packages first (ADR 0002, 0004). apps/packages.lock names each
+	# package file and its sha256: the file is fetched from the Haltia apk
+	# repository (haltia-de/packages, the GitHub release as a fallback) and
+	# must match the lock byte for byte, so a release asset replaced after
+	# the lock was written fails the build even though the repository index
+	# would be signed again. The meta packages haltia-desktop and
+	# haltia-desktop-ru and the repository line (haltia-keys) come from the
+	# repository. A repository the lock does not name, or every one with
 	# B8K_FROM_SOURCE=1, is built from its tag in sources as before.
 	install -D -m 644 "$REPO"/linux-port/apk-keys/*.rsa.pub -t "$ROOT/etc/apk/keys/"
 	lock=$REPO/linux-port/apps/packages.lock
 	haltia_repo=${HALTIA_REPO:-https://haltia-de.github.io/packages/alpine/v3.24}
 	locked=
 	if [ -z "${B8K_FROM_SOURCE:-}" ] && [ -f "$lock" ]; then
-		pins=
-		while read -r name _repo version file _sum; do
+		cache=/opt/b8000h/out/apks
+		mkdir -p "$cache"
+		files=
+		while read -r name repo version file sum; do
 			case $name in ''|'#'*) continue ;; esac
-			pkg=${file%-"$version"-r*.apk}
-			ver=${file%.apk}
-			pins="$pins $pkg=${ver#"$pkg"-}"
+			[ -f "$cache/$file" ] && echo "$sum  $cache/$file" | sha256sum -c - >/dev/null 2>&1 ||
+				wget -q -O "$cache/$file" "$haltia_repo/armv7/$file" ||
+				wget -q -O "$cache/$file" "https://github.com/$repo/releases/download/v$version/$file"
+			echo "$sum  $cache/$file" | sha256sum -c - >/dev/null || {
+				echo "$file: sha256 is not the lock's" >&2
+				exit 1
+			}
+			files="$files $cache/$file"
 			locked="$locked $name "
 		done <"$lock"
-		# shellcheck disable=SC2086 # the package list
+		# shellcheck disable=SC2086 # the file list
 		apk --root "$ROOT" --arch armv7 --repository "$haltia_repo" --update-cache \
-			add haltia-keys haltia-desktop haltia-desktop-ru $pins
-		# The pins are for this build only: in the tablet's world they
-		# would hold every later apk upgrade back.
-		for p in $pins; do
-			sed -i "s/^${p%%=*}=.*/${p%%=*}/" "$ROOT/etc/apk/world"
-		done
+			add $files haltia-keys haltia-desktop haltia-desktop-ru
+		# A package added from a file is held at that file's checksum in
+		# the world (name><Q1...); without the hold apk upgrade can bring
+		# later releases from the repository on the tablet.
+		sed -i -E 's/^((py3-)?b8k-[a-z0-9-]+)><.*/\1/' "$ROOT/etc/apk/world"
 	fi
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
