@@ -7,10 +7,10 @@
 # that program (b8k-apps leaves it off the panel), with a warning.
 #
 # name     repository                                     tag    commit                                    [private]
-# The shell first, then the program library b8k-compat (ADR 0001).
+# The shell first, then the program library haltia-kit (ADR 0001, 0004).
 shell      https://github.com/haltia-de/shell.git     v1.8.0 159c5076a6a17cc6a0d2f806ab27cb1863956463
-# b8k-compat first: the library the programs below import (ADR 0001).
-compat     https://github.com/haltia-de/kit.git    v1.2.2 c4d32762e4ec819b75eb6b3aec949b3ea31591d2
+# haltia-kit first: the library the programs below import (ADR 0001, 0004).
+kit        https://github.com/haltia-de/kit.git    v2.0.0 5ab3fce00fee7596f69c8bc83ca0e68ea2805796
 firefox    https://github.com/haltia-de/firefox.git   v1.3.0 8f1e7a4a3640ccbf70d5d3750d084ccaf5191da1
 paint      https://github.com/haltia-de/paint.git     v3.2.1 7820501890e40f90f686f62ed4d0016ccf01ef5d
 weather    https://github.com/haltia-de/weather.git   v1.1.1 18ee804d9b9757bd691bb1e6321be158bcdb7841
