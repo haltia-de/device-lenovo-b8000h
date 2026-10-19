@@ -158,3 +158,61 @@
 | Перенос репозиториев, `ci`, `packages`, устройство, lock-файлы, сборка образа, проверка на планшете | сеанс устройства |
 | Шаг 1, затем фаза C в оболочке | сеанс оболочки |
 | Фаза C в программах (переходник `kit`, новые id, перенос настроек) | сеансы программ, по задаче с таблицей идентификаторов |
+
+## Правила фазы C (для каждого репозитория)
+
+Проверено 19 октября 2026 в контейнере: пакет `haltia-x` с
+`provides="b8k-x=$pkgver-r$pkgrel"` и `replaces="b8k-x"` сам заменяет
+установленный `b8k-x` при `apk upgrade` (в `world` остаётся `b8k-x`, его
+удовлетворяет `haltia-x` с большей версией). Изменённые человеком файлы в
+`/etc` при этом остаются на месте.
+
+| Репозиторий | Пакет: было → стало | Версия | Id: было → стало |
+|---|---|---|---|
+| kit | `py3-b8k-compat` → `py3-haltia-kit` (модуль `haltia_kit`, переходник `b8k_compat`) | 2.0.0 | — |
+| shell | `b8k-shell` → `haltia-shell` | 2.0.0 | — → `io.github.haltia_de.Shell`, `b8k-touchguard-setup` → `io.github.haltia_de.TouchSettings` |
+| max | `b8k-max` → `haltia-max` | 2.0.0 | `io.github.trudenboy.Max` → `io.github.haltia_de.Messenger` |
+| paint | `b8k-paint` → `haltia-paint` | 4.0.0 | `…trudenboy.Paint` → `…haltia_de.Paint` |
+| video | `b8k-video` → `haltia-video` | 2.0.0 | `…trudenboy.Video` → `…haltia_de.Video` |
+| music | `b8k-music` → `haltia-music` | 2.0.0 | `…trudenboy.Music` → `…haltia_de.Music` |
+| files | `b8k-files` → `haltia-files` | 2.0.0 | `…trudenboy.Files`, `.Gallery` → `…haltia_de.Files`, `.Gallery` |
+| news, weather, calendar, text | `b8k-<x>` → `haltia-<x>` | 2.0.0 | `…trudenboy.<X>` → `…haltia_de.<X>` |
+| firefox | `b8k-firefox` → `haltia-firefox` | 2.0.0 | — |
+
+В каждом:
+
+1. **APKBUILD:** `pkgname=haltia-<x>`, `provides="b8k-<x>=$pkgver-r$pkgrel"`,
+   `replaces="b8k-<x>"` (у подпакетов `-pyc` так же); зависимости — по новым
+   именам (`py3-haltia-kit`). В `pkgdesc` нет «крупно».
+2. **Команды:** `haltia-<x>`; старое имя — ссылка на новое до следующей
+   мажорной версии.
+3. **Id** по таблице:
+   - `.desktop` под новым именем с `X-Flatpak-RenamedFrom=<старый id>.desktop;`;
+   - metainfo с новым `<id>` и `<replaces><id>старый</id></replaces>`;
+   - иконка, id GApplication, `DesktopEntry` и имя MPRIS
+     (`org.mpris.MediaPlayer2.io.github.haltia_de.<X>`);
+   - старый `.desktop` с `NoDisplay=true` остаётся до следующей мажорной
+     версии.
+4. **Данные человека:** каталоги в `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`,
+   `$XDG_CACHE_HOME` с именем `b8k-<x>` (или старым id) переносятся при
+   первом запуске в `haltia-<x>`: `haltia_kit.migrate_dirs(old, new)`
+   переименовывает каталог и оставляет на старом месте ссылку.
+5. **Системные пути и переменные:**
+   - `/etc/b8k/…` → `/etc/haltia/…`, `/usr/share/b8k` → `/usr/share/haltia`,
+     `B8K_*` → `HALTIA_*`;
+   - новое место читается первым, старое — запасным до следующей мажорной
+     версии.
+6. **Тексты:** слово «крупно» убирается из названий, описаний и README.
+7. **Выпуск** обычный (тег, `haltia-de/ci`). До выпуска apk ставится на
+   планшет файлом поверх старого набора, и проверяются:
+   - закрепления плиток;
+   - счётчики;
+   - MPRIS;
+   - настройки после переноса.
+
+**Порядок:**
+1. `kit`: от него зависят программы.
+2. `shell`: понимает старые и новые id.
+3. Программы и `firefox` — в любом порядке.
+4. Устройство: метапакеты `haltia-desktop` 2.0.0 по новым именам,
+   `desktop.start` на `haltia-*`, пакет устройства, Pertin Haltia v2.0.0.
