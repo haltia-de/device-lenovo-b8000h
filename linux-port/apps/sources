@@ -15,9 +15,9 @@ firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642
 paint      https://github.com/haltia-de/paint.git     v4.0.2 4379cc6325affdab5105ba1a43af22b14c5735b5
 weather    https://github.com/haltia-de/weather.git   v2.0.2 9f7ebe2c11f802e1055760c5326e6ae30778e96d
 news       https://github.com/haltia-de/news.git      v2.0.2 7ac0f73dee4dd7b65d26824e2e00a7cd3712fdad
-messenger        https://github.com/haltia-de/messenger.git       v2.1.1 
+messenger        https://github.com/haltia-de/messenger.git       v2.1.1 3ad7ed8ef5d891b8c19f814cb59fdd8efbb3ca35
 video      https://github.com/haltia-de/video.git     v2.0.1 f148d93bf31bf0a10701e20e36380bdf76945bd6
-music      https://github.com/haltia-de/music.git     v2.0.1 
+music      https://github.com/haltia-de/music.git     v2.1.0 69f9ad7538b07f2233cd9620be86371665d4dc53
 calendar   https://github.com/haltia-de/calendar.git  v2.0.2 a9c47d1070ffc95d41004e216ab35f9498c877e7
 files      https://github.com/haltia-de/files.git     v2.0.2 c526d393c9d6fdcc30d77656f75c5c4d56d40861
 text       https://github.com/haltia-de/text.git      v2.0.2 55aa6bcade634e6267a60ed9bebf859850facbd5
