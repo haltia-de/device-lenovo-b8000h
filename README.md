@@ -71,9 +71,11 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 ## Скриншоты
 
 <p>
-<img src="docs/img/shell-firefox.png" width="32%" alt="Панель слева и Firefox">
-<img src="docs/img/shell-calc.png" width="32%" alt="Калькулятор">
-<img src="docs/img/shell-power.png" width="32%" alt="Меню питания">
+<img src="docs/img/haltia-home.png" width="49%" alt="Домашний экран Haltia: часы, погода, плитки программ">
+<img src="docs/img/haltia-video.png" width="49%" alt="Видео: подписки">
+<img src="docs/img/haltia-music.png" width="32%" alt="Музыка">
+<img src="docs/img/haltia-paint.png" width="32%" alt="Раскраска по номерам">
+<img src="docs/img/haltia-calendar.png" width="32%" alt="Календарь">
 </p>
 
 ## Установка
