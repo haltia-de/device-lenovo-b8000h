@@ -13,11 +13,11 @@ shell      https://github.com/haltia-de/shell.git     v2.2.0 03901ab587fecc9bceb
 kit        https://github.com/haltia-de/kit.git    v2.0.0 5ab3fce00fee7596f69c8bc83ca0e68ea2805796
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
 paint      https://github.com/haltia-de/paint.git     v4.0.1 c972effb77f3e997b763f07dd9f767f75b69a979
-weather    https://github.com/haltia-de/weather.git   v2.0.1 b0d296868923b5573aba1d0725ecbd64a390e198
-news       https://github.com/haltia-de/news.git      v2.0.1 9fa8aa33e8ddf18f770cfb5901f183563c56ccd2
+weather    https://github.com/haltia-de/weather.git   v2.0.2 9f7ebe2c11f802e1055760c5326e6ae30778e96d
+news       https://github.com/haltia-de/news.git      v2.0.2 7ac0f73dee4dd7b65d26824e2e00a7cd3712fdad
 messenger        https://github.com/haltia-de/messenger.git       v2.1.1 
 video      https://github.com/haltia-de/video.git     v2.0.1 f148d93bf31bf0a10701e20e36380bdf76945bd6
 music      https://github.com/haltia-de/music.git     v2.0.1 
-calendar   https://github.com/haltia-de/calendar.git  v2.0.1 e6f0f603a1d03f5005562db41a76e6bf01cc4c83
-files      https://github.com/haltia-de/files.git     v2.0.1 55a5a1a065313c9948f3ebc7becf50a6f5b2b7eb
-text       https://github.com/haltia-de/text.git      v2.0.1 fc878b04c86321f8078a5b3a5f02b108694f5f24
+calendar   https://github.com/haltia-de/calendar.git  v2.0.2 a9c47d1070ffc95d41004e216ab35f9498c877e7
+files      https://github.com/haltia-de/files.git     v2.0.2 c526d393c9d6fdcc30d77656f75c5c4d56d40861
+text       https://github.com/haltia-de/text.git      v2.0.2 55aa6bcade634e6267a60ed9bebf859850facbd5

@@ -1,14 +1,14 @@
 # Packages the image installs, from GitHub releases (ADR 0002).
 # Written by update-lock.sh; name repository version file sha256.
-calendar haltia-de/calendar 2.0.1 haltia-calendar-2.0.1-r0.apk 2f7954f4c2ffe11be473d18b6ff6e4f3a46e7fa1fb02b69e35ed9c3e25e370c1
-files haltia-de/files 2.0.1 haltia-files-2.0.1-r0.apk 09a3f424c8fabd2cd4d90966f34ae5b0790179cd04e02547dd93ced68cb53edb
+calendar haltia-de/calendar 2.0.2 haltia-calendar-2.0.2-r0.apk a8392e6d26903bc664fd1fea731ac1124f7105d45db4d13fd6b9d8b4a1aa6281
+files haltia-de/files 2.0.2 haltia-files-2.0.2-r0.apk b350d3d90c2ddb9e93d9f1135cf3354d2c279a24edd536d4ca2fab0b3d2a8b7d
 firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
 kit haltia-de/kit 2.0.0 py3-haltia-kit-2.0.0-r0.apk 252e3838ce8148cad742b8a8a64eb56c5e456d86437223bd2a2275c8891bd719
 messenger haltia-de/messenger 2.1.1 haltia-messenger-2.1.1-r0.apk 8aaa3aee19deaebcfe64118987188ec3601835c208fe05c8f76b153a7b7767f7
 music haltia-de/music 2.0.1 haltia-music-2.0.1-r0.apk ea03f2226f0ea51d89903e4a6c1b38854d6d9be488f977798d7c91888190483e
-news haltia-de/news 2.0.1 haltia-news-2.0.1-r0.apk ead5b2c6e1df1994fa25d45300bda2232f800ff8b7fd3c3dc5cb15d4d86c4e48
+news haltia-de/news 2.0.2 haltia-news-2.0.2-r0.apk 484703a5b574a7739f6b7420ddf0d74db3a7dd0c2a3f6506b2dce94ca1fe47b9
 paint haltia-de/paint 4.0.1 haltia-paint-4.0.1-r0.apk 0df7b4a234cd8bf7be662f9fb44f97ec9a9fbb3648d535775e70b93cc8249989
 shell haltia-de/shell 2.2.0 haltia-shell-2.2.0-r0.apk ee676a83c82b4e9389fe85f5ab8b83300aadbc4477d5c2093a9d353b940f2c4e
-text haltia-de/text 2.0.1 haltia-text-2.0.1-r0.apk e9842ca4329c5f58928a219bfbd221e9450fb11bed7debf7111a8030e37b5b80
+text haltia-de/text 2.0.2 haltia-text-2.0.2-r0.apk 5b4725cdf29a790f683c7e20b02a80125222c52426fdd15912555edd723d2d68
 video haltia-de/video 2.0.1 haltia-video-2.0.1-r0.apk a47e2baf2a7c308baf35e38bb076c8253e5e1b905a92cc3327e60c95e4d5a928
-weather haltia-de/weather 2.0.1 haltia-weather-2.0.1-r0.apk 0cae4d72a17da9259683ded9ebceed275aac31c5be38b0070e671c05c01c5af2
+weather haltia-de/weather 2.0.2 haltia-weather-2.0.2-r0.apk eb130e90b76ac2908a67da12186c42964394b568a35fab6b995385611ef7ba7b
