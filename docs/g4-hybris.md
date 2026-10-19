@@ -236,8 +236,28 @@ GLES 2.0 использует только композитор. Firefox, GTK и
   `touch ~/.phoc-gpu-disabled`. Вернуть glibc phoc на процессор:
   `touch ~/.phoc-gpu-pixman`.
 
-Остров Debian собирается на планшете (`linux-port/hybris/`). Сборка
-корневой системы только раскладывает службы, модули и обёртку.
+Остров Debian собирает CI (`ci/island.sh`, workflow `island`, ADR 0003) и
+выпускает отдельно; образ берёт выпуск из `linux-port/hybris/island.lock`.
+Сборка корневой системы только распаковывает его и раскладывает службы,
+модули и обёртку.
+
+## Отмена касания (2026-10-19)
+
+У phoc 0.55.1 нет обработчика `touch_cancel` курсора wlroots. Фильтр касаний
+оболочки (`b8k-touchguard`) заканчивает касание ладонью так, как велит
+протокол evdev: `MT_TOOL_PALM`, затем снятие слота; libinput превращает это
+в `LIBINPUT_EVENT_TOUCH_CANCEL`. phoc его не замечал: точка оставалась в его
+таблице, следующее касание с тем же номером терялось («Touch point 0 already
+tracked, ignoring» в `/var/log/phosh.log`), а программа так и не получала
+конца касания (`wl_touch.down` без `up` и без `cancel`), и её жесты GTK
+залипали.
+
+`linux-port/hybris/phoc-0.55.1-touch-cancel.patch` (накладывает
+`build-phoc.sh`) добавляет обработчик: жесты phoc получают
+`PHOC_EVENT_TOUCH_CANCEL`, точка забывается, как при отпускании, а клиенту
+уходит `wl_touch.cancel` (по протоколу он отменяет все касания этого клиента).
+Проверено на планшете: после ладони следующее касание доходит, предупреждения
+нет. Патч не зависит от устройства, его стоит предложить в phoc.
 
 Звук: цикл в `/etc/local.d/desktop.start` (`linux-port/build-rootfs.sh`) теперь делает
 `killall pipewire pipewire-pulse wireplumber` между сеансами (бэкап старого —

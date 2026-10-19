@@ -27,7 +27,7 @@ DTB `install2`, initramfs со статическим busybox Alpine armv7).
 
 **Остров** (`ci/island.sh`, workflow `island`): Debian trixie armhf через
 debootstrap под qemu, libhybris @ `7079712`, заголовки Android 4.4.2 из AOSP
-`android-4.4.2_r1`, phoc 0.55.1 с wlroots 0.20 и `wlroots-0.20-hybris.patch`,
+`android-4.4.2_r1`, phoc 0.55.1 с wlroots 0.20, `wlroots-0.20-hybris.patch` и `phoc-0.55.1-touch-cancel.patch`,
 новые wayland/pixman/libdrm/xkbcommon/wayland-protocols из пула Debian
 (sha256 из `.dsc`), затем урезание до библиотек phoc. Он собирается часами,
 поэтому выпускается отдельно (тег `island-*` или запуск вручную), а сборка
@@ -53,8 +53,10 @@ sha256).
 набором GPU и boot.img — и собирает образы) и `release` (только по тегу).
 «Re-run failed jobs» переиспользует артефакты прошедших задач. Остров
 собирается в два этапа: база (Debian, зависимости сборки, libhybris,
-исходники) кэшируется по хешу того, что её делает, а phoc и урезание
-идут поверх неё. Образ среды из `ci/Dockerfile` тоже хранится в кэше
+исходники) кэшируется по хешу того, что её делает (`ci/island.sh` до строки
+`log "build libhybris…"`, `build-hybris.sh`, `tlspad.c`, `ci/Dockerfile`), а phoc и
+урезание идут поверх неё: файлы, нужные только phoc, копируются после этой строки,
+и правка патча phoc пересобирает только phoc. Образ среды из `ci/Dockerfile` тоже хранится в кэше
 (`.github/actions/build-env`).
 
 ## Последствия

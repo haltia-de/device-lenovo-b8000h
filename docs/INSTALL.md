@@ -64,8 +64,8 @@
    перезагрузки (`b8k-wdt-exrst`).
 8. **Остров Debian** (`/opt/debian` в системе) — `sh /src/ci/island.sh`: Debian trixie
    armhf через debootstrap под qemu, libhybris (`linux-port/hybris/build-hybris.sh`),
-   заголовки Android 4.4.2 из AOSP, phoc 0.55.1 с `wlroots-0.20-hybris.patch`
-   (`build-phoc.sh`), затем урезание до библиотек phoc; результат —
+   заголовки Android 4.4.2 из AOSP, phoc 0.55.1 с `wlroots-0.20-hybris.patch` и
+   `phoc-0.55.1-touch-cancel.patch` (`build-phoc.sh`), затем урезание до библиотек phoc; результат —
    `/opt/b8000h/dist/b8000h-island.tar.gz`. Все источники закреплены коммитами и
    суммами. Сборка идёт часы, поэтому в CI остров выпускается отдельно (тег `island-*`),
    а образ берёт выпуск из `linux-port/hybris/island.lock`; без него система

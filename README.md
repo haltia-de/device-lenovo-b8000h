@@ -2,7 +2,7 @@
 
 *English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
 kernel + 45 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
-**B8000-H** (MT8389/MT6589, 3G). Display, touch, Wi-Fi, speakers and charging
+**B8000-H** (MT8389/MT6589, 3G). Display, multitouch, Wi-Fi, speakers and charging
 work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
 stock Android 4.4 blobs; a small touch shell (a waybar panel on the left with large program
 buttons, b8k-shell) runs on it, with its own GTK3 programs. Ready-to-flash
@@ -34,15 +34,17 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Программы: Firefox, MAX, Видео, Музыка, Файлы с галереей, Текст, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором. Свои программы — лёгкие GTK3, каждая в своём репозитории `trudenboy/b8k-*`, ставятся подписанными пакетами Alpine; MAX — собственный клиент со счётчиком непрочитанных на кнопке |
 | Видео | 480p H.264 — 30 к/с (программный декодер), 720p — нет |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
-| Сенсорный экран | одно касание; мультитач не доходит |
-| Вибромотор | работает: толчок при нажатии кнопок панели |
+| Сенсорный экран | работает, до 10 касаний: щипок и прокрутка двумя пальцами (GTK, Раскраска). Фильтр касаний оболочки отсекает ладонь и случайные касания и даёт вибро-отклик; мультитач в нём отключается. В Firefox щипок пока не масштабирует страницу |
+| Вибромотор | работает: короткий толчок на каждое нажатие (фильтр касаний оболочки) |
 | Wi-Fi (MT6628) | работает |
 | Звук через динамики | работает; громкость — кнопками, индикатор на панели. Чистый тон на большой громкости дрожит ([sound-mt6589.md](docs/sound-mt6589.md)) |
 | Батарея, зарядка до 2 А | работает; процент во время зарядки завышен |
 | SSH, USB | работает |
-| Наушники, микрофон | нет |
+| Наушники, микрофон | нет ([#1](https://github.com/trudenboy/lenovo-b8000h-linux/issues/1)) |
 | Bluetooth | нет (не портирован) |
-| 3G-модем, GPS, камеры | нет |
+| GPS | нет; возможен через стоковую библиотеку MNL ([#2](https://github.com/trudenboy/lenovo-b8000h-linux/issues/2)) |
+| 3G-модем | нет ([#3](https://github.com/trudenboy/lenovo-b8000h-linux/issues/3)) |
+| Камеры | нет ([#4](https://github.com/trudenboy/lenovo-b8000h-linux/issues/4)) |
 | Сон (suspend) | s2idle через 30 с после того, как экран погашен кнопкой Power; глубокого сна нет ([shell.md](docs/shell.md)) |
 | GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
 | Аппаратное декодирование видео | нет |
@@ -95,7 +97,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
   репозитории ([ADR 0001](docs/adr/0001-three-layers.md)); образ ставит их подписанные пакеты
   по `linux-port/apps/packages.lock` ([ADR 0002](docs/adr/0002-versions-and-releases.md)).
 - GPU-стек: Debian armhf «остров» с libhybris и phoc 0.55.1 с патчем wlroots под Android
-  EGL (`ci/island.sh`, `linux-port/hybris/`), выпускается отдельно и закреплён в
+  EGL и патчем phoc для отмены касаний (`ci/island.sh`, `linux-port/hybris/`), выпускается отдельно и закреплён в
   `linux-port/hybris/island.lock`; устройство и замеры — [docs/g4-hybris.md](docs/g4-hybris.md).
 
 ## Структура
@@ -130,7 +132,8 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 
 Собственный код и патчи ядра — GPL-2.0 ([LICENSE](LICENSE)), если в файле не указано иное
 (SPDX-заголовки). Драйверы из исходников MediaTek/Lenovo — их исходные лицензии (GPL-2.0).
-Патч wlroots — MIT, как сам wlroots (`linux-port/hybris/wlroots-LICENSE.txt`).
+Патч wlroots — MIT, как сам wlroots (`linux-port/hybris/wlroots-LICENSE.txt`); патч phoc —
+GPL-3.0-or-later, как сам phoc.
 Проприетарные блобы Android (PowerVR, gralloc, прошивки Wi-Fi) ни в репозитории, ни в
 образах **не распространяются**: система подключает стоковый раздел `system` вашего
 планшета только для чтения и берёт их оттуда (`linux-port/rootfs/b8k-android-system.initd`).
