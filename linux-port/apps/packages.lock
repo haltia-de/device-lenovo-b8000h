@@ -1,14 +1,14 @@
 # Packages the image installs, from GitHub releases (ADR 0002).
 # Written by update-lock.sh; name repository version file sha256.
-calendar haltia-de/calendar 1.2.1 b8k-calendar-1.2.1-r0.apk 4e824e30c79c38c8bd1f7ebf7f7a651056c32bfd4173f05944702b6c3a1f6f0f
-files haltia-de/files 1.4.2 b8k-files-1.4.2-r0.apk 1d9cad57d51f487f6f7382c6c8790c34fc545e9591bed82e99f024e71865f5fc
-firefox haltia-de/firefox 1.3.0 b8k-firefox-1.3.0-r0.apk 47953469f4584c9e25c3b398e90abad4e44d8081ddc9b468a2e2f8ea747814c3
+calendar haltia-de/calendar 2.0.0 haltia-calendar-2.0.0-r0.apk 6192f3df722b8483d7bde01e9eaa381133bb552de5fe273a0df5c236261b361d
+files haltia-de/files 2.0.0 haltia-files-2.0.0-r0.apk 4514a2669aa15eae54853b05f53214ec9ddfd00210cfd788b33b1cfe28d9ac49
+firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
 kit haltia-de/kit 2.0.0 py3-haltia-kit-2.0.0-r0.apk 252e3838ce8148cad742b8a8a64eb56c5e456d86437223bd2a2275c8891bd719
-max haltia-de/max 1.19.1 b8k-max-1.19.1-r0.apk af9a5cf0ede0fba0ee863aaf47bc37cbc3201bfa06eb6e445a3c12c61880ddd5
+messenger haltia-de/messenger 2.0.0 haltia-messenger-2.0.0-r0.apk 4eed39a4d588455c1dad8da5a8905485c7f35e0eb2b385292fb6a0f5a01acadd
 music haltia-de/music 1.7.1 b8k-music-1.7.1-r0.apk 2c407d4d016e10f62c6b3a5e34b0511265aac0831f59d15b330836edf90f745d
-news haltia-de/news 1.1.1 b8k-news-1.1.1-r0.apk cd88a366f2d2bd57a2965d6a3811a3ce4e9e6f3e6accd087cb0d3e8fa7ddaa6f
-paint haltia-de/paint 3.2.1 b8k-paint-3.2.1-r0.apk 91e27250f856283aa95cc972b11e1591e0b25dcc56df3147e0bbf66ce5afc565
+news haltia-de/news 2.0.0 haltia-news-2.0.0-r0.apk 8727f26a8b4a02e834f29f191fc91df4deab0f553449de1517501b3a0838b7fe
+paint haltia-de/paint 4.0.0 haltia-paint-4.0.0-r0.apk bcf2e65b83d82dc61cc27a96c9e024d829443af1007c57f86d79e59474cda7b0
 shell haltia-de/shell 2.0.0 haltia-shell-2.0.0-r0.apk e2a93318912678ac0dc8cfd23c4a85b0b054207fe9deabd9e046d2a8afce3fb8
-text haltia-de/text 1.2.1 b8k-text-1.2.1-r0.apk b2ff37c8fec2598b34ff51143ec22133f4d2b29a5695ac9dfbd0f2e4d36b28d3
+text haltia-de/text 2.0.0 haltia-text-2.0.0-r0.apk 5438809dadba37f635df73092474902ce0836a27a293f1c3f2a9658b9a726ec8
 video haltia-de/video 1.12.6 b8k-video-1.12.6-r0.apk 354f57a67efa3201ee27f5ae24f3e67a3ff36ed7af7ca2cae8cbeb810322b1db
-weather haltia-de/weather 1.1.1 b8k-weather-1.1.1-r0.apk 1767bd0b4de92b0a9c30fa65efda7eb5a3bdf9ac95f3990951ee9729ecfa1f39
+weather haltia-de/weather 2.0.0 haltia-weather-2.0.0-r0.apk 67ed712639f4d3eb202f2c6a781381958b3be44c5dd27f9d7343fabed7920df3
