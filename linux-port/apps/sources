@@ -12,7 +12,7 @@ shell      https://github.com/haltia-de/shell.git     v2.3.1 14d17ec0f96af636907
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
 kit        https://github.com/haltia-de/kit.git    v2.1.1 08a74590c5cd03f5d48150a546cd4c71f7f588e5
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
-paint      https://github.com/haltia-de/paint.git     v4.1.3 6b22f98afb090a6b1c3cb8f6e45ca89c3325cedd
+paint      https://github.com/haltia-de/paint.git     v4.1.4 9741936966665103f8bc66b0970d8bdedab96cf8
 weather    https://github.com/haltia-de/weather.git   v2.1.2 368ac54a42d7a801811bda0654e142b07cd7d25e
 news       https://github.com/haltia-de/news.git      v2.2.1 8c321d946f5754ccca862a12ca6bd2f979e88fd3
 messenger        https://github.com/haltia-de/messenger.git       v2.3.2 362e3de3ce4cdfbe2dff91627e3b12bede45bddb
