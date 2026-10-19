@@ -12,7 +12,7 @@ shell      https://github.com/trudenboy/b8k-shell.git     v1.5.0 07a1120840edadf
 # b8k-compat first: the library the programs below import (ADR 0001).
 compat     https://github.com/trudenboy/b8k-compat.git    v1.2.2 c4d32762e4ec819b75eb6b3aec949b3ea31591d2
 firefox    https://github.com/trudenboy/b8k-firefox.git   v1.3.0 8f1e7a4a3640ccbf70d5d3750d084ccaf5191da1
-paint      https://github.com/trudenboy/b8k-paint.git     v3.2.0 66f8f4a6af2408b44705bb61379835126561eecd
+paint      https://github.com/trudenboy/b8k-paint.git     v3.2.1 7820501890e40f90f686f62ed4d0016ccf01ef5d
 weather    https://github.com/trudenboy/b8k-weather.git   v1.1.1 18ee804d9b9757bd691bb1e6321be158bcdb7841
 news       https://github.com/trudenboy/b8k-news.git      v1.1.1 0601ed2b8a949792d5ff22a2ec68ffa8d62538cb
 max        https://github.com/trudenboy/b8k-max.git       v1.19.0 24bdb2f6cb24bd3c864d4c830303e2cd5fc5920b
