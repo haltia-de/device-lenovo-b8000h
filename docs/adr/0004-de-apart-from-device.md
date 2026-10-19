@@ -42,7 +42,7 @@ fuzzel, GTK3, NetworkManager, PulseAudio.
 спокойная сенсорная среда для любых сенсорных устройств: простая для всех,
 с уклоном к пожилым людям.
 
-- **Подзаголовок:** «A calm touch desktop that looks after you» / «Спокойная
+- **Подзаголовок:** «A calm touch desktop that takes care of you» / «Спокойная
   сенсорная среда, которая о вас заботится».
 - **Короткая строка** для метаданных пакетов и AppStream: «A calm desktop for
   touch devices».
