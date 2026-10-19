@@ -188,6 +188,16 @@ cookies. Делаются до упаковки, каждый в своём ре
 - **Сеансы:** Музыка, Раскраска, Видео собрали Flatpak и deb и проверили
   на ПК. Видео в deb — `amd64`: QuickJS в noble слишком старый, свой
   собирается в `/usr/lib/haltia-video/vendor`.
+- **Репозитории** (19 октября 2026) — в `haltia-de/packages`, на том же
+  сайте, что apk: `https://haltia-de.github.io/packages/apt` (noble и
+  trixie, amd64 и arm64) и `…/packages/flatpak` (`haltia.flatpakrepo`,
+  `.flatpakref` на каждую программу, runtime с Flathub). Подпись — ключ
+  GPG организации «Haltia packages», RSA 4096 до 2031 года, отпечаток
+  `13461D3E807729260DD4A61461FCD08BBFE7462F`, секрет `HALTIA_GPG_PRIVKEY`,
+  копия в `/mnt/data/b8000h-build/keys/gpg`. Кто что вправе публиковать —
+  `publishers.conf`: репозиторий, его имена deb и id Flatpak; каждый файл
+  сверяется с `digest` выпуска. Обновляется вместе с apk, раз в 30 минут.
+  Все шесть программ вышли с deb и Flatpak и ставятся из репозиториев.
 - **Папки пользователя на планшете** — русские (`user-dirs.dirs`), GTK
   переведён (`gtk+3.0-lang`).
 
