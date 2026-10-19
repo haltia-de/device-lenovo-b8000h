@@ -148,13 +148,11 @@ echo 'permit persist :wheel' > "$R/etc/doas.d/wheel.conf"
 # the root terminal without a password prompt. It cannot run any other
 # command.
 # z- sorts after wheel.conf. doas uses the last matching rule.
-# The shell's rules (b8k-shell writes the same file) and the device's.
+# The shell's rules come with its package (z-b8k-shell.conf); these are
+# the device's.
 rm -f "$R/etc/doas.d/z-b8k-power.conf"
-cat > "$R/etc/doas.d/z-b8k-shell.conf" << 'EOF'
-permit nopass user cmd /usr/local/sbin/b8k-poweroff args off
-permit nopass user cmd /usr/local/sbin/b8k-poweroff args reboot
-permit nopass user cmd /usr/local/sbin/b8k-rootsh
-EOF
+[ -f "$R/etc/doas.d/z-b8k-shell.conf" ] ||
+	echo "warning: no z-b8k-shell.conf: the power menu will ask for a password" >&2
 cat > "$R/etc/doas.d/z-b8k-device.conf" << 'EOF'
 permit nopass user cmd /usr/local/sbin/b8k-usb args host
 permit nopass user cmd /usr/local/sbin/b8k-usb args device

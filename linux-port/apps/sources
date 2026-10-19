@@ -8,7 +8,7 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library b8k-compat (ADR 0001).
-shell      https://github.com/haltia-de/shell.git     v1.6.0 370852dca196a042d28ca2c4adf05888ca6db008
+shell      https://github.com/haltia-de/shell.git     v1.7.0 3525d03779506207bdd45366a5766d94b808c245
 # b8k-compat first: the library the programs below import (ADR 0001).
 compat     https://github.com/haltia-de/kit.git    v1.2.2 c4d32762e4ec819b75eb6b3aec949b3ea31591d2
 firefox    https://github.com/haltia-de/firefox.git   v1.3.0 8f1e7a4a3640ccbf70d5d3750d084ccaf5191da1

@@ -447,10 +447,12 @@ EOF
 EOF
 	chmod +x "$ROOT/etc/local.d/b8k-sdslot.start"
 	# The power key's handling is the shell's (b8k-sleep.py); it puts the
-	# system to sleep through this device's b8k-suspend (s2idle, Wi-Fi
-	# drivers out of the way).
+	# system to sleep through the suspend hook (ADR 0004), which on this
+	# device is b8k-suspend (s2idle, Wi-Fi drivers out of the way). Without
+	# the hook the shell sleeps with a plain freeze and wlan_mt6628 is lost.
 	install -m 755 "$REPO/linux-port/rootfs/b8k-suspend" "$ROOT/usr/local/sbin/b8k-suspend"
-	install -d -m 755 "$ROOT/usr/local/share/b8k"
+	install -d -m 755 "$ROOT/usr/lib/haltia/hooks"
+	ln -sfn /usr/local/sbin/b8k-suspend "$ROOT/usr/lib/haltia/hooks/suspend"
 	# Firefox's customization (large toolbar, prefs, policies, uBlock Origin
 	# Lite) is b8k-firefox, installed with the programs (apps/sources).
 	ln -sfn /etc/init.d/b8k-android-system "$ROOT/etc/runlevels/default/b8k-android-system"
@@ -490,7 +492,7 @@ chmod 700 "$XDG_RUNTIME_DIR"
 while :; do
 	u=$(cat /etc/b8k/session-user 2>/dev/null)
 	id "$u" >/dev/null 2>&1 || u=root
-	/usr/local/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/local/share/b8k/phoc.ini -E /usr/local/bin/b8k-launcher >>/var/log/phosh.log 2>&1
+	/usr/bin/b8k-session -u "$u" dbus-run-session -- /usr/local/bin/phoc-gpu -C /usr/share/b8k/phoc.ini -E /usr/bin/b8k-launcher >>/var/log/phosh.log 2>&1
 	killall pipewire pipewire-pulse wireplumber 2>/dev/null
 	sleep 2
 done ) >/dev/null 2>&1 &
