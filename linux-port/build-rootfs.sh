@@ -60,7 +60,8 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
-	shell) UI_PACKAGES="phoc waybar gnome-control-center gnome-settings-daemon gnome-shell-schemas dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc network-manager-applet
+	shell) UI_PACKAGES="phoc waybar dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc
+		iio-sensor-proxy iio-sensor-proxy-openrc feedbackd feedbackd-device-themes
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
@@ -114,7 +115,9 @@ for s in seatd local; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 done
 if [ "$UI_PROFILE" = shell ]; then
-	for s in dbus elogind polkit openrc-settingsd networkmanager sshd ntpd; do
+	# iio-sensor-proxy: screen rotation from the accelerometer (BMA255),
+	# which the shell asks for. feedbackd starts on the session bus.
+	for s in dbus elogind polkit openrc-settingsd networkmanager sshd ntpd iio-sensor-proxy; do
 		[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
 	done
 fi
@@ -470,7 +473,7 @@ export HOME=/root XDG_RUNTIME_DIR=/run/user/0
 # WLR_RENDERER=pixman applies to the musl /usr/bin/phoc fallback.
 # phoc-gpu sets gles2 for the glibc phoc only.
 export PHOC_DEBUG=fake-builtin WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1 LIBSEAT_BACKEND=seatd
-export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh:GNOME
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Haltia:GNOME
 export XDG_SESSION_DESKTOP=haltia LANG=ru_RU.UTF-8
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
