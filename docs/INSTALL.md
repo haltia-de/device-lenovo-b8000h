@@ -43,25 +43,27 @@
 5. **wpa_supplicant для этой сети** — `sh linux-port/wifi/build-wpa-nm.sh`
    (официальный архив 2.11). Сборка выключает PMF/SAE/FILS/OWE и не
    объявляет capability `pmf`. Без этого NetworkManager не подключается.
-6. **Оболочка, программы, библиотека `b8k-compat`, настройки Firefox
-   `b8k-firefox`** — отдельные репозитории; их выпуски — подписанные пакеты
-   Alpine в GitHub Releases (ADR 0002, `docs/adr/0002-versions-and-releases.md`).
-   Шаг 7 ставит их по `linux-port/apps/packages.lock` (файл, версия, sha256;
-   обновляет его `linux-port/apps/update-lock.sh`), проверяя подпись ключом
-   из `linux-port/apk-keys/`. Чего нет в lock-файле (или всё — с
+6. **Среда Haltia** — оболочка, программы, библиотека `haltia-kit`, настройки
+   Firefox `haltia-firefox` — отдельные репозитории организации
+   [haltia-de](https://github.com/haltia-de) (ADR 0004); их выпуски — подписанные
+   пакеты Alpine (ADR 0002) в [репозитории Haltia](https://haltia-de.github.io/packages/).
+   Шаг 7 ставит метапакеты `haltia-desktop` и `haltia-desktop-ru`, а каждый пакет
+   из `linux-port/apps/packages.lock` (файл, версия, sha256; обновляет его
+   `linux-port/apps/update-lock.sh`) скачивает и сверяет с его sha256. Чего нет в lock-файле (или всё — с
    `B8K_FROM_SOURCE=1`), собирается из исходников по тегам из
    `linux-port/apps/sources`: репозиторий с `build.sh` (оболочка) или
    `vplay/build.sh` (Видео) сначала собирает свои C-части.
-7. **Корневая система** — `UI_PROFILE=phosh sh linux-port/build-rootfs.sh`: Alpine 3.24
-   armv7. Нужна сеть: пакеты программ и оболочки скрипт скачивает из GitHub
-   Releases по lock-файлу (шаг 6). Профиль называется `phosh` по старой памяти, но сессия запускает свою
-   оболочку b8k-shell — панель waybar слева на phoc ([shell.md](shell.md)). Скрипт ставит
+7. **Корневая система** — `UI_PROFILE=shell sh linux-port/build-rootfs.sh`: Alpine 3.24
+   armv7. Нужна сеть: пакеты Haltia скрипт берёт из репозитория Haltia по
+   lock-файлу (шаг 6). Сессия запускает оболочку Haltia — панель waybar слева
+   на phoc ([shell.md](shell.md)). Скрипт ставит
    собранный wpa_supplicant, конфиг NetworkManager, повторную загрузку MT6628 после
    появления прошивки (с постоянным MAC из `/etc/machine-id`), службы
-   `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, оболочку
-   b8k-shell, настройки Firefox b8k-firefox (uBlock Origin Lite вместо uBlock
-   Origin, `/etc/firefox/policies/policies.json`), `earlyoom`, Aisleriot и исправление
-   перезагрузки (`b8k-wdt-exrst`).
+   `b8k-android-system` и `b8k-gpu`, модули GPU, обёртку `phoc-gpu`, среду Haltia,
+   настройки Firefox `haltia-firefox` (uBlock Origin Lite вместо uBlock Origin,
+   `/etc/firefox/policies/policies.json`), `iio-sensor-proxy` (поворот экрана),
+   `feedbackd`, `earlyoom`, Aisleriot, заставку загрузки со знаком Haltia и
+   исправление перезагрузки (`b8k-wdt-exrst`).
 8. **Остров Debian** (`/opt/debian` в системе) — `sh /src/ci/island.sh`: Debian trixie
    armhf через debootstrap под qemu, libhybris (`linux-port/hybris/build-hybris.sh`),
    заголовки Android 4.4.2 из AOSP, phoc 0.55.1 с `wlroots-0.20-hybris.patch` и
@@ -156,8 +158,11 @@ SP Flash Tool → Readback: загрузите scatter стоковой прош
   вашего планшета: он подключается только для чтения в `/system`. Не стирайте и не
   перепрошивайте его, пока пользуетесь Linux.
 - Если ядро упадёт, планшет перезагрузится сам (или удерживайте Power 15–20 с).
-  Журналы: `dmesg`, `/sys/fs/pstore/*`, `/var/log/phosh.log` (журнал сессии, имя
-  осталось от Phosh).
+  Журналы: `dmesg`, `/sys/fs/pstore/*`, `/var/log/session.log` (журнал сессии;
+  в образах до 2.0.1 — `/var/log/phosh.log`).
+- Обновления программ и оболочки: «Настройки → Обновления» или
+  `doas haltia-update upgrade`. Перед обновлением делается снимок, при сбое
+  обновление откатывается само; откатить вручную можно там же.
 
 ## Обновление ядра
 
