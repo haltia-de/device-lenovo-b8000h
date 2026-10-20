@@ -9,7 +9,8 @@
 #include "mt6589-lenovo-b8000-h.dts"
 
 / {
-	model = "Lenovo YOGA Tablet 10 B8000-H (microSD installer)";
+	/* Settings → О системе shows this name: the daily boot uses this DTB too. */
+	model = "Lenovo YOGA Tablet 10 B8000-H";
 
 	chosen {
 		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=0 vt.global_cursor_default=0 splash=1 root=PARTNAME=USRDATA";

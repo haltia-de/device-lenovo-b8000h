@@ -57,6 +57,13 @@ install -d -m 755 "$R/usr/local/bin"
 install -m 755 "$REPO/linux-port/hybris/phoc-gpu.sh" "$R/usr/local/bin/phoc-gpu"
 ln -sf /etc/init.d/b8k-android-system "$R/etc/runlevels/default/b8k-android-system"
 ln -sf /etc/init.d/b8k-gpu "$R/etc/runlevels/default/b8k-gpu"
+# timedated for Настройки → Дата и время; Moscow time when nothing is set.
+[ -e "$R/etc/init.d/openrc-settingsd" ] &&
+	ln -sf /etc/init.d/openrc-settingsd "$R/etc/runlevels/default/openrc-settingsd"
+[ -e "$R/etc/localtime" ] || ln -sf /usr/share/zoneinfo/Europe/Moscow "$R/etc/localtime"
+# No package may stay held at a file's checksum (name><Q1...): apk upgrade
+# and haltia-update would never move it.
+sed -i -E 's/><.*//' "$R/etc/apk/world"
 install -d -m 755 "$R/etc/NetworkManager/conf.d"
 install -m 644 "$REPO/linux-port/wifi/wifi-mt6628.conf" \
 	"$R/etc/NetworkManager/conf.d/wifi-mt6628.conf"

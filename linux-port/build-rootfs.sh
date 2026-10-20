@@ -66,7 +66,7 @@ case "$UI_PROFILE" in
 		galculator galculator-lang
 		wpa_supplicant networkmanager-wifi networkmanager-cli iw wireless-regdb
 		firefox mobile-config-firefox
-		foot grim py3-pillow py3-cairo font-noto-emoji gtk+3.0-lang desktop-file-utils
+		foot grim py3-pillow py3-cairo font-noto-emoji gtk+3.0-lang desktop-file-utils tzdata
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
@@ -100,6 +100,9 @@ apk --root "$ROOT" --arch armv7 --initdb --update-cache add \
 
 # Basic system configuration.
 echo b8000h > "$ROOT/etc/hostname"
+# The interface is Russian: Moscow time until the person picks a zone in
+# Настройки → Дата и время (openrc-settingsd moves the link).
+ln -sf /usr/share/zoneinfo/Europe/Moscow "$ROOT/etc/localtime"
 printf 'root::0:0:root:/root:/bin/sh\n' > /tmp/root-pw
 sed -i 's|^root:[^:]*:|root::|' "$ROOT/etc/shadow"
 cat > "$ROOT/etc/fstab" <<'EOF'
@@ -381,8 +384,18 @@ if [ "$UI_PROFILE" = shell ]; then
 			add $files haltia-keys haltia-desktop haltia-desktop-ru
 		# A package added from a file is held at that file's checksum in
 		# the world (name><Q1...); without the hold apk upgrade can bring
-		# later releases from the repository on the tablet.
-		sed -i -E 's/^((py3-)?b8k-[a-z0-9-]+)><.*/\1/' "$ROOT/etc/apk/world"
+		# later releases from the repository on the tablet. Every hold
+		# goes: the names are haltia-* and py3-haltia-kit since 2.0.0.
+		sed -i -E 's/><.*//' "$ROOT/etc/apk/world"
+		if grep -q '><' "$ROOT/etc/apk/world"; then
+			echo "checksum holds left in the world" >&2
+			exit 1
+		fi
+		# openrc-settingsd (timedated for the shell's Дата и время) comes
+		# with haltia-shell, after the service links above were made.
+		for s in openrc-settingsd; do
+			[ -e "$ROOT/etc/init.d/$s" ] && ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/default/$s"
+		done
 	fi
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
