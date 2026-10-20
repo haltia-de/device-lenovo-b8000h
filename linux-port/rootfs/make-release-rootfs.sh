@@ -101,6 +101,10 @@ chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 find "$R/root" -mindepth 1 -delete
 rm -rf "$R/home/user"
 install -d -m 750 -o 1000 -g 1000 "$R/home/user"
+# A new home starts from /etc/skel, as adduser makes it (the shell's
+# galculator.conf is there: without it galculator wrote its own small keys).
+cp -a "$R/etc/skel/." "$R/home/user/"
+chown -R 1000:1000 "$R/home/user"
 # The person's folders in Russian, as build-rootfs.sh makes them.
 for d in Загрузки Документы Изображения Музыка Видео .config; do
 	install -d -m 755 -o 1000 -g 1000 "$R/home/user/$d"
