@@ -8,7 +8,7 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library haltia-kit (ADR 0001, 0004).
-shell      https://github.com/haltia-de/shell.git     v2.6.1 05385246f2d215eda59cd95a7fa040a40d6cd83e
+shell      https://github.com/haltia-de/shell.git     v2.6.2 55c4c34c0983a322f0a0756475b9e05ee05e5038
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
 kit        https://github.com/haltia-de/kit.git    v2.2.0 a488961072c507785c9357fba3c5dc9136a89263
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
