@@ -180,7 +180,7 @@ cookies. Делаются до упаковки, каждый в своём ре
   модуль не входят: их добавляет программа, которой нужен звук.
 - **Сборка Flatpak на ПК:** `flatpak-builder` из Flatpak не видит `/tmp`;
   манифесты собирать из каталога под `/mnt/data` или `$HOME`.
-- **CI:** `haltia-de/ci` v1 — `deb.yml` (noble и trixie, lintian) и
+- **CI:** `haltia-de/ci` v1 — `deb.yml` (noble, resolute и trixie, lintian) и
   `flatpak.yml` (образ Flathub GNOME 51, x86_64). Файлы и
   `SHA256SUMS.deb`/`SHA256SUMS.flatpak` — в выпуск тега, каждый файл
   проверяется по sha256 (`digest` выпуска). GitHub в именах файлов меняет
@@ -192,8 +192,8 @@ cookies. Делаются до упаковки, каждый в своём ре
   на ПК. Видео в deb — `amd64`: QuickJS в noble слишком старый, свой
   собирается в `/usr/lib/haltia-video/vendor`.
 - **Репозитории** (19 октября 2026) — в `haltia-de/packages`, на том же
-  сайте, что apk: `https://haltia-de.github.io/packages/apt` (noble и
-  trixie, amd64 и arm64) и `…/packages/flatpak` (`haltia.flatpakrepo`,
+  сайте, что apk: `https://haltia-de.github.io/packages/apt` (noble,
+  resolute и trixie, amd64 и arm64) и `…/packages/flatpak` (`haltia.flatpakrepo`,
   `.flatpakref` на каждую программу, runtime с Flathub). Подпись — ключ
   GPG организации «Haltia packages», RSA 4096 до 2031 года, отпечаток
   `13461D3E807729260DD4A61461FCD08BBFE7462F`, секрет `HALTIA_GPG_PRIVKEY`,
@@ -211,6 +211,7 @@ cookies. Делаются до упаковки, каждый в своём ре
 2. Клиенты MAX и Яндекс Музыки — на Flathub после остальных четырёх, с
    пометкой «неофициальный клиент» (изменено автором 19 октября 2026;
    прежде — только в своих репозиториях).
-3. Только Debian 13 trixie и Ubuntu 24.04 noble, без bookworm.
+3. Только Debian 13 trixie и Ubuntu LTS: 24.04 noble и 26.04 resolute
+   (добавлена 20 октября 2026), без bookworm.
 4. Новый ключ GPG организации для apt и Flatpak.
 5. Календарь, Блокнот, Файлы — не упаковываем.

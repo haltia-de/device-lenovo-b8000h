@@ -116,7 +116,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
   отдельные репозитории организации [haltia-de](https://github.com/haltia-de) ([ADR 0001](docs/adr/0001-three-layers.md),
   [ADR 0004](docs/adr/0004-de-apart-from-device.md)); образ ставит их подписанные пакеты
   по `linux-port/apps/packages.lock` ([ADR 0002](docs/adr/0002-versions-and-releases.md)).
-  Выпуск программы по тегу собирает apk, deb для noble и trixie и Flatpak
+  Выпуск программы по тегу собирает apk, deb для noble, resolute и trixie и Flatpak
   (`haltia-de/ci` v1); `haltia-de/packages` публикует репозитории apk, apt и
   Flatpak, подписанные ключами организации.
 - GPU-стек: Debian armhf «остров» с libhybris и phoc 0.55.1 с патчем wlroots под Android
