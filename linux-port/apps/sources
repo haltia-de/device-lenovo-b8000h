@@ -8,7 +8,7 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library haltia-kit (ADR 0001, 0004).
-shell      https://github.com/haltia-de/shell.git     v2.6.2 55c4c34c0983a322f0a0756475b9e05ee05e5038
+shell      https://github.com/haltia-de/shell.git     v2.7.0 31a5ac9a3689d241464687ced89732ad9404574b
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
 kit        https://github.com/haltia-de/kit.git    v2.2.0 a488961072c507785c9357fba3c5dc9136a89263
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
@@ -19,5 +19,5 @@ messenger        https://github.com/haltia-de/messenger.git       v2.5.0 7975c4e
 video      https://github.com/haltia-de/video.git     v2.4.0 889b58e18980fea990dd64694a15fe4668c963e3
 music      https://github.com/haltia-de/music.git     v3.0.1 39fe7ce92ba22e2060e7b8e6d8c2649d1cc6b8d9
 calendar   https://github.com/haltia-de/calendar.git  v2.0.3 a147cbe9b403430a1b767a4fa0bf20217296c9de
-files      https://github.com/haltia-de/files.git     v2.0.3 22ee85cb2806cfc5542bf21454490fd47326d36d
+files      https://github.com/haltia-de/files.git     v2.1.0 5f6619cd170d96a7a97b07a5e4cddd70c4d8db4a
 text       https://github.com/haltia-de/text.git      v2.0.3 674f0ef83b49a6a9ca57ef2cd6b302228456c645
