@@ -39,7 +39,10 @@
 #include <media/v4l2-mc.h>
 #include <media/videobuf2-dma-contig.h>
 
-/* MediaTek packed 10-bit Bayer, as the mainline MediaTek ISP names it. */
+/*
+ * MediaTek packed 10-bit Bayer: the fourcc of the out-of-tree mtk-isp P1
+ * (MT8183 camsys) series, not in mainline's uapi.
+ */
 #ifndef V4L2_PIX_FMT_MTISP_SBGGR10
 #define V4L2_PIX_FMT_MTISP_SBGGR10 v4l2_fourcc('M', 'B', 'B', 'A')
 #endif
@@ -123,6 +126,7 @@
 #define CAM_IMGO_CON		0x314
 #define CAM_IMGO_CON2		0x318
 #define CAM_IMGO_CROP		0x31c
+#define CAM_IMGO_ERR_STAT	0x3c4
 #define CAM_TG2_SEN_MODE	0x4b0
 #define  TG_CMOS_EN		BIT(0)
 #define  TG_DBL_DATA_BUS	BIT(1)
@@ -441,10 +445,8 @@ static void seninf_pass1_config(struct mt6589_seninf *s, dma_addr_t first)
 
 	readl(isp + CAM_CTL_INT_STATUS);	/* clear */
 	readl(isp + CAM_CTL_DMA_INT);
-	writel(INT_VS1 | INT_TG1_ERR | INT_VS2 | INT_TG2_ERR | INT_PASS1_DON |
-	       INT_PASS1_TG2_DON | INT_SOF1 | INT_IMGO_ERR | INT_DMA_ERR,
-	       isp + CAM_CTL_INT_EN);
-	writel(DMA_IMGO_DONE_EN | DMA_SOF2_EN, isp + CAM_CTL_DMA_INT);
+	writel(INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR, isp + CAM_CTL_INT_EN);
+	writel(DMA_IMGO_DONE_EN, isp + CAM_CTL_DMA_INT);
 }
 
 static void seninf_pass1_stop(struct mt6589_seninf *s)
@@ -500,7 +502,7 @@ static irqreturn_t seninf_irq(int irq, void *data)
 		/* The error bits stay set until the next reset: stop listening. */
 		if (!s->errors++)
 			dev_warn(s->dev, "pass 1 error: int %08x dma %04x imgo %08x\n",
-				 st, dma, readl(s->isp + 0x3c4));
+				 st, dma, readl(s->isp + CAM_IMGO_ERR_STAT));
 		rmw(s->isp + CAM_CTL_INT_EN, st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR), 0);
 	}
 
@@ -508,12 +510,12 @@ static irqreturn_t seninf_irq(int irq, void *data)
 		goto out;
 
 	/*
-	 * Frame done (the TG2 path raises PASS1_TG2_DON or PASS1_DON together
-	 * with IMGO_DONE; any of them ends the frame).  Between frames IMGO
-	 * takes the next buffer at once; without one it writes the same
-	 * buffer again and that frame is dropped.
+	 * IMGO done: the frame is in memory. Only then the buffer goes back
+	 * (PASS1_TG2_DON may come before IMGO has written its last line).
+	 * Between frames IMGO takes the next buffer at once; without one it
+	 * writes the same buffer again and that frame is dropped.
 	 */
-	if ((st & (INT_PASS1_DON | INT_PASS1_TG2_DON)) || (dma & DMA_IMGO_DONE_ST)) {
+	if (dma & DMA_IMGO_DONE_ST) {
 		struct seninf_buffer *next = seninf_take_queued(s);
 
 		if (next) {
@@ -530,7 +532,8 @@ static irqreturn_t seninf_irq(int irq, void *data)
 		done->vb.vb2_buf.timestamp = ktime_get_ns();
 		done->vb.sequence = s->sequence++;
 		done->vb.field = V4L2_FIELD_NONE;
-		vb2_buffer_done(&done->vb.vb2_buf, VB2_BUF_STATE_DONE);
+		vb2_buffer_done(&done->vb.vb2_buf, s->errors ? VB2_BUF_STATE_ERROR :
+							VB2_BUF_STATE_DONE);
 		s->frames++;
 	}
 out:
@@ -617,7 +620,7 @@ static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
 	unsigned long flags;
 	int ret;
 
-	ret = seninf_check_sensor_format(s);
+	ret = s->sensor ? seninf_check_sensor_format(s) : -ENODEV;
 	if (ret)
 		goto err_return;
 
@@ -651,6 +654,7 @@ static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
 	spin_lock_irqsave(&s->irqlock, flags);
 	s->streaming = true;
 	spin_unlock_irqrestore(&s->irqlock, flags);
+	enable_irq(s->irq);
 
 	ret = v4l2_subdev_enable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
 	if (ret)
@@ -664,6 +668,7 @@ err_hw:
 	s->streaming = false;
 	spin_unlock_irqrestore(&s->irqlock, flags);
 	seninf_pass1_stop(s);
+	disable_irq(s->irq);
 	seninf_rx_off(s);
 err_pm:
 	pm_runtime_put(s->dev);
@@ -689,6 +694,7 @@ static void seninf_stop_streaming(struct vb2_queue *q)
 	spin_unlock_irqrestore(&s->irqlock, flags);
 
 	seninf_pass1_stop(s);
+	disable_irq(s->irq);
 	seninf_rx_off(s);
 	pm_runtime_put(s->dev);
 	video_device_pipeline_stop(&s->vdev);
@@ -886,6 +892,16 @@ static int seninf_notify_bound(struct v4l2_async_notifier *notifier,
 				     MEDIA_LNK_FL_ENABLED | MEDIA_LNK_FL_IMMUTABLE);
 }
 
+static void seninf_notify_unbind(struct v4l2_async_notifier *notifier,
+				 struct v4l2_subdev *sd,
+				 struct v4l2_async_connection *asc)
+{
+	struct mt6589_seninf *s = container_of(notifier, struct mt6589_seninf,
+					       notifier);
+
+	s->sensor = NULL;
+}
+
 static int seninf_notify_complete(struct v4l2_async_notifier *notifier)
 {
 	struct mt6589_seninf *s = container_of(notifier, struct mt6589_seninf,
@@ -896,6 +912,7 @@ static int seninf_notify_complete(struct v4l2_async_notifier *notifier)
 
 static const struct v4l2_async_notifier_operations seninf_notify_ops = {
 	.bound = seninf_notify_bound,
+	.unbind = seninf_notify_unbind,
 	.complete = seninf_notify_complete,
 };
 
@@ -991,8 +1008,9 @@ static int mt6589_seninf_probe(struct platform_device *pdev)
 	s->irq = platform_get_irq(pdev, 0);
 	if (s->irq < 0)
 		return s->irq;
-	/* Requested now, enabled only by the ISP's interrupt enables. */
-	ret = devm_request_irq(s->dev, s->irq, seninf_irq, 0, dev_name(s->dev), s);
+	/* Enabled only while streaming, when the camera block is clocked. */
+	ret = devm_request_irq(s->dev, s->irq, seninf_irq, IRQF_NO_AUTOEN,
+			       dev_name(s->dev), s);
 	if (ret)
 		return dev_err_probe(s->dev, ret, "IRQ\n");
 
@@ -1015,12 +1033,14 @@ static void mt6589_seninf_remove(struct platform_device *pdev)
 {
 	struct mt6589_seninf *s = platform_get_drvdata(pdev);
 
+	/* First: stops a running stream and waits for its users. */
+	vb2_video_unregister_device(&s->vdev);
 	media_device_unregister(&s->mdev);
 	v4l2_async_nf_unregister(&s->notifier);
 	v4l2_async_nf_cleanup(&s->notifier);
-	vb2_video_unregister_device(&s->vdev);
 	v4l2_device_unregister(&s->v4l2_dev);
 	media_device_cleanup(&s->mdev);
+	mutex_destroy(&s->lock);
 }
 
 static DEFINE_RUNTIME_DEV_PM_OPS(seninf_pm_ops, seninf_runtime_suspend,

@@ -86,9 +86,10 @@ DTS = '''
 	};
 
 	/*
-	 * The CSI1 lanes share pads with the parallel camera data pins
-	 * CMDAT0..9: GPIO mode with the input buffers off, as the stock
-	 * initTg2CSI2 leaves them (IES 0x1C0 bits 5..15, 0x1D0 bit 0).
+	 * The CSI1 lanes share pads with the parallel camera interface
+	 * (CMDAT0..9, CMHSYNC, CMVSYNC: pins 197-208): GPIO mode with the
+	 * input buffers off, as the stock initTg2CSI2 leaves them (IES 0x1C0
+	 * bits 5..15, 0x1D0 bit 0).
 	 */
 	camera_csi1_pins: camera-csi1-default {
 		pins-csi1 {
