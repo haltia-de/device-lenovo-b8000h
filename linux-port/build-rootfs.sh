@@ -422,6 +422,8 @@ if [ "$UI_PROFILE" = shell ]; then
 		"$ROOT/etc/pulse/default.pa.d/b8k-call.pa"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
+	# The camera (libcamera's software ISP): only this profile has the
+	# programs that use it.
 	install -m 644 "$REPO/linux-port/rootfs/91-b8k-dma-heap.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-dma-heap.rules"
 	install -D -m 644 "$REPO/linux-port/rootfs/libcamera-configuration.yaml" \

@@ -89,7 +89,8 @@ for cfg in ('arch/arm/configs/lenovo-blade_defconfig', '.config'):
     if not os.path.exists(K + cfg):
         continue
     s = open(K + cfg).read()
-    if 'CONFIG_LOCALVERSION="-b8000h24"' in s:
+    # Later patches move the tree past kernel 24; that counts as done here.
+    if any('CONFIG_LOCALVERSION="-b8000h%d"' % n in s for n in (24, 25, 26, 27)):
         print('already', cfg)
         continue
     assert 'CONFIG_LOCALVERSION="-b8000h23"' in s, cfg
