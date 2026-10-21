@@ -417,6 +417,8 @@ if [ "$UI_PROFILE" = shell ]; then
 	install -d -m 755 "$ROOT/etc/pulse/default.pa.d"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-mic.pa" \
 		"$ROOT/etc/pulse/default.pa.d/b8k-mic.pa"
+	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-call.pa" \
+		"$ROOT/etc/pulse/default.pa.d/b8k-call.pa"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
 	install -d -m 755 "$ROOT/usr/local/sbin"
