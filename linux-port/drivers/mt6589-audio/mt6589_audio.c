@@ -126,7 +126,7 @@
 /*
  * AUDPREAMPGAIN_CON0: L [2:0], R [6:4] in 6 dB steps.  Steps 6 and 7 give
  * an all-zero stream on this board, so the control stops at 5 (30 dB).  The
- * stock HAL uses 3; at 5 normal speech at 25 cm peaks near -18 dBFS.
+ * stock HAL uses 3; at 5 normal speech at 25 cm peaks near -20 dBFS.
  */
 #define MIC_GAIN_MAX		5
 
@@ -370,9 +370,13 @@ static void b8k_analog_off(struct b8k_audio *a)
  * AudioMachineDevice::AnalogOpen (ADC) of the stock HAL for DEVICE_IN_ADC.
  * Called with power_lock held and a->capturing already set.
  */
-static void b8k_mic_on(struct b8k_audio *a, unsigned int rate)
+static int b8k_mic_on(struct b8k_audio *a, unsigned int rate)
 {
-	ana_write(a, TOP_CKPDN_CLR, 0x0003);
+	int ret;
+
+	ret = ana_write(a, TOP_CKPDN_CLR, 0x0003);
+	if (ret)
+		return ret;
 	ana_update(a, AUDCLKGEN_CFG0, 0, CLKGEN_ADC);
 	ana_write(a, AFE_UL_SRC_CON0_L, 0x0000);
 	ana_update(a, AUDCLKGEN_CFG0, CLKGEN_ADC, CLKGEN_ADC);
@@ -392,7 +396,8 @@ static void b8k_mic_on(struct b8k_audio *a, unsigned int rate)
 	ana_update(a, NCP_CLKDIV_CON0, 0x102b, 0x102b);
 	ana_write(a, NCP_CLKDIV_CON1, 0x0000);
 	ana_update(a, AUDDIGMI_CON0, MICBIAS_ON, MICBIAS_ON);
-	ana_update(a, AUDPREAMPGAIN_CON0, a->mic_gain | (a->mic_gain << 4), 0x0077);
+	return ana_update(a, AUDPREAMPGAIN_CON0, a->mic_gain | (a->mic_gain << 4),
+			  0x0077);
 }
 
 /* AudioMachineDevice/AudioPlatformDevice::AnalogClose for DEVICE_IN_ADC. */
@@ -402,6 +407,11 @@ static void b8k_mic_off(struct b8k_audio *a)
 	ana_write(a, AUDADC_CON0, 0x00b4);
 	ana_write(a, AUDDIGMI_CON0, 0x0080);
 	ana_write(a, AUD_NCP0, ncp0_value(a));
+	/*
+	 * AUDLSBUF_CON0[1:0] power the line-in level-shift buffers. Nothing in
+	 * this driver turns them on; the stock HAL's ADC close clears them, so
+	 * this does too, in case LK or a test left them on.
+	 */
 	ana_update(a, AUDLSBUF_CON0, 0, 0x0003);
 	if (!a->playing) {
 		ana_write(a, AUDNVREGGLB_CFG0, 0x0006);
@@ -432,6 +442,8 @@ static int b8k_play_start(struct b8k_audio *a, struct snd_pcm_runtime *rt)
 	ret = b8k_analog_on(a);
 	if (ret) {
 		a->playing = false;
+		afe_update(a, AFE_CONN1, 0, BIT(21));
+		afe_update(a, AFE_CONN2, 0, BIT(6));
 		b8k_afe_put(a);
 		mutex_unlock(&a->power_lock);
 		return ret;
@@ -453,14 +465,22 @@ static void b8k_play_stop(struct b8k_audio *a)
 	mutex_unlock(&a->power_lock);
 }
 
-static void b8k_cap_start(struct b8k_audio *a, struct snd_pcm_runtime *rt)
+static int b8k_cap_start(struct b8k_audio *a, struct snd_pcm_runtime *rt)
 {
 	u32 rc = afe_rate_code(rt->rate);
+	int ret;
 
 	mutex_lock(&a->power_lock);
 	b8k_afe_get(a);
 	a->capturing = true;
-	b8k_mic_on(a, rt->rate);
+	ret = b8k_mic_on(a, rt->rate);
+	if (ret) {
+		a->capturing = false;
+		b8k_mic_off(a);
+		b8k_afe_put(a);
+		mutex_unlock(&a->power_lock);
+		return ret;
+	}
 
 	writel(lower_32_bits(rt->dma_addr), a->afe + AFE_VUL_BASE);
 	writel(lower_32_bits(rt->dma_addr + snd_pcm_lib_buffer_bytes(a->cap.substream) - 1),
@@ -479,6 +499,7 @@ static void b8k_cap_start(struct b8k_audio *a, struct snd_pcm_runtime *rt)
 	afe_update(a, AFE_CONN3, BIT(0) | BIT(3), BIT(0) | BIT(3));
 	afe_update(a, AFE_DAC_CON0, AFE_ON | VUL_ON, AFE_ON | VUL_ON);
 	mutex_unlock(&a->power_lock);
+	return 0;
 }
 
 static void b8k_cap_stop(struct b8k_audio *a)
@@ -531,7 +552,7 @@ static enum hrtimer_restart b8k_timer(struct hrtimer *timer)
 	unsigned long flags;
 	u32 period;
 
-	s = st->substream;
+	s = READ_ONCE(st->substream);
 	if (!s)
 		return HRTIMER_NORESTART;
 	a = snd_pcm_substream_chip(s);
@@ -555,8 +576,18 @@ static int b8k_pcm_open(struct snd_pcm_substream *substream)
 	struct b8k_audio *a = snd_pcm_substream_chip(substream);
 	struct b8k_stream *st = b8k_stream_of(a, substream);
 
+	int ret;
+
 	substream->runtime->hw =
 		substream->stream == SNDRV_PCM_STREAM_CAPTURE ? b8k_capture_hw : b8k_pcm_hw;
+	/* Keep buffer and period sizes in whole 16-byte memif units. */
+	ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
+					 SNDRV_PCM_HW_PARAM_BUFFER_BYTES, 16);
+	if (!ret)
+		ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
+						 SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 16);
+	if (ret)
+		return ret;
 	st->substream = substream;
 	return 0;
 }
@@ -593,13 +624,10 @@ static int b8k_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		if (capture) {
-			b8k_cap_start(a, substream->runtime);
-		} else {
-			ret = b8k_play_start(a, substream->runtime);
-			if (ret)
-				return ret;
-		}
+		ret = capture ? b8k_cap_start(a, substream->runtime) :
+				b8k_play_start(a, substream->runtime);
+		if (ret)
+			return ret;
 		spin_lock_irqsave(&a->lock, flags);
 		st->running = true;
 		spin_unlock_irqrestore(&a->lock, flags);

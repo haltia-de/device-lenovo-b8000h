@@ -65,8 +65,8 @@ diff --git a/sound/arm/Kconfig b/sound/arm/Kconfig
 +	depends on ARCH_MEDIATEK && GPIOLIB
 +	select SND_PCM
 +	help
-+	  Minimal 48 kHz stereo playback driver for the MT6589 AFE and MT6320
-+	  analog output used by the Lenovo YOGA Tablet 10 B8000-H.
++	  Minimal driver for the MT6589 AFE and MT6320 codec of the Lenovo
++	  YOGA Tablet 10 B8000-H: speaker playback and microphone capture.
 +
  config SND_ARMAACI
  	tristate "ARM PrimeCell PL041 AC Link support"

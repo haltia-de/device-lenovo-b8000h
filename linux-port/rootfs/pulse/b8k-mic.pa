@@ -1,5 +1,5 @@
 # B8000-H built-in microphone: even at the top preamp step (30 dB) speech at
-# 25 cm peaks near -23 dBFS, and voice messages came out very quiet. 150%
+# 25 cm peaks near -20 dBFS, and voice messages came out very quiet. 150%
 # (+10.6 dB in software) is loud enough without clipping on most taps on the
 # case; 170% clipped them. Set at every start, after module-udev-detect.
 .nofail
