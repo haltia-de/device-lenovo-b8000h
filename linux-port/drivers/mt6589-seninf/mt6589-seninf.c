@@ -89,7 +89,6 @@
 #define  FMT_TG2_FMT		GENMASK(22, 20)
 #define  FMT_TWO_PIX2		BIT(25)
 #define CAM_CTL_SEL		0x018
-#define  SEL_PASS1_DB_EN	BIT(4)
 #define  SEL_TDR_SEL		BIT(6)
 #define  SEL_TG_SEL		BIT(8)
 #define  SEL_EIS_RAW_SEL	BIT(16)
@@ -107,7 +106,6 @@
 #define  INT_DMA_ERR		BIT(30)
 #define CAM_CTL_DMA_INT		0x028	/* status [15:0] read to clear, enables [31:16] */
 #define  DMA_IMGO_DONE_ST	BIT(0)
-#define  DMA_SOF2_ST		BIT(10)
 #define  DMA_IMGO_DONE_EN	BIT(16)
 #define  DMA_SOF2_EN		BIT(26)
 #define CAM_CTL_SW_CTL		0x05c
@@ -196,10 +194,9 @@ struct mt6589_seninf {
 	spinlock_t irqlock;		/* the lists and the two buffer pointers */
 	struct list_head queued;
 	struct seninf_buffer *active;	/* IMGO writes it this frame */
-	struct seninf_buffer *next;	/* latched into IMGO at the next frame */
 	unsigned int sequence;
 	bool streaming;
-	u32 irq_status, dma_status;	/* last seen, for bring-up */
+	u32 irq_status, dma_status;	/* seen while streaming, for dev_dbg */
 	unsigned int frames, dropped, errors;
 };
 
@@ -418,10 +415,15 @@ static void seninf_pass1_config(struct mt6589_seninf *s, dma_addr_t first)
 	writel(DMA_IMGO_EN, isp + CAM_CTL_DMA_EN);
 	writel(FIELD_PREP(FMT_SCENARIO, 6) | FIELD_PREP(FMT_CAM_OUT, 1) |
 	       FIELD_PREP(FMT_TG2_FMT, 1), isp + CAM_CTL_FMT_SEL);	/* RAW10 */
-	writel(SEL_TDR_SEL | SEL_PASS1_DB_EN | SEL_EIS_RAW_SEL | SEL_TG_SEL,
-	       isp + CAM_CTL_SEL);
-	writel(0x00100008, isp + CAM_CTL_MUX_SEL);
-	writel(0x4008010c, isp + CAM_CTL_MUX_SEL2);
+	/*
+	 * No PASS1_DB_EN: with it the stock stack has the command queue load
+	 * the double-buffered pass-1 registers; without a queue IMGO never gets
+	 * its sizes and stops with a DMA error at the first frame.  Registers
+	 * then take effect at once, so the buffer is switched between frames.
+	 */
+	writel(SEL_TDR_SEL | SEL_EIS_RAW_SEL | SEL_TG_SEL, isp + CAM_CTL_SEL);
+	writel(0x00100008, isp + CAM_CTL_MUX_SEL);	/* AA_SEL_EN, AA_SEL */
+	writel(0x40080108, isp + CAM_CTL_MUX_SEL2);	/* raw out before HRZ */
 	writel(0x11000000, isp + CAM_CTL_SRAM_MUX_CFG);
 	writel(0, isp + CAM_CTL_PIX_ID);	/* B first (OV9760 RAW_B) */
 	writel(0x80, isp + CAM_CTL_SPARE3);
@@ -494,32 +496,34 @@ static irqreturn_t seninf_irq(int irq, void *data)
 	spin_lock(&s->irqlock);
 	s->irq_status |= st;
 	s->dma_status |= dma;
-	if (st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR))
-		s->errors++;
+	if (st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR)) {
+		/* The error bits stay set until the next reset: stop listening. */
+		if (!s->errors++)
+			dev_warn(s->dev, "pass 1 error: int %08x dma %04x imgo %08x\n",
+				 st, dma, readl(s->isp + 0x3c4));
+		rmw(s->isp + CAM_CTL_INT_EN, st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR), 0);
+	}
 
 	if (!s->streaming)
 		goto out;
 
 	/*
-	 * Frame done for TG2. Which of these the TG2 path raises is not
-	 * documented; any of them ends the frame IMGO was writing.
+	 * Frame done (the TG2 path raises PASS1_TG2_DON or PASS1_DON together
+	 * with IMGO_DONE; any of them ends the frame).  Between frames IMGO
+	 * takes the next buffer at once; without one it writes the same
+	 * buffer again and that frame is dropped.
 	 */
 	if ((st & (INT_PASS1_DON | INT_PASS1_TG2_DON)) || (dma & DMA_IMGO_DONE_ST)) {
-		if (s->next) {
-			done = s->active;
-			s->active = s->next;
-			s->next = NULL;
-		} else {
-			s->dropped++;	/* keep writing the same buffer */
-		}
-	}
+		struct seninf_buffer *next = seninf_take_queued(s);
 
-	/* Start of frame: give IMGO the next buffer, latched at the next one. */
-	if (((st & INT_SOF1) || (dma & DMA_SOF2_ST)) && !s->next) {
-		s->next = seninf_take_queued(s);
-		if (s->next)
-			writel(lower_32_bits(seninf_buf_addr(s->next)),
+		if (next) {
+			done = s->active;
+			s->active = next;
+			writel(lower_32_bits(seninf_buf_addr(next)),
 			       s->isp + CAM_IMGO_BASE_ADDR);
+		} else {
+			s->dropped++;
+		}
 	}
 
 	if (done) {
@@ -546,10 +550,7 @@ static void seninf_return_all(struct mt6589_seninf *s, enum vb2_buffer_state sta
 	}
 	if (s->active)
 		vb2_buffer_done(&s->active->vb.vb2_buf, state);
-	if (s->next)
-		vb2_buffer_done(&s->next->vb.vb2_buf, state);
 	s->active = NULL;
-	s->next = NULL;
 	spin_unlock_irqrestore(&s->irqlock, flags);
 }
 
@@ -630,7 +631,6 @@ static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
 
 	spin_lock_irqsave(&s->irqlock, flags);
 	s->active = seninf_take_queued(s);
-	s->next = NULL;
 	s->sequence = 0;
 	s->frames = s->dropped = s->errors = 0;
 	s->irq_status = s->dma_status = 0;
