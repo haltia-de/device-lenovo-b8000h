@@ -5,3 +5,4 @@ external/
 *.ko
 
 __pycache__/
+CLAUDE.local.md
