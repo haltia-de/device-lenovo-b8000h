@@ -400,6 +400,7 @@ if [ "$UI_PROFILE" = shell ]; then
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
 		case $locked in *" $name "*) continue ;; esac
+		[ "$private" != apk ] || { echo "warning: $name is only released as apk, not in packages.lock: left out" >&2; continue; }
 		fetch_app "$name" "$url" "$tag" "$commit" "$private"
 	done
 	# Speaker: hardware gain fixed at the clean top step, software volume.
