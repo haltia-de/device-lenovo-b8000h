@@ -18,10 +18,20 @@ OV9760.
 выгрузка всё выключает.
 
 ```sh
+# на ПК
 KERNEL_DIR=<дерево ядра 25> sh linux-port/drivers/b8k-cam-probe/build.sh
-insmod b8k_cam_probe.ko     # dmesg: b8k-cam-probe: sensor at 1-0010, chip ID 9760
+# скопировать b8k_cam_probe.ko на планшет, затем там, от root
+# (i2ctransfer и i2cdetect — из пакета i2c-tools, в образе его нет):
+insmod b8k_cam_probe.ko
+dmesg | grep b8k-cam-probe   # "sensor at 1-0010, chip ID 9760" или "no answer"
+i2ctransfer -y 1 w2@0x10 0x30 0x0a r2   # 0x97 0x60 (пока модуль загружен)
+i2ctransfer -y 1 w2@0x10 0x00 0x00 r2   # 0x97 0x60
 rmmod b8k_cam_probe
 ```
+
+Модуль загружается успешно и без ответа датчика: результат — только в
+`dmesg`. Регистры LDO он сохраняет при загрузке и восстанавливает при
+выгрузке.
 
 ## Питание и выводы
 
@@ -72,4 +82,4 @@ HAL камеры (libhybris, binder, перенос ISP/M4U/SMI/imgsensor из �
 `powerdown-gpios` (GPIO31, активный низкий) и часами MCLK от драйвера SENINF.
 
 Шина I2C 2 (`i2c-2`) на этом планшете на запросы не отвечает даже NACK —
-тайм-аут; камер там нет.
+тайм-аут (`i2cdetect -y 2` висит на каждом адресе); камер там нет.

@@ -67,7 +67,10 @@ struct b8k_cam {
 	struct clk *clk[3];
 	void __iomem *seninf;
 	u32 top_old, ph_old, ck_old;
+	unsigned int ldo_old[4];	/* VCAMA_EN, VCAMA_VOSEL, VGP2_EN, VGP2_VOSEL */
 };
+
+static const unsigned int ldo_regs[4] = { VCAMA_EN, VCAMA_VOSEL, VGP2_EN, VGP2_VOSEL };
 
 static struct platform_device *b8k_cam_pdev;
 
@@ -104,8 +107,10 @@ static int b8k_cam_mclk_on(struct b8k_cam *c)
 	of_node_put(np);
 
 	c->seninf = ioremap(SENINF_PHYS, 0x1000);
-	if (!c->seninf)
-		return -ENOMEM;
+	if (!c->seninf) {
+		ret = -ENOMEM;
+		goto err_clk;
+	}
 	c->top_old = readl(c->seninf + SENINF_TOP);
 	c->ph_old = readl(c->seninf + TG1_PH_CNT);
 	c->ck_old = readl(c->seninf + TG1_SEN_CK);
@@ -122,6 +127,7 @@ static int b8k_cam_mclk_on(struct b8k_cam *c)
 	return 0;
 err:
 	of_node_put(np);
+err_clk:
 	while (--i >= 0) {
 		clk_disable_unprepare(c->clk[i]);
 		clk_put(c->clk[i]);
@@ -152,13 +158,19 @@ static void b8k_cam_mclk_off(struct b8k_cam *c)
 
 /*
  * kdCISModulePowerOn, sub sensor (ov9726/ov9760 branch): PDN and RST low,
- * VCAMA 2.8 V, VGP2 1.8 V, VGP5 1.2 V (VGP5 already feeds the touch panel at
- * 2.8 V and the stock hwPowerOn leaves a shared LDO's voltage alone), then
- * RST low, PDN low, RST high, PDN high.  PDN high is "sensor on": with PDN
- * low the sensor does not answer.
+ * VCAMA 2.8 V, VGP2 1.8 V, then RST low, PDN low, RST high, PDN high.  PDN
+ * high is "sensor on": with PDN low the sensor does not answer.  The stock
+ * code also asks for VGP5 at 1.2 V, but VGP5 already feeds the touch panel
+ * at 2.8 V and the stock hwPowerOn leaves a shared LDO's voltage alone, so
+ * this module does not touch VGP5.  The LDO registers are saved here and
+ * restored on unload.
  */
 static void b8k_cam_power_on(struct b8k_cam *c)
 {
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ldo_regs); i++)
+		regmap_read(c->pmic, ldo_regs[i], &c->ldo_old[i]);
 	gpiod_set_value(c->pdn, 0);
 	mdelay(1);
 	gpiod_set_value(c->rst, 0);
@@ -182,8 +194,10 @@ static void b8k_cam_power_off(struct b8k_cam *c)
 {
 	gpiod_set_value(c->rst, 0);
 	gpiod_set_value(c->pdn, 0);
-	regmap_update_bits(c->pmic, VGP2_EN, LDO_EN, 0);
-	regmap_update_bits(c->pmic, VCAMA_EN, LDO_EN, 0);
+	regmap_update_bits(c->pmic, VGP2_EN, LDO_EN, c->ldo_old[2] & LDO_EN);
+	regmap_update_bits(c->pmic, VCAMA_EN, LDO_EN, c->ldo_old[0] & LDO_EN);
+	regmap_update_bits(c->pmic, VGP2_VOSEL, 0x7 << 5, c->ldo_old[3]);
+	regmap_update_bits(c->pmic, VCAMA_VOSEL, 0x3 << 6, c->ldo_old[1]);
 }
 
 static int sccb_read(struct i2c_adapter *ad, u16 reg, u8 *val)
