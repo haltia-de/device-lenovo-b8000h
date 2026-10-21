@@ -7,10 +7,12 @@
  *   common clock here, which the sensor driver enables like any other.
  * - Capture: the sensor (OV9760, one lane) is wired to the CSI1 port, the
  *   "sub" sensor of the stock stack, whose data runs CSI1 -> SENINF2 -> TG2
- *   -> pass 1 (TG_SEL = TG2) -> IMGO DMA.  IMGO packs RAW10 the MediaTek
- *   way (PAK: four pixels in five bytes, LSB first) and writes it to a
- *   physically contiguous buffer: the M4U is not used, so the IMGO port of
- *   SMI larb4 works with physical addresses.
+ *   -> pass 1 (TG_SEL = TG2) -> IMGO DMA.  IMGO writes either 8-bit Bayer
+ *   (the sensor's top 8 bits, a byte a pixel: V4L2's SBGGR8, the default)
+ *   or RAW10 packed the MediaTek way (PAK: four pixels in five bytes, LSB
+ *   first).  Pass 1 has no unpacked 16-bit output.  The buffer is
+ *   physically contiguous: the M4U is not used, so the IMGO port of SMI
+ *   larb4 works with physical addresses.
  *
  * The register sequences follow the stock Android 4.4 userspace
  * (libcamdrv SeninfDrvImp::initTg2CSI2/setTg2CSI2/setTg2*,
@@ -322,9 +324,12 @@ static int seninf_runtime_suspend(struct device *dev)
 
 /* --- Hardware: CSI1 -> SENINF2 -> TG2 -> IMGO ---------------------------- */
 
-static u32 imgo_bytes(u32 width)
+/* DMAO_B::_config: bytes a line, an even count. */
+static u32 imgo_bytes(u32 fourcc, u32 width)
 {
-	/* DMAO_B::_config for BAYER10: 1.25 bytes a pixel, even byte count. */
+	if (fourcc == V4L2_PIX_FMT_SBGGR8)
+		return ALIGN(width, 2);
+	/* BAYER10: 1.25 bytes a pixel. */
 	return ((((width * 5 + 3) >> 2) + 1) >> 1) << 1;
 }
 
@@ -413,12 +418,18 @@ static void seninf_pass1_config(struct mt6589_seninf *s, dma_addr_t first)
 {
 	void __iomem *isp = s->isp;
 	u32 w = s->fmt.width, h = s->fmt.height;
+	bool raw8 = s->fmt.pixelformat == V4L2_PIX_FMT_SBGGR8;
 
 	writel(EN1_TG2_EN | EN1_PAK_EN | EN1_PAK2_EN | EN1_CAM_EN, isp + CAM_CTL_EN1);
 	writel(0, isp + CAM_CTL_EN2);
 	writel(DMA_IMGO_EN, isp + CAM_CTL_DMA_EN);
-	writel(FIELD_PREP(FMT_SCENARIO, 6) | FIELD_PREP(FMT_CAM_OUT, 1) |
-	       FIELD_PREP(FMT_TG2_FMT, 1), isp + CAM_CTL_FMT_SEL);	/* RAW10 */
+	/*
+	 * The sensor sends RAW10 (TG2_FMT 1); CAM_OUT_FMT is what IMGO writes:
+	 * BAYER8 (0) keeps the top 8 bits, BAYER10 (1) packs all ten.  Without
+	 * PAK there is no unpacked output: IMGO stops with a DMA error.
+	 */
+	writel(FIELD_PREP(FMT_SCENARIO, 6) | FIELD_PREP(FMT_CAM_OUT, raw8 ? 0 : 1) |
+	       FIELD_PREP(FMT_TG2_FMT, 1), isp + CAM_CTL_FMT_SEL);
 	/*
 	 * No PASS1_DB_EN: with it the stock stack has the command queue load
 	 * the double-buffered pass-1 registers; without a queue IMGO never gets
@@ -436,7 +447,7 @@ static void seninf_pass1_config(struct mt6589_seninf *s, dma_addr_t first)
 	writel(0, isp + CAM_CTL_IMGO_FBC);	/* no FBC: switch buffers at SOF */
 	writel(lower_32_bits(first), isp + CAM_IMGO_BASE_ADDR);
 	writel(0, isp + CAM_IMGO_OFST_ADDR);
-	writel(imgo_bytes(w) - 1, isp + CAM_IMGO_XSIZE);
+	writel(imgo_bytes(s->fmt.pixelformat, w) - 1, isp + CAM_IMGO_XSIZE);
 	writel(h - 1, isp + CAM_IMGO_YSIZE);
 	writel(s->fmt.bytesperline, isp + CAM_IMGO_STRIDE);
 	writel(0x08141450, isp + CAM_IMGO_CON);
@@ -715,13 +726,22 @@ static const struct vb2_ops seninf_vb2_ops = {
 
 /* --- V4L2 ioctls --------------------------------------------------------- */
 
+static const struct {
+	u32 fourcc;
+	const char *name;
+} seninf_formats[] = {
+	{ V4L2_PIX_FMT_SBGGR8, "8-bit Bayer BGGR" },
+	{ V4L2_PIX_FMT_MTISP_SBGGR10, "10-bit Bayer BGGR (MediaTek packed)" },
+};
+
 static void seninf_fill_fmt(struct v4l2_pix_format *pix, u32 w, u32 h)
 {
+	if (pix->pixelformat != V4L2_PIX_FMT_MTISP_SBGGR10)
+		pix->pixelformat = V4L2_PIX_FMT_SBGGR8;
 	pix->width = clamp_t(u32, ALIGN(w, 4), 64, 1472);
 	pix->height = clamp_t(u32, ALIGN(h, 2), 48, 1104);
-	pix->pixelformat = V4L2_PIX_FMT_MTISP_SBGGR10;
 	pix->field = V4L2_FIELD_NONE;
-	pix->bytesperline = imgo_bytes(pix->width);
+	pix->bytesperline = imgo_bytes(pix->pixelformat, pix->width);
 	pix->sizeimage = pix->bytesperline * pix->height;
 	pix->colorspace = V4L2_COLORSPACE_RAW;
 	pix->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
@@ -738,10 +758,11 @@ static int seninf_querycap(struct file *file, void *fh, struct v4l2_capability *
 
 static int seninf_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
-	if (f->index || (f->mbus_code && f->mbus_code != MEDIA_BUS_FMT_SBGGR10_1X10))
+	if (f->index >= ARRAY_SIZE(seninf_formats) ||
+	    (f->mbus_code && f->mbus_code != MEDIA_BUS_FMT_SBGGR10_1X10))
 		return -EINVAL;
-	f->pixelformat = V4L2_PIX_FMT_MTISP_SBGGR10;
-	strscpy(f->description, "10-bit Bayer BGGR (MediaTek packed)",
+	f->pixelformat = seninf_formats[f->index].fourcc;
+	strscpy(f->description, seninf_formats[f->index].name,
 		sizeof(f->description));
 	return 0;
 }
@@ -984,6 +1005,7 @@ static int mt6589_seninf_probe(struct platform_device *pdev)
 	mutex_init(&s->lock);
 	spin_lock_init(&s->irqlock);
 	INIT_LIST_HEAD(&s->queued);
+	s->fmt.pixelformat = V4L2_PIX_FMT_SBGGR8;
 	seninf_fill_fmt(&s->fmt, 1280, 720);
 
 	s->base = devm_platform_ioremap_resource_byname(pdev, "seninf");
