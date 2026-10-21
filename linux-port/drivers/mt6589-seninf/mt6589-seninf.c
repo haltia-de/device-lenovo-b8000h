@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * MediaTek MT6589 SENINF: sensor interface of the camera block.
+ * MediaTek MT6589 camera receive path: SENINF, MIPI-RX and the raw part of
+ * the ISP pass 1, for the front camera of the Lenovo B8000-H.
  *
- * Stage 1 (front camera of the Lenovo B8000-H): the TG1 sensor master clock
- * (MCLK) as a common clock, and the media device the sensor registers
- * against, so the sensor subdevice shows up in the media graph.  The CSI-2
- * receiver and the raw DMA come in stage 2 into this same driver, which is
- * why MCLK lives here rather than in a clock driver of its own: SENINF owns
- * both, and the stock HAL programs them together.
+ * - MCLK: the TG1 phase counter of SENINF drives the CMMCLK pin.  It is a
+ *   common clock here, which the sensor driver enables like any other.
+ * - Capture: the sensor (OV9760, one lane) is wired to the CSI1 port, the
+ *   "sub" sensor of the stock stack, whose data runs CSI1 -> SENINF2 -> TG2
+ *   -> pass 1 (TG_SEL = TG2) -> IMGO DMA.  IMGO packs RAW10 the MediaTek
+ *   way (PAK: four pixels in five bytes, LSB first) and writes it to a
+ *   physically contiguous buffer: the M4U is not used, so the IMGO port of
+ *   SMI larb4 works with physical addresses.
  *
- * MCLK programming follows the stock libcamdrv (SeninfDrvImp::
- * setTg1PhaseCounter): SENINF_TOP |= 0xc00; TG1_SEN_CK CLKCNT = n,
- * CLKRS = 0, CLKFL = (n + 1) / 2 for MCLK = 48 MHz / (n + 1); TG1_PH_CNT
- * TGCLK_SEL = 1, CLKFL_POL = !(n & 1), ADCLK_EN, PCEN.  See
+ * The register sequences follow the stock Android 4.4 userspace
+ * (libcamdrv SeninfDrvImp::initTg2CSI2/setTg2CSI2/setTg2*,
+ * setTg1PhaseCounter; ISP_TOP_CTRL/DMAO_B of the MediaTek KK camera source)
+ * and the stock kernel's camera_isp.c (IRQ, buffer switch at SOF).  See
  * docs/camera-front.md of device-lenovo-b8000h.
  */
 
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
+#include <linux/delay.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/platform_device.h>
@@ -29,26 +35,148 @@
 #include <media/v4l2-async.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-fwnode.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-mc.h>
+#include <media/videobuf2-dma-contig.h>
 
+/* MediaTek packed 10-bit Bayer, as the mainline MediaTek ISP names it. */
+#ifndef V4L2_PIX_FMT_MTISP_SBGGR10
+#define V4L2_PIX_FMT_MTISP_SBGGR10 v4l2_fourcc('M', 'B', 'B', 'A')
+#endif
+
+/* SENINF, 0x15008000 */
 #define SENINF_TOP		0x000
-#define SENINF_TOP_TG_EN	(BIT(10) | BIT(11))
+#define SENINF_TOP_PCLK_EN	(BIT(10) | BIT(11))	/* SENINF2, SENINF1 */
+#define SENINF2_CTRL		0x090
+#define  SCTRL_MUX_SW_RST	BIT(0)
+#define  SCTRL_IRQ_SW_RST	BIT(1)
+#define  SCTRL_PIX_SEL		BIT(8)
+#define  SCTRL_VSYNC_POL	BIT(9)
+#define  SCTRL_HSYNC_POL	BIT(10)
+#define  SCTRL_SRC_SEL		GENMASK(15, 12)
+#define  SCTRL_FIFO_PUSH_EN	GENMASK(21, 16)
+#define  SCTRL_FIFO_FLUSH_EN	GENMASK(27, 22)
+#define  SCTRL_PAD2CAM		GENMASK(30, 28)
+#define SENINF2_DEBUG_4		0x0ac	/* measured size: H [31:16], V [15:0] */
+#define SENINF2_CSI2_CTRL	0x180
+#define SENINF2_CSI2_DELAY	0x184
+#define SENINF2_CSI2_INTEN	0x188
+#define SENINF2_CSI2_INTSTA	0x18c
+#define SENINF2_CSI2_DBG	0x198
+#define  CSI2_DBG_HSRXDB_EN	(BIT(27) | BIT(28) | BIT(29))
 #define TG1_PH_CNT		0x300
-#define PH_TGCLK_SEL		GENMASK(1, 0)
-#define PH_CLKFL_POL		BIT(2)
-#define PH_ADCLK_EN		BIT(29)
-#define PH_PCEN			BIT(31)
+#define  PH_TGCLK_SEL		GENMASK(1, 0)
+#define  PH_CLKFL_POL		BIT(2)
+#define  PH_ADCLK_EN		BIT(29)
+#define  PH_PCEN		BIT(31)
 #define TG1_SEN_CK		0x304
-#define SEN_CK_CLKFL		GENMASK(5, 0)
-#define SEN_CK_CLKRS		GENMASK(13, 8)
-#define SEN_CK_CLKCNT		GENMASK(21, 16)
+#define  SEN_CK_CLKFL		GENMASK(5, 0)
+#define  SEN_CK_CLKRS		GENMASK(13, 8)
+#define  SEN_CK_CLKCNT		GENMASK(21, 16)
+
+/* ISP, 0x15004000 */
+#define CAM_CTL_EN1		0x004
+#define  EN1_TG2_EN		BIT(1)
+#define  EN1_PAK_EN		BIT(12)
+#define  EN1_PAK2_EN		BIT(13)
+#define  EN1_CAM_EN		BIT(30)
+#define CAM_CTL_EN2		0x008
+#define CAM_CTL_DMA_EN		0x00c
+#define  DMA_IMGO_EN		BIT(0)
+#define CAM_CTL_FMT_SEL		0x010
+#define  FMT_SCENARIO		GENMASK(2, 0)
+#define  FMT_CAM_OUT		GENMASK(15, 12)
+#define  FMT_TG2_FMT		GENMASK(22, 20)
+#define  FMT_TWO_PIX2		BIT(25)
+#define CAM_CTL_SEL		0x018
+#define  SEL_PASS1_DB_EN	BIT(4)
+#define  SEL_TDR_SEL		BIT(6)
+#define  SEL_TG_SEL		BIT(8)
+#define  SEL_EIS_RAW_SEL	BIT(16)
+#define CAM_CTL_PIX_ID		0x01c
+#define CAM_CTL_INT_EN		0x020
+#define CAM_CTL_INT_STATUS	0x024	/* read to clear */
+#define  INT_VS1		BIT(0)
+#define  INT_TG1_ERR		BIT(4)
+#define  INT_VS2		BIT(5)
+#define  INT_TG2_ERR		BIT(9)
+#define  INT_PASS1_DON		BIT(10)
+#define  INT_PASS1_TG2_DON	BIT(11)
+#define  INT_SOF1		BIT(12)
+#define  INT_IMGO_ERR		BIT(20)
+#define  INT_DMA_ERR		BIT(30)
+#define CAM_CTL_DMA_INT		0x028	/* status [15:0] read to clear, enables [31:16] */
+#define  DMA_IMGO_DONE_ST	BIT(0)
+#define  DMA_SOF2_ST		BIT(10)
+#define  DMA_IMGO_DONE_EN	BIT(16)
+#define  DMA_SOF2_EN		BIT(26)
+#define CAM_CTL_SW_CTL		0x05c
+#define CAM_CTL_SPARE3		0x06c
+#define CAM_CTL_MUX_SEL		0x074
+#define CAM_CTL_MUX_SEL2	0x078
+#define CAM_CTL_SRAM_MUX_CFG	0x07c
+#define CAM_CTL_IMGO_FBC	0x0f4
+#define CAM_CTL_CLK_EN		0x150
+#define CAM_IMGO_BASE_ADDR	0x300
+#define CAM_IMGO_OFST_ADDR	0x304
+#define CAM_IMGO_XSIZE		0x308
+#define CAM_IMGO_YSIZE		0x30c
+#define CAM_IMGO_STRIDE		0x310
+#define CAM_IMGO_CON		0x314
+#define CAM_IMGO_CON2		0x318
+#define CAM_IMGO_CROP		0x31c
+#define CAM_TG2_SEN_MODE	0x4b0
+#define  TG_CMOS_EN		BIT(0)
+#define  TG_DBL_DATA_BUS	BIT(1)
+#define  TG_SOT_MODE		BIT(2)
+#define  TG_SOF_SRC		GENMASK(9, 8)
+#define CAM_TG2_VF_CON		0x4b4
+#define  VF_VFDATA_EN		BIT(0)
+#define  VF_SINGLE_MODE		BIT(1)
+#define  VF_SP_DELAY		GENMASK(10, 8)
+#define  VF_SPDELAY_MODE	BIT(12)
+#define CAM_TG2_GRAB_PXL	0x4b8
+#define CAM_TG2_GRAB_LIN	0x4bc
+#define CAM_TG2_PATH_CFG	0x4c0
+#define  PATH_SEN_IN_LSB	GENMASK(1, 0)
+#define  PATH_JPGINF_EN		BIT(4)
+
+/* MIPI-RX analog, 0x10012800 */
+#define CSI1_CLK_LANE		0x14
+#define CSI1_DATA_LANE0		0x18
+#define CSI1_DATA_LANE1		0x1c
+#define  LANE_LDO_OUT_EN	BIT(0)
+#define  LANE_SUB_SEL		BIT(4)	/* CSI1 lanes to the sub sensor pads */
+#define CSI_LDO_CORE		0x20
+#define  CSI1_LDO_CORE_EN	BIT(1)
+#define CSI_BG_CORE		0x24
+#define  CSI_BG_CORE_EN		BIT(0)
+
+/* MIPI-RX calibration, 0x1500C000 */
+#define MIPI_RX_HW_CAL		0x38
+#define  HW_CAL_START		BIT(2)
+#define MIPI_RX_CSI1_CAL_ST	0x4c
 
 #define MCLK_MAX_DIV		64
+#define CSI2_SETTLE		14	/* OV9760: MIPIDataLowPwr2HighSpeedSettleDelayCount */
+#define SENINF_MIN_BUFFERS	3
 
-static const char * const seninf_clk_names[] = { "cam", "tg", "sen" };
+static const char * const seninf_clk_names[] = {
+	"cam", "tg", "sen", "cam-smi", "larb", "smi",
+};
+
+struct seninf_buffer {
+	struct vb2_v4l2_buffer vb;
+	struct list_head list;
+};
 
 struct mt6589_seninf {
 	struct device *dev;
-	void __iomem *base;
+	void __iomem *base;		/* SENINF */
+	void __iomem *isp;
+	void __iomem *rx;		/* MIPI-RX analog */
+	void __iomem *rxcal;		/* MIPI-RX calibration */
+	int irq;
 	struct clk_bulk_data clks[ARRAY_SIZE(seninf_clk_names)];
 	struct clk_hw mclk;
 	unsigned int div;		/* MCLK = tg / div, 2..64 */
@@ -56,9 +184,33 @@ struct mt6589_seninf {
 	struct media_device mdev;
 	struct v4l2_device v4l2_dev;
 	struct v4l2_async_notifier notifier;
+	struct v4l2_subdev *sensor;
+	u32 sensor_pad;
+
+	struct video_device vdev;
+	struct media_pad pad;
+	struct vb2_queue queue;
+	struct mutex lock;		/* vdev and queue */
+	struct v4l2_pix_format fmt;
+
+	spinlock_t irqlock;		/* the lists and the two buffer pointers */
+	struct list_head queued;
+	struct seninf_buffer *active;	/* IMGO writes it this frame */
+	struct seninf_buffer *next;	/* latched into IMGO at the next frame */
+	unsigned int sequence;
+	bool streaming;
+	u32 irq_status, dma_status;	/* last seen, for bring-up */
+	unsigned int frames, dropped, errors;
 };
 
 #define to_seninf(_hw) container_of(_hw, struct mt6589_seninf, mclk)
+
+static void rmw(void __iomem *reg, u32 clear, u32 set)
+{
+	writel((readl(reg) & ~clear) | set, reg);
+}
+
+/* --- MCLK --------------------------------------------------------------- */
 
 static unsigned long seninf_mclk_recalc_rate(struct clk_hw *hw,
 					     unsigned long parent_rate)
@@ -92,26 +244,19 @@ static int seninf_mclk_prepare(struct clk_hw *hw)
 {
 	struct mt6589_seninf *s = to_seninf(hw);
 	unsigned int cnt = s->div - 1;
-	u32 ph;
 	int ret;
 
 	ret = pm_runtime_resume_and_get(s->dev);
 	if (ret)
 		return ret;
-	ret = clk_bulk_prepare_enable(ARRAY_SIZE(s->clks), s->clks);
-	if (ret) {
-		pm_runtime_put(s->dev);
-		return ret;
-	}
 
-	writel(readl(s->base + SENINF_TOP) | SENINF_TOP_TG_EN, s->base + SENINF_TOP);
+	rmw(s->base + SENINF_TOP, 0, SENINF_TOP_PCLK_EN);
 	writel(FIELD_PREP(SEN_CK_CLKFL, (cnt + 1) / 2) |
 	       FIELD_PREP(SEN_CK_CLKRS, 0) |
 	       FIELD_PREP(SEN_CK_CLKCNT, cnt), s->base + TG1_SEN_CK);
-	ph = readl(s->base + TG1_PH_CNT) & ~(PH_TGCLK_SEL | PH_CLKFL_POL);
-	ph |= FIELD_PREP(PH_TGCLK_SEL, 1) | ((cnt & 1) ? 0 : PH_CLKFL_POL) |
-	      PH_ADCLK_EN | PH_PCEN;
-	writel(ph, s->base + TG1_PH_CNT);
+	rmw(s->base + TG1_PH_CNT, PH_TGCLK_SEL | PH_CLKFL_POL,
+	    FIELD_PREP(PH_TGCLK_SEL, 1) | ((cnt & 1) ? 0 : PH_CLKFL_POL) |
+	    PH_ADCLK_EN | PH_PCEN);
 	return 0;
 }
 
@@ -119,10 +264,7 @@ static void seninf_mclk_unprepare(struct clk_hw *hw)
 {
 	struct mt6589_seninf *s = to_seninf(hw);
 
-	writel(readl(s->base + TG1_PH_CNT) & ~(PH_ADCLK_EN | PH_PCEN),
-	       s->base + TG1_PH_CNT);
-	writel(readl(s->base + SENINF_TOP) & ~SENINF_TOP_TG_EN, s->base + SENINF_TOP);
-	clk_bulk_disable_unprepare(ARRAY_SIZE(s->clks), s->clks);
+	rmw(s->base + TG1_PH_CNT, PH_ADCLK_EN | PH_PCEN, 0);
 	pm_runtime_put(s->dev);
 }
 
@@ -159,6 +301,591 @@ static int seninf_register_mclk(struct mt6589_seninf *s)
 	return devm_of_clk_add_hw_provider(s->dev, of_clk_hw_simple_get, &s->mclk);
 }
 
+/* --- Runtime PM: the clock gates of the camera block -------------------- */
+
+static int seninf_runtime_resume(struct device *dev)
+{
+	struct mt6589_seninf *s = dev_get_drvdata(dev);
+
+	return clk_bulk_prepare_enable(ARRAY_SIZE(s->clks), s->clks);
+}
+
+static int seninf_runtime_suspend(struct device *dev)
+{
+	struct mt6589_seninf *s = dev_get_drvdata(dev);
+
+	rmw(s->base + SENINF_TOP, SENINF_TOP_PCLK_EN, 0);
+	clk_bulk_disable_unprepare(ARRAY_SIZE(s->clks), s->clks);
+	return 0;
+}
+
+/* --- Hardware: CSI1 -> SENINF2 -> TG2 -> IMGO ---------------------------- */
+
+static u32 imgo_bytes(u32 width)
+{
+	/* DMAO_B::_config for BAYER10: 1.25 bytes a pixel, even byte count. */
+	return ((((width * 5 + 3) >> 2) + 1) >> 1) << 1;
+}
+
+/* SeninfDrvImp::initTg2CSI2(1) for the sub sensor. */
+static void seninf_rx_on(struct mt6589_seninf *s)
+{
+	u32 cal;
+
+	rmw(s->base + SENINF2_CSI2_INTSTA, 0, 0x80);	/* CSI2_SPARE |= 4 */
+	rmw(s->rx + CSI1_CLK_LANE, 0, LANE_SUB_SEL);
+	rmw(s->rx + CSI1_DATA_LANE0, 0, LANE_SUB_SEL);
+	rmw(s->rx + CSI1_DATA_LANE1, 0, LANE_SUB_SEL);
+	rmw(s->rx + CSI_BG_CORE, 0, CSI_BG_CORE_EN);
+	udelay(30);
+	rmw(s->rx + CSI_LDO_CORE, 0, CSI1_LDO_CORE_EN);
+	rmw(s->rx + CSI1_CLK_LANE, 0, LANE_LDO_OUT_EN);
+	udelay(1);
+	rmw(s->rx + CSI1_DATA_LANE0, 0, LANE_LDO_OUT_EN);
+	rmw(s->rx + CSI1_DATA_LANE1, 0, LANE_LDO_OUT_EN);
+
+	rmw(s->base + SENINF2_CSI2_DBG, 0, CSI2_DBG_HSRXDB_EN);
+	rmw(s->rxcal + MIPI_RX_HW_CAL, 0, HW_CAL_START);
+	usleep_range(500, 600);
+	cal = readl(s->rxcal + MIPI_RX_CSI1_CAL_ST);
+	if (!(cal & 0x10001))
+		dev_warn(s->dev, "CSI1 calibration did not finish (%08x)\n", cal);
+	rmw(s->base + SENINF2_CSI2_DBG, CSI2_DBG_HSRXDB_EN, 0);
+
+	/* SeninfDrvImp::setTg2CSI2(0, 14, 0, 1, 0, 1, 1, 0): 1 lane, ECC. */
+	rmw(s->base + SENINF2_CSI2_CTRL, BIT(0), 0);
+	writel(CSI2_SETTLE << 16, s->base + SENINF2_CSI2_DELAY);
+	rmw(s->base + SENINF2_CSI2_INTEN, 0, 0x7);
+	rmw(s->base + SENINF2_CSI2_INTSTA, 0, 0x10);
+	writel(0x2431, s->base + SENINF2_CSI2_CTRL);
+}
+
+static void seninf_rx_off(struct mt6589_seninf *s)
+{
+	rmw(s->base + SENINF2_CSI2_CTRL, BIT(0), 0);
+	rmw(s->rx + CSI1_DATA_LANE1, LANE_LDO_OUT_EN | LANE_SUB_SEL, 0);
+	rmw(s->rx + CSI1_DATA_LANE0, LANE_LDO_OUT_EN | LANE_SUB_SEL, 0);
+	rmw(s->rx + CSI1_CLK_LANE, LANE_LDO_OUT_EN | LANE_SUB_SEL, 0);
+	rmw(s->rx + CSI_LDO_CORE, CSI1_LDO_CORE_EN, 0);
+	rmw(s->rx + CSI_BG_CORE, CSI_BG_CORE_EN, 0);
+}
+
+/* setTg2GrabRange, SensorModeCfg, InputCfg, ViewFinderMode. */
+static void seninf_tg2_config(struct mt6589_seninf *s, u32 w, u32 h)
+{
+	void __iomem *isp = s->isp;
+
+	writel(w << 16, isp + CAM_TG2_GRAB_PXL);
+	writel(h << 16, isp + CAM_TG2_GRAB_LIN);
+
+	rmw(s->base + SENINF2_CTRL, SCTRL_HSYNC_POL | SCTRL_VSYNC_POL, 0);
+	rmw(isp + CAM_TG2_SEN_MODE, 0, TG_CMOS_EN | TG_SOT_MODE);
+
+	rmw(s->base + SENINF2_CTRL, SCTRL_PAD2CAM | SCTRL_SRC_SEL, 0);	/* MIPI */
+	rmw(isp + CAM_TG2_PATH_CFG, PATH_SEN_IN_LSB | PATH_JPGINF_EN, 0);
+	rmw(isp + CAM_TG2_SEN_MODE, TG_SOF_SRC | TG_DBL_DATA_BUS, 0);
+	rmw(s->base + SENINF2_CTRL,
+	    SCTRL_FIFO_FLUSH_EN | SCTRL_FIFO_PUSH_EN | SCTRL_PIX_SEL,
+	    FIELD_PREP(SCTRL_FIFO_FLUSH_EN, 0x1b) |
+	    FIELD_PREP(SCTRL_FIFO_PUSH_EN, 0x1f));
+	rmw(s->base + SENINF2_CTRL, 0, SCTRL_MUX_SW_RST | SCTRL_IRQ_SW_RST);
+	rmw(s->base + SENINF2_CTRL, SCTRL_MUX_SW_RST | SCTRL_IRQ_SW_RST, 0);
+
+	rmw(isp + CAM_TG2_VF_CON, VF_SINGLE_MODE | VF_SP_DELAY, VF_SPDELAY_MODE);
+}
+
+static int seninf_isp_reset(struct mt6589_seninf *s)
+{
+	u32 st;
+	int ret;
+
+	writel(1, s->isp + CAM_CTL_SW_CTL);
+	ret = readl_poll_timeout(s->isp + CAM_CTL_SW_CTL, st, st & BIT(1), 10, 10000);
+	writel(5, s->isp + CAM_CTL_SW_CTL);
+	writel(4, s->isp + CAM_CTL_SW_CTL);
+	writel(0, s->isp + CAM_CTL_SW_CTL);
+	return ret;
+}
+
+/* ISP_TOP_CTRL::_config for VSS RAW on TG2, without the command queue. */
+static void seninf_pass1_config(struct mt6589_seninf *s, dma_addr_t first)
+{
+	void __iomem *isp = s->isp;
+	u32 w = s->fmt.width, h = s->fmt.height;
+
+	writel(EN1_TG2_EN | EN1_PAK_EN | EN1_PAK2_EN | EN1_CAM_EN, isp + CAM_CTL_EN1);
+	writel(0, isp + CAM_CTL_EN2);
+	writel(DMA_IMGO_EN, isp + CAM_CTL_DMA_EN);
+	writel(FIELD_PREP(FMT_SCENARIO, 6) | FIELD_PREP(FMT_CAM_OUT, 1) |
+	       FIELD_PREP(FMT_TG2_FMT, 1), isp + CAM_CTL_FMT_SEL);	/* RAW10 */
+	writel(SEL_TDR_SEL | SEL_PASS1_DB_EN | SEL_EIS_RAW_SEL | SEL_TG_SEL,
+	       isp + CAM_CTL_SEL);
+	writel(0x00100008, isp + CAM_CTL_MUX_SEL);
+	writel(0x4008010c, isp + CAM_CTL_MUX_SEL2);
+	writel(0x11000000, isp + CAM_CTL_SRAM_MUX_CFG);
+	writel(0, isp + CAM_CTL_PIX_ID);	/* B first (OV9760 RAW_B) */
+	writel(0x80, isp + CAM_CTL_SPARE3);
+	writel(0x0001ffff, isp + CAM_CTL_CLK_EN);
+
+	writel(0, isp + CAM_CTL_IMGO_FBC);	/* no FBC: switch buffers at SOF */
+	writel(lower_32_bits(first), isp + CAM_IMGO_BASE_ADDR);
+	writel(0, isp + CAM_IMGO_OFST_ADDR);
+	writel(imgo_bytes(w) - 1, isp + CAM_IMGO_XSIZE);
+	writel(h - 1, isp + CAM_IMGO_YSIZE);
+	writel(s->fmt.bytesperline, isp + CAM_IMGO_STRIDE);
+	writel(0x08141450, isp + CAM_IMGO_CON);
+	writel(0x00141400, isp + CAM_IMGO_CON2);
+	writel(0, isp + CAM_IMGO_CROP);
+
+	readl(isp + CAM_CTL_INT_STATUS);	/* clear */
+	readl(isp + CAM_CTL_DMA_INT);
+	writel(INT_VS1 | INT_TG1_ERR | INT_VS2 | INT_TG2_ERR | INT_PASS1_DON |
+	       INT_PASS1_TG2_DON | INT_SOF1 | INT_IMGO_ERR | INT_DMA_ERR,
+	       isp + CAM_CTL_INT_EN);
+	writel(DMA_IMGO_DONE_EN | DMA_SOF2_EN, isp + CAM_CTL_DMA_INT);
+}
+
+static void seninf_pass1_stop(struct mt6589_seninf *s)
+{
+	rmw(s->isp + CAM_TG2_VF_CON, VF_VFDATA_EN, 0);
+	msleep(70);	/* let the frame in flight end: two frames at 30/s */
+	writel(0, s->isp + CAM_CTL_INT_EN);
+	writel(0, s->isp + CAM_CTL_DMA_INT);
+	writel(0, s->isp + CAM_CTL_DMA_EN);
+	writel(0, s->isp + CAM_CTL_EN1);
+	rmw(s->isp + CAM_TG2_SEN_MODE, TG_CMOS_EN, 0);
+	readl(s->isp + CAM_CTL_INT_STATUS);
+	readl(s->isp + CAM_CTL_DMA_INT);
+}
+
+/* --- Buffers and the interrupt ------------------------------------------ */
+
+static struct seninf_buffer *to_seninf_buffer(struct vb2_v4l2_buffer *vb)
+{
+	return container_of(vb, struct seninf_buffer, vb);
+}
+
+static struct seninf_buffer *seninf_take_queued(struct mt6589_seninf *s)
+{
+	struct seninf_buffer *b;
+
+	b = list_first_entry_or_null(&s->queued, struct seninf_buffer, list);
+	if (b)
+		list_del(&b->list);
+	return b;
+}
+
+static dma_addr_t seninf_buf_addr(struct seninf_buffer *b)
+{
+	return vb2_dma_contig_plane_dma_addr(&b->vb.vb2_buf, 0);
+}
+
+static irqreturn_t seninf_irq(int irq, void *data)
+{
+	struct mt6589_seninf *s = data;
+	struct seninf_buffer *done = NULL;
+	u32 st, dma;
+
+	st = readl(s->isp + CAM_CTL_INT_STATUS);
+	dma = readl(s->isp + CAM_CTL_DMA_INT) & 0xffff;
+	if (!st && !dma)
+		return IRQ_NONE;
+
+	spin_lock(&s->irqlock);
+	s->irq_status |= st;
+	s->dma_status |= dma;
+	if (st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR))
+		s->errors++;
+
+	if (!s->streaming)
+		goto out;
+
+	/*
+	 * Frame done for TG2. Which of these the TG2 path raises is not
+	 * documented; any of them ends the frame IMGO was writing.
+	 */
+	if ((st & (INT_PASS1_DON | INT_PASS1_TG2_DON)) || (dma & DMA_IMGO_DONE_ST)) {
+		if (s->next) {
+			done = s->active;
+			s->active = s->next;
+			s->next = NULL;
+		} else {
+			s->dropped++;	/* keep writing the same buffer */
+		}
+	}
+
+	/* Start of frame: give IMGO the next buffer, latched at the next one. */
+	if (((st & INT_SOF1) || (dma & DMA_SOF2_ST)) && !s->next) {
+		s->next = seninf_take_queued(s);
+		if (s->next)
+			writel(lower_32_bits(seninf_buf_addr(s->next)),
+			       s->isp + CAM_IMGO_BASE_ADDR);
+	}
+
+	if (done) {
+		done->vb.vb2_buf.timestamp = ktime_get_ns();
+		done->vb.sequence = s->sequence++;
+		done->vb.field = V4L2_FIELD_NONE;
+		vb2_buffer_done(&done->vb.vb2_buf, VB2_BUF_STATE_DONE);
+		s->frames++;
+	}
+out:
+	spin_unlock(&s->irqlock);
+	return IRQ_HANDLED;
+}
+
+static void seninf_return_all(struct mt6589_seninf *s, enum vb2_buffer_state state)
+{
+	struct seninf_buffer *b, *tmp;
+	unsigned long flags;
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	list_for_each_entry_safe(b, tmp, &s->queued, list) {
+		list_del(&b->list);
+		vb2_buffer_done(&b->vb.vb2_buf, state);
+	}
+	if (s->active)
+		vb2_buffer_done(&s->active->vb.vb2_buf, state);
+	if (s->next)
+		vb2_buffer_done(&s->next->vb.vb2_buf, state);
+	s->active = NULL;
+	s->next = NULL;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+}
+
+/* --- vb2 ----------------------------------------------------------------- */
+
+static int seninf_queue_setup(struct vb2_queue *q, unsigned int *nbuffers,
+			      unsigned int *nplanes, unsigned int sizes[],
+			      struct device *alloc_devs[])
+{
+	struct mt6589_seninf *s = vb2_get_drv_priv(q);
+
+	if (*nplanes)
+		return sizes[0] < s->fmt.sizeimage ? -EINVAL : 0;
+	*nplanes = 1;
+	sizes[0] = s->fmt.sizeimage;
+	return 0;
+}
+
+static int seninf_buf_prepare(struct vb2_buffer *vb)
+{
+	struct mt6589_seninf *s = vb2_get_drv_priv(vb->vb2_queue);
+
+	if (vb2_plane_size(vb, 0) < s->fmt.sizeimage)
+		return -EINVAL;
+	vb2_set_plane_payload(vb, 0, s->fmt.sizeimage);
+	return 0;
+}
+
+static void seninf_buf_queue(struct vb2_buffer *vb)
+{
+	struct mt6589_seninf *s = vb2_get_drv_priv(vb->vb2_queue);
+	struct seninf_buffer *b = to_seninf_buffer(to_vb2_v4l2_buffer(vb));
+	unsigned long flags;
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	list_add_tail(&b->list, &s->queued);
+	spin_unlock_irqrestore(&s->irqlock, flags);
+}
+
+static int seninf_check_sensor_format(struct mt6589_seninf *s)
+{
+	struct v4l2_subdev_format fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.pad = s->sensor_pad,
+	};
+	int ret;
+
+	ret = v4l2_subdev_call_state_active(s->sensor, pad, get_fmt, &fmt);
+	if (ret)
+		return ret;
+	if (fmt.format.width != s->fmt.width || fmt.format.height != s->fmt.height ||
+	    fmt.format.code != MEDIA_BUS_FMT_SBGGR10_1X10) {
+		dev_dbg(s->dev, "sensor %ux%u/%04x, video node %ux%u\n",
+			fmt.format.width, fmt.format.height, fmt.format.code,
+			s->fmt.width, s->fmt.height);
+		return -EPIPE;
+	}
+	return 0;
+}
+
+static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
+{
+	struct mt6589_seninf *s = vb2_get_drv_priv(q);
+	unsigned long flags;
+	int ret;
+
+	ret = seninf_check_sensor_format(s);
+	if (ret)
+		goto err_return;
+
+	ret = video_device_pipeline_alloc_start(&s->vdev);
+	if (ret)
+		goto err_return;
+
+	ret = pm_runtime_resume_and_get(s->dev);
+	if (ret)
+		goto err_pipeline;
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->active = seninf_take_queued(s);
+	s->next = NULL;
+	s->sequence = 0;
+	s->frames = s->dropped = s->errors = 0;
+	s->irq_status = s->dma_status = 0;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+	if (!s->active) {
+		ret = -ENOBUFS;
+		goto err_pm;
+	}
+
+	rmw(s->base + SENINF_TOP, 0, SENINF_TOP_PCLK_EN);
+	ret = seninf_isp_reset(s);
+	if (ret)
+		dev_warn(s->dev, "ISP reset did not finish\n");
+	seninf_rx_on(s);
+	seninf_tg2_config(s, s->fmt.width, s->fmt.height);
+	seninf_pass1_config(s, seninf_buf_addr(s->active));
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->streaming = true;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+
+	ret = v4l2_subdev_enable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
+	if (ret)
+		goto err_hw;
+
+	rmw(s->isp + CAM_TG2_VF_CON, 0, VF_VFDATA_EN);
+	return 0;
+
+err_hw:
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->streaming = false;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+	seninf_pass1_stop(s);
+	seninf_rx_off(s);
+err_pm:
+	pm_runtime_put(s->dev);
+err_pipeline:
+	video_device_pipeline_stop(&s->vdev);
+err_return:
+	seninf_return_all(s, VB2_BUF_STATE_QUEUED);
+	return ret;
+}
+
+static void seninf_stop_streaming(struct vb2_queue *q)
+{
+	struct mt6589_seninf *s = vb2_get_drv_priv(q);
+	unsigned long flags;
+	u32 size;
+
+	size = readl(s->base + SENINF2_DEBUG_4);
+	rmw(s->isp + CAM_TG2_VF_CON, VF_VFDATA_EN, 0);
+	v4l2_subdev_disable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->streaming = false;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+
+	seninf_pass1_stop(s);
+	seninf_rx_off(s);
+	pm_runtime_put(s->dev);
+	video_device_pipeline_stop(&s->vdev);
+
+	dev_dbg(s->dev, "stopped: %u frames, %u dropped, %u errors, int %08x dma %04x, SENINF2 saw %ux%u\n",
+		s->frames, s->dropped, s->errors, s->irq_status, s->dma_status,
+		size >> 16, size & 0xffff);
+	seninf_return_all(s, VB2_BUF_STATE_ERROR);
+}
+
+static const struct vb2_ops seninf_vb2_ops = {
+	.queue_setup = seninf_queue_setup,
+	.buf_prepare = seninf_buf_prepare,
+	.buf_queue = seninf_buf_queue,
+	.start_streaming = seninf_start_streaming,
+	.stop_streaming = seninf_stop_streaming,
+};
+
+/* --- V4L2 ioctls --------------------------------------------------------- */
+
+static void seninf_fill_fmt(struct v4l2_pix_format *pix, u32 w, u32 h)
+{
+	pix->width = clamp_t(u32, ALIGN(w, 4), 64, 1472);
+	pix->height = clamp_t(u32, ALIGN(h, 2), 48, 1104);
+	pix->pixelformat = V4L2_PIX_FMT_MTISP_SBGGR10;
+	pix->field = V4L2_FIELD_NONE;
+	pix->bytesperline = imgo_bytes(pix->width);
+	pix->sizeimage = pix->bytesperline * pix->height;
+	pix->colorspace = V4L2_COLORSPACE_RAW;
+	pix->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+	pix->quantization = V4L2_QUANTIZATION_DEFAULT;
+	pix->xfer_func = V4L2_XFER_FUNC_NONE;
+}
+
+static int seninf_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
+{
+	strscpy(cap->driver, "mt6589-seninf", sizeof(cap->driver));
+	strscpy(cap->card, "MT6589 camera (front)", sizeof(cap->card));
+	return 0;
+}
+
+static int seninf_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
+{
+	if (f->index || (f->mbus_code && f->mbus_code != MEDIA_BUS_FMT_SBGGR10_1X10))
+		return -EINVAL;
+	f->pixelformat = V4L2_PIX_FMT_MTISP_SBGGR10;
+	strscpy(f->description, "10-bit Bayer BGGR (MediaTek packed)",
+		sizeof(f->description));
+	return 0;
+}
+
+static int seninf_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
+{
+	struct mt6589_seninf *s = video_drvdata(file);
+
+	f->fmt.pix = s->fmt;
+	return 0;
+}
+
+static int seninf_try_fmt(struct file *file, void *fh, struct v4l2_format *f)
+{
+	seninf_fill_fmt(&f->fmt.pix, f->fmt.pix.width, f->fmt.pix.height);
+	return 0;
+}
+
+static int seninf_s_fmt(struct file *file, void *fh, struct v4l2_format *f)
+{
+	struct mt6589_seninf *s = video_drvdata(file);
+
+	if (vb2_is_busy(&s->queue))
+		return -EBUSY;
+	seninf_fill_fmt(&f->fmt.pix, f->fmt.pix.width, f->fmt.pix.height);
+	s->fmt = f->fmt.pix;
+	return 0;
+}
+
+static int seninf_enum_input(struct file *file, void *fh, struct v4l2_input *inp)
+{
+	if (inp->index)
+		return -EINVAL;
+	inp->type = V4L2_INPUT_TYPE_CAMERA;
+	strscpy(inp->name, "Front camera", sizeof(inp->name));
+	return 0;
+}
+
+static int seninf_g_input(struct file *file, void *fh, unsigned int *i)
+{
+	*i = 0;
+	return 0;
+}
+
+static int seninf_s_input(struct file *file, void *fh, unsigned int i)
+{
+	return i ? -EINVAL : 0;
+}
+
+static const struct v4l2_ioctl_ops seninf_ioctl_ops = {
+	.vidioc_querycap = seninf_querycap,
+	.vidioc_enum_fmt_vid_cap = seninf_enum_fmt,
+	.vidioc_g_fmt_vid_cap = seninf_g_fmt,
+	.vidioc_try_fmt_vid_cap = seninf_try_fmt,
+	.vidioc_s_fmt_vid_cap = seninf_s_fmt,
+	.vidioc_enum_input = seninf_enum_input,
+	.vidioc_g_input = seninf_g_input,
+	.vidioc_s_input = seninf_s_input,
+	.vidioc_reqbufs = vb2_ioctl_reqbufs,
+	.vidioc_create_bufs = vb2_ioctl_create_bufs,
+	.vidioc_prepare_buf = vb2_ioctl_prepare_buf,
+	.vidioc_querybuf = vb2_ioctl_querybuf,
+	.vidioc_qbuf = vb2_ioctl_qbuf,
+	.vidioc_dqbuf = vb2_ioctl_dqbuf,
+	.vidioc_expbuf = vb2_ioctl_expbuf,
+	.vidioc_streamon = vb2_ioctl_streamon,
+	.vidioc_streamoff = vb2_ioctl_streamoff,
+};
+
+static const struct v4l2_file_operations seninf_fops = {
+	.owner = THIS_MODULE,
+	.open = v4l2_fh_open,
+	.release = vb2_fop_release,
+	.unlocked_ioctl = video_ioctl2,
+	.mmap = vb2_fop_mmap,
+	.poll = vb2_fop_poll,
+};
+
+static int seninf_link_validate(struct media_link *link)
+{
+	return 0;	/* the format is checked against the sensor at stream on */
+}
+
+static const struct media_entity_operations seninf_entity_ops = {
+	.link_validate = seninf_link_validate,
+};
+
+static int seninf_register_video(struct mt6589_seninf *s)
+{
+	struct video_device *vdev = &s->vdev;
+	struct vb2_queue *q = &s->queue;
+	int ret;
+
+	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	q->io_modes = VB2_MMAP | VB2_DMABUF;
+	q->drv_priv = s;
+	q->buf_struct_size = sizeof(struct seninf_buffer);
+	q->ops = &seninf_vb2_ops;
+	q->mem_ops = &vb2_dma_contig_memops;
+	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	q->min_queued_buffers = SENINF_MIN_BUFFERS;
+	q->lock = &s->lock;
+	q->dev = s->dev;
+	ret = vb2_queue_init(q);
+	if (ret)
+		return ret;
+
+	s->pad.flags = MEDIA_PAD_FL_SINK | MEDIA_PAD_FL_MUST_CONNECT;
+	vdev->entity.ops = &seninf_entity_ops;
+	ret = media_entity_pads_init(&vdev->entity, 1, &s->pad);
+	if (ret)
+		return ret;
+
+	strscpy(vdev->name, "mt6589-seninf", sizeof(vdev->name));
+	vdev->v4l2_dev = &s->v4l2_dev;
+	vdev->fops = &seninf_fops;
+	vdev->ioctl_ops = &seninf_ioctl_ops;
+	vdev->release = video_device_release_empty;
+	vdev->lock = &s->lock;
+	vdev->queue = q;
+	vdev->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING |
+			    V4L2_CAP_IO_MC;
+	vdev->vfl_dir = VFL_DIR_RX;
+	video_set_drvdata(vdev, s);
+	ret = video_register_device(vdev, VFL_TYPE_VIDEO, -1);
+	if (ret)
+		media_entity_cleanup(&vdev->entity);
+	return ret;
+}
+
+/* --- The sensor ---------------------------------------------------------- */
+
+static int seninf_notify_bound(struct v4l2_async_notifier *notifier,
+			       struct v4l2_subdev *sd,
+			       struct v4l2_async_connection *asc)
+{
+	struct mt6589_seninf *s = container_of(notifier, struct mt6589_seninf,
+					       notifier);
+	int pad;
+
+	pad = media_entity_get_fwnode_pad(&sd->entity, asc->match.fwnode,
+					  MEDIA_PAD_FL_SOURCE);
+	if (pad < 0)
+		return pad;
+	s->sensor = sd;
+	s->sensor_pad = pad;
+	return media_create_pad_link(&sd->entity, pad, &s->vdev.entity, 0,
+				     MEDIA_LNK_FL_ENABLED | MEDIA_LNK_FL_IMMUTABLE);
+}
+
 static int seninf_notify_complete(struct v4l2_async_notifier *notifier)
 {
 	struct mt6589_seninf *s = container_of(notifier, struct mt6589_seninf,
@@ -168,6 +895,7 @@ static int seninf_notify_complete(struct v4l2_async_notifier *notifier)
 }
 
 static const struct v4l2_async_notifier_operations seninf_notify_ops = {
+	.bound = seninf_notify_bound,
 	.complete = seninf_notify_complete,
 };
 
@@ -185,12 +913,16 @@ static int seninf_register_media(struct mt6589_seninf *s)
 	if (ret)
 		goto err_media;
 
+	ret = seninf_register_video(s);
+	if (ret)
+		goto err_v4l2;
+
 	v4l2_async_nf_init(&s->notifier, &s->v4l2_dev);
 	ep = fwnode_graph_get_endpoint_by_id(dev_fwnode(s->dev), 0, 0,
 					     FWNODE_GRAPH_ENDPOINT_NEXT);
 	if (!ep) {
 		ret = dev_err_probe(s->dev, -ENODEV, "no sensor endpoint\n");
-		goto err_v4l2;
+		goto err_video;
 	}
 	asc = v4l2_async_nf_add_fwnode_remote(&s->notifier, ep,
 					      struct v4l2_async_connection);
@@ -213,6 +945,8 @@ err_nf_unreg:
 	v4l2_async_nf_unregister(&s->notifier);
 err_nf:
 	v4l2_async_nf_cleanup(&s->notifier);
+err_video:
+	vb2_video_unregister_device(&s->vdev);
 err_v4l2:
 	v4l2_device_unregister(&s->v4l2_dev);
 err_media:
@@ -230,16 +964,41 @@ static int mt6589_seninf_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	s->dev = &pdev->dev;
 	platform_set_drvdata(pdev, s);
+	mutex_init(&s->lock);
+	spin_lock_init(&s->irqlock);
+	INIT_LIST_HEAD(&s->queued);
+	seninf_fill_fmt(&s->fmt, 1280, 720);
 
-	s->base = devm_platform_ioremap_resource(pdev, 0);
+	s->base = devm_platform_ioremap_resource_byname(pdev, "seninf");
 	if (IS_ERR(s->base))
 		return PTR_ERR(s->base);
+	s->isp = devm_platform_ioremap_resource_byname(pdev, "isp");
+	if (IS_ERR(s->isp))
+		return PTR_ERR(s->isp);
+	s->rx = devm_platform_ioremap_resource_byname(pdev, "mipi-rx");
+	if (IS_ERR(s->rx))
+		return PTR_ERR(s->rx);
+	s->rxcal = devm_platform_ioremap_resource_byname(pdev, "mipi-rx-cal");
+	if (IS_ERR(s->rxcal))
+		return PTR_ERR(s->rxcal);
 
 	for (i = 0; i < ARRAY_SIZE(s->clks); i++)
 		s->clks[i].id = seninf_clk_names[i];
 	ret = devm_clk_bulk_get(s->dev, ARRAY_SIZE(s->clks), s->clks);
 	if (ret)
 		return dev_err_probe(s->dev, ret, "clocks\n");
+
+	s->irq = platform_get_irq(pdev, 0);
+	if (s->irq < 0)
+		return s->irq;
+	/* Requested now, enabled only by the ISP's interrupt enables. */
+	ret = devm_request_irq(s->dev, s->irq, seninf_irq, 0, dev_name(s->dev), s);
+	if (ret)
+		return dev_err_probe(s->dev, ret, "IRQ\n");
+
+	ret = dma_set_mask_and_coherent(s->dev, DMA_BIT_MASK(32));
+	if (ret)
+		return ret;
 
 	ret = devm_pm_runtime_enable(s->dev);
 	if (ret)
@@ -259,9 +1018,13 @@ static void mt6589_seninf_remove(struct platform_device *pdev)
 	media_device_unregister(&s->mdev);
 	v4l2_async_nf_unregister(&s->notifier);
 	v4l2_async_nf_cleanup(&s->notifier);
+	vb2_video_unregister_device(&s->vdev);
 	v4l2_device_unregister(&s->v4l2_dev);
 	media_device_cleanup(&s->mdev);
 }
+
+static DEFINE_RUNTIME_DEV_PM_OPS(seninf_pm_ops, seninf_runtime_suspend,
+				 seninf_runtime_resume, NULL);
 
 static const struct of_device_id mt6589_seninf_of_match[] = {
 	{ .compatible = "mediatek,mt6589-seninf" },
@@ -275,9 +1038,10 @@ static struct platform_driver mt6589_seninf_driver = {
 	.driver = {
 		.name = "mt6589-seninf",
 		.of_match_table = mt6589_seninf_of_match,
+		.pm = pm_ptr(&seninf_pm_ops),
 	},
 };
 module_platform_driver(mt6589_seninf_driver);
 
-MODULE_DESCRIPTION("MediaTek MT6589 SENINF: sensor MCLK and media device");
+MODULE_DESCRIPTION("MediaTek MT6589 camera receive path (SENINF, MIPI-RX, raw IMGO)");
 MODULE_LICENSE("GPL");

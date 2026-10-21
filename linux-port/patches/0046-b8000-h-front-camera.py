@@ -48,10 +48,11 @@ config VIDEO_MT6589_SENINF
 	select MEDIA_CONTROLLER
 	select V4L2_FWNODE
 	select VIDEO_V4L2_SUBDEV_API
+	select VIDEOBUF2_DMA_CONTIG
 	help
-	  The sensor interface of the MediaTek MT6589 camera block: the
-	  sensor master clock (MCLK) and the media device a camera sensor
-	  registers against.
+	  The camera receive path of the MediaTek MT6589: the sensor master
+	  clock (MCLK), the CSI-2 receiver (SENINF, MIPI-RX) and raw frames
+	  through the ISP pass 1 to memory (IMGO), as a V4L2 video device.
 ''', 'VIDEO_MT6589_SENINF')
 
 edit('drivers/media/platform/mediatek/Makefile', 'obj-y += mdp3/\n',
@@ -83,19 +84,56 @@ DTS = '''
 			pinmux = <MT6589_GPIO210__FUNC_CMMCLK>;
 		};
 	};
+
+	/*
+	 * The CSI1 lanes share pads with the parallel camera data pins
+	 * CMDAT0..9: GPIO mode with the input buffers off, as the stock
+	 * initTg2CSI2 leaves them (IES 0x1C0 bits 5..15, 0x1D0 bit 0).
+	 */
+	camera_csi1_pins: camera-csi1-default {
+		pins-csi1 {
+			pinmux = <MT6589_GPIO197__FUNC_GPIO197>,
+				 <MT6589_GPIO198__FUNC_GPIO198>,
+				 <MT6589_GPIO199__FUNC_GPIO199>,
+				 <MT6589_GPIO200__FUNC_GPIO200>,
+				 <MT6589_GPIO201__FUNC_GPIO201>,
+				 <MT6589_GPIO202__FUNC_GPIO202>,
+				 <MT6589_GPIO203__FUNC_GPIO203>,
+				 <MT6589_GPIO204__FUNC_GPIO204>,
+				 <MT6589_GPIO205__FUNC_GPIO205>,
+				 <MT6589_GPIO206__FUNC_GPIO206>,
+				 <MT6589_GPIO207__FUNC_GPIO207>,
+				 <MT6589_GPIO208__FUNC_GPIO208>;
+			input-disable;
+		};
+	};
 };
 
 &{/soc} {
+	/*
+	 * SENINF with the parts of the camera block the receive path uses:
+	 * ISP pass 1 (TG2, IMGO), MIPI-RX analog (CSI0/CSI1, after the DSI PHY
+	 * at 0x10012000) and MIPI-RX calibration. The ISP interrupt is GIC SPI
+	 * 151, level low, as in the stock camera_isp.c.
+	 */
 	seninf: camera-interface@15008000 {
 		compatible = "mediatek,mt6589-seninf";
-		reg = <0x15008000 0x1000>;
+		reg = <0x15008000 0x1000>,
+		      <0x15004000 0x1000>,
+		      <0x10012800 0x30>,
+		      <0x1500c000 0x100>;
+		reg-names = "seninf", "isp", "mipi-rx", "mipi-rx-cal";
+		interrupts = <GIC_SPI 151 IRQ_TYPE_LEVEL_LOW>;
 		clocks = <&imgsys CLK_IMAGE_CAM_CAM>,
 			 <&imgsys CLK_IMAGE_SEN_TG>,
-			 <&imgsys CLK_IMAGE_SEN_CAM>;
-		clock-names = "cam", "tg", "sen";
+			 <&imgsys CLK_IMAGE_SEN_CAM>,
+			 <&imgsys CLK_IMAGE_CAM_SMI>,
+			 <&imgsys CLK_IMAGE_LARB4_SMI>,
+			 <&imgsys CLK_IMAGE_COMMON_SMI>;
+		clock-names = "cam", "tg", "sen", "cam-smi", "larb", "smi";
 		power-domains = <&spm MT6589_POWER_DOMAIN_ISP>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&camera_mclk_pins>;
+		pinctrl-0 = <&camera_mclk_pins>, <&camera_csi1_pins>;
 		#clock-cells = <0>;
 
 		port {
