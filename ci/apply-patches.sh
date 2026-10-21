@@ -175,6 +175,10 @@ cp "$REPO/linux-port/drivers/mt6589-bls-backlight/mt6589-bls-bl.c" \
 # 0033 adds the sound driver as it was then; the tree's copy is the source.
 cp "$REPO/linux-port/drivers/mt6589-audio/mt6589_audio.c" \
 	sound/arm/mt6589-b8000.c
+# 0046 adds Kconfig entries for the front camera; the sources are here.
+cp "$REPO/linux-port/drivers/ov9760/ov9760.c" drivers/media/i2c/ov9760.c
+cp "$REPO/linux-port/drivers/mt6589-seninf/mt6589-seninf.c" \
+	drivers/media/platform/mediatek/mt6589-seninf.c
 rm -f .config
 make ARCH=arm LLVM=1 lenovo-blade_defconfig
 # 0033 selects the MT6628 modules, but Kconfig hides them unless serdev
