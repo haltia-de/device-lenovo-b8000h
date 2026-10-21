@@ -47,7 +47,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Настройки | свои, «Настройки» Haltia: сеть, звук, экран, дата и время, касания, обновления, «О системе» |
 | Обновления | «Настройки → Обновления» или `doas haltia-update upgrade`: снимок перед обновлением, откат при сбое, описание изменений каждой программы |
 | Поворот экрана | работает, по акселерометру (iio-sensor-proxy); выключается в Настройки → Экран |
-| Программы: Firefox, Сообщения (MAX), Видео, Музыка, Файлы с галереей, Блокнот, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором, иконки — в едином стиле Haltia. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine из [репозитория Haltia](https://haltia-de.github.io/packages/) (там же — deb для Ubuntu 24.04 и Debian 13 и Flatpak: шесть программ работают и на обычном компьютере, [план](docs/plan-desktop-packages.md)); «Сообщения» — собственный клиент MAX со счётчиком непрочитанных и отметкой проигрывания на кнопке |
+| Программы: Firefox, Сообщения (MAX), Видео, Музыка, Файлы с галереей, Блокнот, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором, иконки — в едином стиле Haltia. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine из [репозитория Haltia](https://haltia-de.github.io/packages/) (там же — deb для Ubuntu 24.04 и Debian 13 и Flatpak: шесть программ работают и на обычном компьютере, [план](https://github.com/haltia-de/haltia/blob/main/docs/plans/desktop-packages.md)); «Сообщения» — собственный клиент MAX со счётчиком непрочитанных и отметкой проигрывания на кнопке |
 | Видео | 480p H.264 — 30 к/с (программный декодер), 720p — нет |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | работает, до 10 касаний: щипок и прокрутка двумя пальцами (GTK, Раскраска). Фильтр касаний оболочки отсекает ладонь и случайные касания и даёт вибро-отклик; мультитач в нём отключается. В Firefox щипок пока не масштабирует страницу |
@@ -113,9 +113,9 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 - Корневая система — `linux-port/build-rootfs.sh` (Alpine 3.24 armv7) и выпускной
   `linux-port/rootfs/make-release-rootfs.sh` (`ci/image.sh`).
 - Среда Haltia — оболочка, программы, библиотека `haltia-kit` и настройки Firefox `haltia-firefox` —
-  отдельные репозитории организации [haltia-de](https://github.com/haltia-de) ([ADR 0001](docs/adr/0001-three-layers.md),
-  [ADR 0004](docs/adr/0004-de-apart-from-device.md)); образ ставит их подписанные пакеты
-  по `linux-port/apps/packages.lock` ([ADR 0002](docs/adr/0002-versions-and-releases.md)).
+  отдельные репозитории организации [haltia-de](https://github.com/haltia-de) ([ADR 0001](https://github.com/haltia-de/haltia/blob/main/docs/adr/0001-three-layers.md),
+  [ADR 0004](https://github.com/haltia-de/haltia/blob/main/docs/adr/0004-de-apart-from-device.md)); образ ставит их подписанные пакеты
+  по `linux-port/apps/packages.lock` ([ADR 0002](https://github.com/haltia-de/haltia/blob/main/docs/adr/0002-versions-and-releases.md)).
   Выпуск программы по тегу собирает apk, deb для noble, resolute и trixie и Flatpak
   (`haltia-de/ci` v1); `haltia-de/packages` публикует репозитории apk, apt и
   Flatpak, подписанные ключами организации.
