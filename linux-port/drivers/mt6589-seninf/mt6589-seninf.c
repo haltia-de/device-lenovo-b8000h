@@ -1120,9 +1120,9 @@ static void mt6589_seninf_remove(struct platform_device *pdev)
  * registers and the ISP its setup, so the stream is stopped before and
  * started again after, from the buffer that was being filled. The queue and
  * its buffers stay; the program only sees a gap in the frames. This runs in
- * prepare and complete, while every device is awake: the sensor is spoken
- * to over I2C, whose controller sleeps before this device's suspend and
- * wakes after its resume.
+ * prepare and complete, while every device is still awake: in suspend and
+ * resume the sensor's own system sleep callbacks may already have powered
+ * it down (its I2C writes failed with -110 there).
  */
 static int seninf_prepare(struct device *dev)
 {
@@ -1144,11 +1144,20 @@ static void seninf_complete(struct device *dev)
 
 	mutex_lock(&s->lock);
 	if (s->resume_streaming) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&s->irqlock, flags);
+		s->errors = 0;
+		s->irq_status = s->dma_status = 0;
+		spin_unlock_irqrestore(&s->irqlock, flags);
 		ret = seninf_hw_start(s);
-		if (ret)
+		if (ret) {
+			/* The program gets an error, not a queue that never fills. */
 			dev_err(dev, "stream not restarted after sleep: %d\n", ret);
-		else
+			vb2_queue_error(&s->queue);
+		} else {
 			s->resume_streaming = false;
+		}
 	}
 	mutex_unlock(&s->lock);
 }
