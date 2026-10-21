@@ -409,6 +409,8 @@ if [ "$UI_PROFILE" = shell ]; then
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/profile-sets/b8k.conf"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-speaker.conf" \
 		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths/b8k-speaker.conf"
+	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-mic.conf" \
+		"$ROOT/usr/share/pulseaudio/alsa-mixer/paths/b8k-mic.conf"
 	install -d -m 755 "$ROOT/etc/pulse/daemon.conf.d"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/b8k-daemon.conf" \
 		"$ROOT/etc/pulse/daemon.conf.d/b8k.conf"

@@ -172,6 +172,9 @@ done
 # 0022's header copies this file; the script itself only edits Kconfig.
 cp "$REPO/linux-port/drivers/mt6589-bls-backlight/mt6589-bls-bl.c" \
 	drivers/video/backlight/mt6589-bls-bl.c
+# 0033 adds the sound driver as it was then; the tree's copy is the source.
+cp "$REPO/linux-port/drivers/mt6589-audio/mt6589_audio.c" \
+	sound/arm/mt6589-b8000.c
 rm -f .config
 make ARCH=arm LLVM=1 lenovo-blade_defconfig
 # 0033 selects the MT6628 modules, but Kconfig hides them unless serdev
