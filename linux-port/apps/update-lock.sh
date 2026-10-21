@@ -7,7 +7,8 @@
 # taken from the release's SHA256SUMS. A repository whose release carries
 # no apk keeps its old lines (or none: the image builds it from sources).
 # Needs gh (signed in) or curl for the GitHub API, and sha256 sums in the
-# release. The -pyc subpackages are left out: they only save the first start.
+# release. The -pyc subpackages are left out (they only save the first
+# start), and so are -dev and -dbg.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 lock=$here/packages.lock
@@ -34,7 +35,8 @@ for a in json.load(sys.stdin).get("assets", []):
     n = a["name"]
     # armv7 and noarch only: the files of other architectures carry
     # theirs in the name (name.aarch64.apk).
-    if n.endswith(".apk") and "-pyc-" not in n and not n.endswith((".aarch64.apk", ".x86_64.apk")):
+    if (n.endswith(".apk") and not any(s in n for s in ("-pyc-", "-dev-", "-dbg-"))
+            and not n.endswith((".aarch64.apk", ".x86_64.apk"))):
         print(n, a["browser_download_url"])')
 	[ -n "$files" ] || { echo "$name: no apk in $repo $tag, lines kept" >&2; return 0; }
 	sums=$(curl -fsSL "https://github.com/$repo/releases/download/$tag/SHA256SUMS")

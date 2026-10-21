@@ -3,7 +3,10 @@
 calendar haltia-de/calendar 2.0.3 haltia-calendar-2.0.3-r0.apk 9552936addc9d57dee8786a4c98d8f95b087b8a155b17b3e9f4ef74d387cde8f
 files haltia-de/files 2.1.0 haltia-files-2.1.0-r0.apk 0847242d5d29d6a60b69d472c5e66dbbea6ddd9ff4830b314cc72b1778e79d7a
 firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
+gst-webrtc haltia-de/gst-webrtc 1.28.3 haltia-gst-webrtc-1.28.3-r0.apk 5ff0c5f1eaa7349fa53c6003baa877cd990244b5d778b8a233bce1b6ff20c368
 kit haltia-de/kit 2.2.0 py3-haltia-kit-2.2.0-r0.apk 15231da056f38fc8e22d0a36dabbb9f95c08ddf3d70aec6a3a2c0b934f61a421
+libnice haltia-de/libnice 0.1.24 libnice-0.1.24-r0.apk 6d64b0ce447d38ed6b9a12ab53641a350bd57f37dee8b8cf9afe04b66292f462
+libnice haltia-de/libnice 0.1.24 libnice-gstreamer-0.1.24-r0.apk 7fef2b0b4f9d13be2a211b4882873cb375f9cb4343f622d188049629bcf92295
 messenger haltia-de/messenger 2.6.1 haltia-messenger-2.6.1-r0.apk 8d5cced4cfbcd5862dc131d76b4412ee7860a65cbcfbfe9e7fac090240842022
 music haltia-de/music 3.0.1 haltia-music-3.0.1-r0.apk 02a18417f1322f85725e5fd8ba2aa8232b8647fb54ae0b598697f5a17972d7b6
 news haltia-de/news 2.2.1 haltia-news-2.2.1-r0.apk 0b2afbba1131bda019b5556e9ee4153aa34f55379b897e2b07677c7117e2ed23
