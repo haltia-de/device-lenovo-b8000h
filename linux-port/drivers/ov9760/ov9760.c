@@ -175,6 +175,7 @@ struct ov9760 {
 
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *vblank;
+	struct v4l2_ctrl *hblank;
 	struct v4l2_ctrl *exposure;
 
 	const struct ov9760_mode *mode;
@@ -249,11 +250,12 @@ static int ov9760_init_controls(struct ov9760 *ov)
 			  OV9760_PIXEL_RATE, OV9760_PIXEL_RATE, 1,
 			  OV9760_PIXEL_RATE);
 
-	ctrl = v4l2_ctrl_new_std(hdl, &ov9760_ctrl_ops, V4L2_CID_HBLANK,
-				 OV9760_HTS - mode->width, OV9760_HTS - mode->width,
-				 1, OV9760_HTS - mode->width);
-	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+	ov->hblank = v4l2_ctrl_new_std(hdl, &ov9760_ctrl_ops, V4L2_CID_HBLANK,
+				       OV9760_HTS - mode->width,
+				       OV9760_HTS - mode->width, 1,
+				       OV9760_HTS - mode->width);
+	if (ov->hblank)
+		ov->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
 	ov->vblank = v4l2_ctrl_new_std(hdl, &ov9760_ctrl_ops, V4L2_CID_VBLANK,
 				       mode->vts_def - mode->height,
@@ -364,6 +366,8 @@ static int ov9760_set_fmt(struct v4l2_subdev *sd,
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY)
 		return 0;
+	if (v4l2_subdev_is_streaming(sd))
+		return -EBUSY;
 
 	ov->mode = mode;
 	ret = __v4l2_ctrl_modify_range(ov->vblank, mode->vts_def - mode->height,
@@ -374,7 +378,8 @@ static int ov9760_set_fmt(struct v4l2_subdev *sd,
 	ret = __v4l2_ctrl_s_ctrl(ov->vblank, mode->vts_def - mode->height);
 	if (ret)
 		return ret;
-	return __v4l2_ctrl_modify_range(v4l2_ctrl_find(&ov->ctrls, V4L2_CID_HBLANK),
+	/* ctrls.lock is the state lock and is held here: no v4l2_ctrl_find(). */
+	return __v4l2_ctrl_modify_range(ov->hblank,
 					OV9760_HTS - mode->width,
 					OV9760_HTS - mode->width, 1,
 					OV9760_HTS - mode->width);
@@ -459,7 +464,8 @@ static int ov9760_power_on(struct device *dev)
 		clk_disable_unprepare(ov->mclk);
 		return ret;
 	}
-	usleep_range(4000, 5000);
+	/* Stock: 1 ms + 3 ms + delays between the steps, about 7-8 ms. */
+	usleep_range(7000, 8000);
 	gpiod_set_value_cansleep(ov->reset, 0);
 	usleep_range(1000, 2000);
 	gpiod_set_value_cansleep(ov->powerdown, 0);

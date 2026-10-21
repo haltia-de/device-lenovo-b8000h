@@ -126,18 +126,9 @@ static void seninf_mclk_unprepare(struct clk_hw *hw)
 	pm_runtime_put(s->dev);
 }
 
-static int seninf_mclk_is_prepared(struct clk_hw *hw)
-{
-	struct mt6589_seninf *s = to_seninf(hw);
-
-	return pm_runtime_active(s->dev) &&
-	       !!(readl(s->base + TG1_PH_CNT) & PH_ADCLK_EN);
-}
-
 static const struct clk_ops seninf_mclk_ops = {
 	.prepare = seninf_mclk_prepare,
 	.unprepare = seninf_mclk_unprepare,
-	.is_prepared = seninf_mclk_is_prepared,
 	.recalc_rate = seninf_mclk_recalc_rate,
 	.determine_rate = seninf_mclk_determine_rate,
 	.set_rate = seninf_mclk_set_rate,
@@ -157,6 +148,8 @@ static int seninf_register_mclk(struct mt6589_seninf *s)
 	init.ops = &seninf_mclk_ops;
 	init.parent_names = &parent;
 	init.num_parents = 1;
+	/* The divider is written at prepare: change it only while gated. */
+	init.flags = CLK_SET_RATE_GATE;
 	s->mclk.init = &init;
 	s->div = 2;	/* 24 MHz until a consumer asks */
 
