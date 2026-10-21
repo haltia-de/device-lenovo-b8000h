@@ -7,7 +7,9 @@
  * OV9760MIPI_Set720P), which the Lenovo B8000-H stock kernel also carries:
  * 24 MHz MCLK, 60 MHz pixel clock, 600 Mbit/s on the lane, HTS 1736,
  * VTS 1148 (30 frames/s).  The 1280x720 window is a centred crop of that
- * array; 640x480 reads it with every other pixel and line skipped.
+ * array; 640x480 reads it with every other pixel pair and line pair
+ * skipped and binned.  No test pattern: the MTK driver has none and neither
+ * the SMIA register 0x0601 nor the OmniVision 0x5e00/0x5040/0x503d give one.
  */
 
 #include <linux/clk.h>
@@ -36,7 +38,6 @@
 #define OV9760_REG_SOFTWARE_RESET	CCI_REG8(0x0103)
 #define OV9760_REG_VTS			CCI_REG16(0x0340)
 #define OV9760_REG_HTS			CCI_REG16(0x0342)
-#define OV9760_REG_TEST_PATTERN		CCI_REG16(0x0600)	/* SMIA */
 #define OV9760_REG_EXPOSURE		CCI_REG24(0x3500)	/* lines << 4 */
 #define OV9760_REG_GAIN			CCI_REG16(0x350a)	/* 16 = 1x */
 
@@ -116,7 +117,9 @@ static const struct cci_reg_sequence ov9760_720p_regs[] = {
 	{ CCI_REG16(0x034e), 720 },	/* y_output_size */
 	{ CCI_REG8(0x3811), 0x04 },	/* x_offset */
 	{ CCI_REG8(0x3813), 0x04 },	/* y_offset */
+	{ CCI_REG8(0x0381), 0x01 },	/* x_even_inc */
 	{ CCI_REG8(0x0383), 0x01 },	/* x_odd_inc */
+	{ CCI_REG8(0x0385), 0x01 },	/* y_even_inc */
 	{ CCI_REG8(0x0387), 0x01 },	/* y_odd_inc */
 	{ CCI_REG8(0x3820), 0x00 },
 	{ CCI_REG8(0x3821), 0x00 },
@@ -131,10 +134,17 @@ static const struct cci_reg_sequence ov9760_vga_regs[] = {
 	{ CCI_REG16(0x034e), 480 },
 	{ CCI_REG8(0x3811), 0x02 },
 	{ CCI_REG8(0x3813), 0x02 },
-	{ CCI_REG8(0x0383), 0x03 },	/* every other column */
-	{ CCI_REG8(0x0387), 0x03 },	/* every other line */
-	{ CCI_REG8(0x3820), 0x00 },
-	{ CCI_REG8(0x3821), 0x00 },
+	{ CCI_REG8(0x0381), 0x01 },	/* x_even_inc */
+	{ CCI_REG8(0x0383), 0x03 },	/* x_odd_inc: every other pair */
+	{ CCI_REG8(0x0385), 0x01 },	/* y_even_inc */
+	{ CCI_REG8(0x0387), 0x03 },	/* y_odd_inc */
+	/*
+	 * Binning on (bit 0 of each, as on other OmniVision sensors): without
+	 * it the skipped readout comes out green and striped; checked on the
+	 * B8000-H.
+	 */
+	{ CCI_REG8(0x3820), 0x01 },
+	{ CCI_REG8(0x3821), 0x01 },
 };
 
 struct ov9760_mode {
@@ -153,14 +163,6 @@ static const struct ov9760_mode ov9760_modes[] = {
 		.width = 640, .height = 480, .vts_def = OV9760_VTS_DEF,
 		.regs = ov9760_vga_regs, .num_regs = ARRAY_SIZE(ov9760_vga_regs),
 	},
-};
-
-static const char * const ov9760_test_pattern_menu[] = {
-	"Disabled",
-	"Solid Colour",
-	"Colour Bars",
-	"Fade To Grey Colour Bars",
-	"PN9",
 };
 
 struct ov9760 {
@@ -214,9 +216,6 @@ static int ov9760_set_ctrl(struct v4l2_ctrl *ctrl)
 		cci_write(ov->regmap, OV9760_REG_VTS,
 			  ov->mode->height + ctrl->val, &ret);
 		break;
-	case V4L2_CID_TEST_PATTERN:
-		cci_write(ov->regmap, OV9760_REG_TEST_PATTERN, ctrl->val, &ret);
-		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -269,10 +268,6 @@ static int ov9760_init_controls(struct ov9760 *ov)
 
 	v4l2_ctrl_new_std(hdl, &ov9760_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
 			  OV9760_GAIN_MIN, OV9760_GAIN_MAX, 1, OV9760_GAIN_DEF);
-
-	v4l2_ctrl_new_std_menu_items(hdl, &ov9760_ctrl_ops, V4L2_CID_TEST_PATTERN,
-				     ARRAY_SIZE(ov9760_test_pattern_menu) - 1,
-				     0, 0, ov9760_test_pattern_menu);
 
 	ret = v4l2_fwnode_device_parse(ov->dev, &props);
 	if (ret)
