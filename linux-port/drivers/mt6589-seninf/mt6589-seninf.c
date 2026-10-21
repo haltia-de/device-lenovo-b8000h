@@ -202,6 +202,7 @@ struct mt6589_seninf {
 	struct seninf_buffer *active;	/* IMGO writes it this frame */
 	unsigned int sequence;
 	bool streaming;
+	bool resume_streaming;	/* stopped by system sleep, started on wake */
 	u32 irq_status, dma_status;	/* seen while streaming, for dev_dbg */
 	unsigned int frames, dropped, errors;
 };
@@ -625,6 +626,60 @@ static int seninf_check_sensor_format(struct mt6589_seninf *s)
 	return 0;
 }
 
+/*
+ * The receive path, the ISP and the sensor's stream, from the active buffer
+ * on: the part of a start (and of a wake from system sleep) after the clocks
+ * are on and a buffer is taken.
+ */
+static int seninf_hw_start(struct mt6589_seninf *s)
+{
+	unsigned long flags;
+	int ret;
+
+	rmw(s->base + SENINF_TOP, 0, SENINF_TOP_PCLK_EN);
+	ret = seninf_isp_reset(s);
+	if (ret)
+		dev_warn(s->dev, "ISP reset did not finish\n");
+	seninf_rx_on(s);
+	seninf_tg2_config(s, s->fmt.width, s->fmt.height);
+	seninf_pass1_config(s, seninf_buf_addr(s->active));
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->streaming = true;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+	enable_irq(s->irq);
+
+	ret = v4l2_subdev_enable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
+	if (ret) {
+		spin_lock_irqsave(&s->irqlock, flags);
+		s->streaming = false;
+		spin_unlock_irqrestore(&s->irqlock, flags);
+		seninf_pass1_stop(s);
+		disable_irq(s->irq);
+		seninf_rx_off(s);
+		return ret;
+	}
+
+	rmw(s->isp + CAM_TG2_VF_CON, 0, VF_VFDATA_EN);
+	return 0;
+}
+
+static void seninf_hw_stop(struct mt6589_seninf *s)
+{
+	unsigned long flags;
+
+	rmw(s->isp + CAM_TG2_VF_CON, VF_VFDATA_EN, 0);
+	v4l2_subdev_disable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
+
+	spin_lock_irqsave(&s->irqlock, flags);
+	s->streaming = false;
+	spin_unlock_irqrestore(&s->irqlock, flags);
+
+	seninf_pass1_stop(s);
+	disable_irq(s->irq);
+	seninf_rx_off(s);
+}
+
 static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct mt6589_seninf *s = vb2_get_drv_priv(q);
@@ -654,33 +709,11 @@ static int seninf_start_streaming(struct vb2_queue *q, unsigned int count)
 		goto err_pm;
 	}
 
-	rmw(s->base + SENINF_TOP, 0, SENINF_TOP_PCLK_EN);
-	ret = seninf_isp_reset(s);
+	ret = seninf_hw_start(s);
 	if (ret)
-		dev_warn(s->dev, "ISP reset did not finish\n");
-	seninf_rx_on(s);
-	seninf_tg2_config(s, s->fmt.width, s->fmt.height);
-	seninf_pass1_config(s, seninf_buf_addr(s->active));
-
-	spin_lock_irqsave(&s->irqlock, flags);
-	s->streaming = true;
-	spin_unlock_irqrestore(&s->irqlock, flags);
-	enable_irq(s->irq);
-
-	ret = v4l2_subdev_enable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
-	if (ret)
-		goto err_hw;
-
-	rmw(s->isp + CAM_TG2_VF_CON, 0, VF_VFDATA_EN);
+		goto err_pm;
 	return 0;
 
-err_hw:
-	spin_lock_irqsave(&s->irqlock, flags);
-	s->streaming = false;
-	spin_unlock_irqrestore(&s->irqlock, flags);
-	seninf_pass1_stop(s);
-	disable_irq(s->irq);
-	seninf_rx_off(s);
 err_pm:
 	pm_runtime_put(s->dev);
 err_pipeline:
@@ -693,20 +726,13 @@ err_return:
 static void seninf_stop_streaming(struct vb2_queue *q)
 {
 	struct mt6589_seninf *s = vb2_get_drv_priv(q);
-	unsigned long flags;
 	u32 size;
 
 	size = readl(s->base + SENINF2_DEBUG_4);
-	rmw(s->isp + CAM_TG2_VF_CON, VF_VFDATA_EN, 0);
-	v4l2_subdev_disable_streams(s->sensor, s->sensor_pad, BIT_ULL(0));
-
-	spin_lock_irqsave(&s->irqlock, flags);
-	s->streaming = false;
-	spin_unlock_irqrestore(&s->irqlock, flags);
-
-	seninf_pass1_stop(s);
-	disable_irq(s->irq);
-	seninf_rx_off(s);
+	/* Stopped by system sleep: the hardware is off already. */
+	if (!s->resume_streaming)
+		seninf_hw_stop(s);
+	s->resume_streaming = false;
 	pm_runtime_put(s->dev);
 	video_device_pipeline_stop(&s->vdev);
 
@@ -1089,8 +1115,59 @@ static void mt6589_seninf_remove(struct platform_device *pdev)
 	mutex_destroy(&s->lock);
 }
 
-static DEFINE_RUNTIME_DEV_PM_OPS(seninf_pm_ops, seninf_runtime_suspend,
-				 seninf_runtime_resume, NULL);
+/*
+ * System sleep (s2idle) with a stream running: the sensor loses its
+ * registers and the ISP its setup, so the stream is stopped before and
+ * started again after, from the buffer that was being filled. The queue and
+ * its buffers stay; the program only sees a gap in the frames. This runs in
+ * prepare and complete, while every device is still awake: in suspend and
+ * resume the sensor's own system sleep callbacks may already have powered
+ * it down (its I2C writes failed with -110 there).
+ */
+static int seninf_prepare(struct device *dev)
+{
+	struct mt6589_seninf *s = dev_get_drvdata(dev);
+
+	mutex_lock(&s->lock);
+	if (vb2_is_streaming(&s->queue) && s->streaming) {
+		seninf_hw_stop(s);
+		s->resume_streaming = true;
+	}
+	mutex_unlock(&s->lock);
+	return 0;
+}
+
+static void seninf_complete(struct device *dev)
+{
+	struct mt6589_seninf *s = dev_get_drvdata(dev);
+	int ret;
+
+	mutex_lock(&s->lock);
+	if (s->resume_streaming) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&s->irqlock, flags);
+		s->errors = 0;
+		s->irq_status = s->dma_status = 0;
+		spin_unlock_irqrestore(&s->irqlock, flags);
+		ret = seninf_hw_start(s);
+		if (ret) {
+			/* The program gets an error, not a queue that never fills. */
+			dev_err(dev, "stream not restarted after sleep: %d\n", ret);
+			vb2_queue_error(&s->queue);
+		} else {
+			s->resume_streaming = false;
+		}
+	}
+	mutex_unlock(&s->lock);
+}
+
+static const struct dev_pm_ops seninf_pm_ops = {
+	.prepare = seninf_prepare,
+	.complete = seninf_complete,
+	SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+	RUNTIME_PM_OPS(seninf_runtime_suspend, seninf_runtime_resume, NULL)
+};
 
 static const struct of_device_id mt6589_seninf_of_match[] = {
 	{ .compatible = "mediatek,mt6589-seninf" },
