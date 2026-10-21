@@ -1,0 +1,7 @@
+# libcamera on the B8000-H: the software ISP on the CPU. libcamera's GPU path
+# needs OpenGL ES 3 through EGL, which the SGX544 cannot give the programs.
+---
+version: 1
+configuration:
+  software_isp:
+    mode: cpu

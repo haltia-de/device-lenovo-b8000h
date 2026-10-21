@@ -767,6 +767,29 @@ static int seninf_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 	return 0;
 }
 
+static int seninf_enum_framesizes(struct file *file, void *fh,
+				  struct v4l2_frmsizeenum *fsize)
+{
+	unsigned int i;
+
+	if (fsize->index)
+		return -EINVAL;
+	for (i = 0; i < ARRAY_SIZE(seninf_formats); i++)
+		if (seninf_formats[i].fourcc == fsize->pixel_format)
+			break;
+	if (i == ARRAY_SIZE(seninf_formats))
+		return -EINVAL;
+	/* The limits of seninf_fill_fmt(). */
+	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+	fsize->stepwise.min_width = 64;
+	fsize->stepwise.max_width = 1472;
+	fsize->stepwise.step_width = 4;
+	fsize->stepwise.min_height = 48;
+	fsize->stepwise.max_height = 1104;
+	fsize->stepwise.step_height = 2;
+	return 0;
+}
+
 static int seninf_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 {
 	struct mt6589_seninf *s = video_drvdata(file);
@@ -815,6 +838,7 @@ static int seninf_s_input(struct file *file, void *fh, unsigned int i)
 static const struct v4l2_ioctl_ops seninf_ioctl_ops = {
 	.vidioc_querycap = seninf_querycap,
 	.vidioc_enum_fmt_vid_cap = seninf_enum_fmt,
+	.vidioc_enum_framesizes = seninf_enum_framesizes,
 	.vidioc_g_fmt_vid_cap = seninf_g_fmt,
 	.vidioc_try_fmt_vid_cap = seninf_try_fmt,
 	.vidioc_s_fmt_vid_cap = seninf_s_fmt,

@@ -422,6 +422,10 @@ if [ "$UI_PROFILE" = shell ]; then
 		"$ROOT/etc/pulse/default.pa.d/b8k-call.pa"
 	install -m 644 "$REPO/linux-port/rootfs/pulse/91-b8k-pulse.rules" \
 		"$ROOT/etc/udev/rules.d/91-b8k-pulse.rules"
+	install -m 644 "$REPO/linux-port/rootfs/91-b8k-dma-heap.rules" \
+		"$ROOT/etc/udev/rules.d/91-b8k-dma-heap.rules"
+	install -D -m 644 "$REPO/linux-port/rootfs/libcamera-configuration.yaml" \
+		"$ROOT/etc/libcamera/configuration.yaml"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-usb" "$ROOT/usr/local/sbin/b8k-usb"
 	# The DPI bypass for YouTube, off until "b8k-zapret on" (kernel 25 has
