@@ -1,0 +1,21 @@
+# B8000-H calls: the speaker and the microphone sit close together, so the
+# other side hears itself. This pair runs PulseAudio's WebRTC echo canceller
+# in front of them, tuned on the tablet with real calls (21 Oct 2026):
+#   mobile=1             the stronger mobile-mode canceller;
+#   analog_gain_control=0  no AGC: with it the canceller pulled the
+#                        microphone down to 33% and the echo still came back;
+#   noise_suppression=1, high_pass_filter=1.
+# Streams with media.role=phone (the Messenger's calls) go here through
+# module-intended-roles; everything else uses the speaker and microphone
+# directly, so music and voice messages pay nothing.
+#
+# The pair shares the speaker's volume. Calls were clearest with the speaker
+# at about 70% (at the top the small speaker distorts, and the canceller
+# cannot remove distorted echo), but the volume is left to the person: with
+# use_volume_sharing=false, any volume change on b8k-call-speaker (a
+# set-sink-volume here at start, or pactl later) crashed PulseAudio 17 on the
+# tablet, and a shared set-sink-volume here would reset the speaker at every
+# start.
+.nofail
+load-module module-echo-cancel aec_method=webrtc aec_args="mobile=1 noise_suppression=1 high_pass_filter=1 analog_gain_control=0" source_master=alsa_input.platform-b8000-mt6589-audio.b8k-mic sink_master=alsa_output.platform-b8000-mt6589-audio.b8k-speaker source_name=b8k-call-mic sink_name=b8k-call-speaker source_properties=device.intended_roles=phone sink_properties=device.intended_roles=phone
+.fail
