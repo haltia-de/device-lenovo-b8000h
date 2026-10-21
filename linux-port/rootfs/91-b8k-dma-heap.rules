@@ -1,0 +1,3 @@
+# DMA-BUF heaps (kernel 27): libcamera's software ISP, run by the person's
+# programs, allocates its frames from /dev/dma_heap/system.
+SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"

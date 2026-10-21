@@ -147,9 +147,17 @@ static const struct cci_reg_sequence ov9760_vga_regs[] = {
 	{ CCI_REG8(0x3821), 0x01 },
 };
 
+/*
+ * The array as the MTK driver reads it in full: 1472x1104 output. The modes
+ * crop it centred; 640x480 bins a 1280x960 window.
+ */
+#define OV9760_ARRAY_WIDTH		1472
+#define OV9760_ARRAY_HEIGHT		1104
+
 struct ov9760_mode {
 	u32 width;
 	u32 height;
+	struct v4l2_rect crop;
 	u32 vts_def;
 	const struct cci_reg_sequence *regs;
 	unsigned int num_regs;
@@ -158,9 +166,11 @@ struct ov9760_mode {
 static const struct ov9760_mode ov9760_modes[] = {
 	{
 		.width = 1280, .height = 720, .vts_def = OV9760_VTS_DEF,
+		.crop = { 96, 192, 1280, 720 },
 		.regs = ov9760_720p_regs, .num_regs = ARRAY_SIZE(ov9760_720p_regs),
 	}, {
 		.width = 640, .height = 480, .vts_def = OV9760_VTS_DEF,
+		.crop = { 96, 72, 1280, 960 },
 		.regs = ov9760_vga_regs, .num_regs = ARRAY_SIZE(ov9760_vga_regs),
 	},
 };
@@ -402,6 +412,36 @@ static int ov9760_enum_frame_size(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int ov9760_get_selection(struct v4l2_subdev *sd,
+				struct v4l2_subdev_state *state,
+				struct v4l2_subdev_selection *sel)
+{
+	const struct v4l2_mbus_framefmt *fmt;
+	unsigned int i;
+
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP:
+		fmt = v4l2_subdev_state_get_format(state, 0);
+		for (i = 0; i < ARRAY_SIZE(ov9760_modes); i++)
+			if (ov9760_modes[i].width == fmt->width &&
+			    ov9760_modes[i].height == fmt->height)
+				break;
+		if (i == ARRAY_SIZE(ov9760_modes))
+			return -EINVAL;
+		sel->r = ov9760_modes[i].crop;
+		return 0;
+	case V4L2_SEL_TGT_NATIVE_SIZE:
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+		sel->r.left = 0;
+		sel->r.top = 0;
+		sel->r.width = OV9760_ARRAY_WIDTH;
+		sel->r.height = OV9760_ARRAY_HEIGHT;
+		return 0;
+	}
+	return -EINVAL;
+}
+
 static int ov9760_init_state(struct v4l2_subdev *sd,
 			     struct v4l2_subdev_state *state)
 {
@@ -418,6 +458,7 @@ static const struct v4l2_subdev_pad_ops ov9760_pad_ops = {
 	.set_fmt = ov9760_set_fmt,
 	.enum_mbus_code = ov9760_enum_mbus_code,
 	.enum_frame_size = ov9760_enum_frame_size,
+	.get_selection = ov9760_get_selection,
 	.enable_streams = ov9760_enable_streams,
 	.disable_streams = ov9760_disable_streams,
 };
