@@ -398,6 +398,7 @@ if [ "$UI_PROFILE" = shell ]; then
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
 		case $locked in *" $name "*) continue ;; esac
+		case $private in apk|apk=*) private=apk ;; esac
 		[ "$private" != apk ] || { lapse "$name is only released as apk, not in packages.lock: left out"; continue; }
 		fetch_app "$name" "$url" "$tag" "$commit" "$private"
 	done
