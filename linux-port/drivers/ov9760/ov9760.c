@@ -128,9 +128,43 @@ static const struct cci_reg_sequence ov9760_720p_regs[] = {
 };
 
 /*
- * The array as the MTK driver reads it in full: 1472x1104 output. The mode
- * crops it centred.
+ * The whole array as the MTK driver reads it (1472x1104, 4:3), and the same
+ * at full width in 16:9 (1472x828): wider fields of view than 720p, which
+ * stays the default. All read the window plus 24 columns and 20 lines.
  */
+static const struct cci_reg_sequence ov9760_full_regs[] = {
+	{ CCI_REG16(0x0344), 8 },
+	{ CCI_REG16(0x0346), 2 },
+	{ CCI_REG16(0x0348), 1503 },
+	{ CCI_REG16(0x034a), 1125 },
+	{ CCI_REG16(0x034c), 1472 },
+	{ CCI_REG16(0x034e), 1104 },
+	{ CCI_REG8(0x3811), 0x04 },
+	{ CCI_REG8(0x3813), 0x04 },
+	{ CCI_REG8(0x0381), 0x01 },
+	{ CCI_REG8(0x0383), 0x01 },
+	{ CCI_REG8(0x0385), 0x01 },
+	{ CCI_REG8(0x0387), 0x01 },
+	{ CCI_REG8(0x3820), 0x00 },
+	{ CCI_REG8(0x3821), 0x00 },
+};
+
+static const struct cci_reg_sequence ov9760_wide_regs[] = {
+	{ CCI_REG16(0x0344), 8 },
+	{ CCI_REG16(0x0346), 140 },
+	{ CCI_REG16(0x0348), 1503 },
+	{ CCI_REG16(0x034a), 987 },
+	{ CCI_REG16(0x034c), 1472 },
+	{ CCI_REG16(0x034e), 828 },
+	{ CCI_REG8(0x3811), 0x04 },
+	{ CCI_REG8(0x3813), 0x04 },
+	{ CCI_REG8(0x0381), 0x01 },
+	{ CCI_REG8(0x0383), 0x01 },
+	{ CCI_REG8(0x0385), 0x01 },
+	{ CCI_REG8(0x0387), 0x01 },
+	{ CCI_REG8(0x3820), 0x00 },
+	{ CCI_REG8(0x3821), 0x00 },
+};
 #define OV9760_ARRAY_WIDTH		1472
 #define OV9760_ARRAY_HEIGHT		1104
 
@@ -148,6 +182,14 @@ static const struct ov9760_mode ov9760_modes[] = {
 		.width = 1280, .height = 720, .vts_def = OV9760_VTS_DEF,
 		.crop = { 96, 192, 1280, 720 },
 		.regs = ov9760_720p_regs, .num_regs = ARRAY_SIZE(ov9760_720p_regs),
+	}, {
+		.width = 1472, .height = 828, .vts_def = OV9760_VTS_DEF,
+		.crop = { 0, 138, 1472, 828 },
+		.regs = ov9760_wide_regs, .num_regs = ARRAY_SIZE(ov9760_wide_regs),
+	}, {
+		.width = 1472, .height = 1104, .vts_def = OV9760_VTS_DEF,
+		.crop = { 0, 0, 1472, 1104 },
+		.regs = ov9760_full_regs, .num_regs = ARRAY_SIZE(ov9760_full_regs),
 	},
 };
 
