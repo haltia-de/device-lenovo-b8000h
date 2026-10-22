@@ -13,7 +13,7 @@ libcamera haltia-de/libcamera 0.7.1_p1 libcamera-ipa-0.7.1_p1-r0.apk dedfbe3a8b0
 libcamera haltia-de/libcamera 0.7.1_p1 libcamera-tools-0.7.1_p1-r0.apk 752e7bccf142855a779a0cf02841cef3bd85682fbd8218d365c64f1dfc0b7316
 libnice haltia-de/libnice 0.1.24 libnice-0.1.24-r0.apk 6d64b0ce447d38ed6b9a12ab53641a350bd57f37dee8b8cf9afe04b66292f462
 libnice haltia-de/libnice 0.1.24 libnice-gstreamer-0.1.24-r0.apk 7fef2b0b4f9d13be2a211b4882873cb375f9cb4343f622d188049629bcf92295
-mail haltia-de/mail 0.1.0 haltia-mail-0.1.0-r0.apk 990e987459904276449f21f65e1c997eeeee9c2ab6f2d001b572c7c68b26e8d0
+mail haltia-de/mail 0.1.1 haltia-mail-0.1.1-r0.apk 2f10f84ab14805451d0490a974b39f2a33d2b4ddc9582a630f572f323f127629
 messenger haltia-de/messenger 2.9.4 haltia-messenger-2.9.4-r0.apk 085cc396c657c4c0234281dc9d8e8ff3d3d83d77b1921291eed9b2c6d8e19e9e
 music haltia-de/music 3.0.2 haltia-music-3.0.2-r0.apk f78bdccec8b5124b1041077e71280baa219c8668bf3d1fc573e0e70f2f67c055
 news haltia-de/news 2.2.3 haltia-news-2.2.3-r0.apk 8745afb80552848d9a7bf7bac466b6d7c452cf9944242d1c0ff5199e49c9ba83
