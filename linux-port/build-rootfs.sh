@@ -429,6 +429,12 @@ if [ "$UI_PROFILE" = shell ]; then
 		"$ROOT/etc/udev/rules.d/91-b8k-dma-heap.rules"
 	install -D -m 644 "$REPO/linux-port/rootfs/libcamera-configuration.yaml" \
 		"$ROOT/etc/libcamera/configuration.yaml"
+	# PDF opens in «Документы» (haltia-documents), not in Firefox, which also
+	# claims it. GIO reads the desktop-specific list first
+	# (XDG_CURRENT_DESKTOP=Haltia:GNOME).
+	install -d -m 755 "$ROOT/etc/xdg"
+	printf '[Default Applications]\napplication/pdf=io.github.haltia_de.Documents.desktop\n' \
+		>"$ROOT/etc/xdg/haltia-mimeapps.list"
 	install -d -m 755 "$ROOT/usr/local/sbin"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-usb" "$ROOT/usr/local/sbin/b8k-usb"
 	# The DPI bypass for YouTube, off until "b8k-zapret on" (kernel 25 has
