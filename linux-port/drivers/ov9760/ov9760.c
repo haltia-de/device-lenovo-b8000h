@@ -7,8 +7,10 @@
  * OV9760MIPI_Set720P), which the Lenovo B8000-H stock kernel also carries:
  * 24 MHz MCLK, 60 MHz pixel clock, 600 Mbit/s on the lane, HTS 1736,
  * VTS 1148 (30 frames/s).  The 1280x720 window is a centred crop of that
- * array; 640x480 reads it with every other pixel pair and line pair
- * skipped and binned.  No test pattern: the MTK driver has none and neither
+ * array, the only mode: libcamera's software ISP scales it for smaller
+ * sizes. A 640x480 subsampled mode was tried and dropped: the vertical
+ * skip repeated one Bayer row, the horizontal one blanked every other row,
+ * and binning mixed the two, so colours came out wrong (bluish in calls).  No test pattern: the MTK driver has none and neither
  * the SMIA register 0x0601 nor the OmniVision 0x5e00/0x5040/0x503d give one.
  */
 
@@ -125,31 +127,9 @@ static const struct cci_reg_sequence ov9760_720p_regs[] = {
 	{ CCI_REG8(0x3821), 0x00 },
 };
 
-static const struct cci_reg_sequence ov9760_vga_regs[] = {
-	{ CCI_REG16(0x0344), 104 },
-	{ CCI_REG16(0x0346), 74 },
-	{ CCI_REG16(0x0348), 1407 },
-	{ CCI_REG16(0x034a), 1053 },
-	{ CCI_REG16(0x034c), 640 },
-	{ CCI_REG16(0x034e), 480 },
-	{ CCI_REG8(0x3811), 0x02 },
-	{ CCI_REG8(0x3813), 0x02 },
-	{ CCI_REG8(0x0381), 0x01 },	/* x_even_inc */
-	{ CCI_REG8(0x0383), 0x03 },	/* x_odd_inc: every other pair */
-	{ CCI_REG8(0x0385), 0x01 },	/* y_even_inc */
-	{ CCI_REG8(0x0387), 0x03 },	/* y_odd_inc */
-	/*
-	 * Binning on (bit 0 of each, as on other OmniVision sensors): without
-	 * it the skipped readout comes out green and striped; checked on the
-	 * B8000-H.
-	 */
-	{ CCI_REG8(0x3820), 0x01 },
-	{ CCI_REG8(0x3821), 0x01 },
-};
-
 /*
- * The array as the MTK driver reads it in full: 1472x1104 output. The modes
- * crop it centred; 640x480 bins a 1280x960 window.
+ * The array as the MTK driver reads it in full: 1472x1104 output. The mode
+ * crops it centred.
  */
 #define OV9760_ARRAY_WIDTH		1472
 #define OV9760_ARRAY_HEIGHT		1104
@@ -168,10 +148,6 @@ static const struct ov9760_mode ov9760_modes[] = {
 		.width = 1280, .height = 720, .vts_def = OV9760_VTS_DEF,
 		.crop = { 96, 192, 1280, 720 },
 		.regs = ov9760_720p_regs, .num_regs = ARRAY_SIZE(ov9760_720p_regs),
-	}, {
-		.width = 640, .height = 480, .vts_def = OV9760_VTS_DEF,
-		.crop = { 96, 72, 1280, 960 },
-		.regs = ov9760_vga_regs, .num_regs = ARRAY_SIZE(ov9760_vga_regs),
 	},
 };
 
