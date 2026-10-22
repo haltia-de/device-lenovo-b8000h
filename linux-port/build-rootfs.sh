@@ -8,12 +8,23 @@ set -eu
 REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 ROOT=/opt/b8000h/rootfs
 
+# B8K_RELEASE=1 (the image workflow on a vX.Y.Z tag): a part that would be
+# left out with a warning in a local build fails the build instead, so a
+# release never ships without a program the image is meant to have.
+lapse() {
+	if [ -n "${B8K_RELEASE:-}" ]; then
+		echo "build-rootfs: $* (release build)" >&2
+		exit 1
+	fi
+	echo "WARNING: $*" >&2
+}
+
 # fetch_app NAME URL TAG COMMIT [private]: a program from its own
 # repository (see linux-port/apps/sources) installed into the image. The
 # clone is kept in /opt/b8000h/out/apps and must be at COMMIT;
 # B8K_APPS_SRC/NAME, when present, is used instead (a checkout being
 # worked on). A private repository that cannot be cloned (no access) is
-# left out with a warning.
+# left out with a warning (a failure in a release build, see lapse).
 fetch_app() {
 	if [ -n "${B8K_APPS_SRC:-}" ] && [ -d "$B8K_APPS_SRC/$1" ]; then
 		dir=$B8K_APPS_SRC/$1
@@ -30,7 +41,7 @@ fetch_app() {
 			done
 			if [ ! -d "$dir/.git" ]; then
 				if [ "${5:-}" = private ]; then
-					echo "WARNING: $1 left out: no access to $2" >&2
+					lapse "$1 left out: no access to $2"
 					return 0
 				fi
 				echo "$1: cannot clone $2 (tag $3)" >&2
@@ -47,7 +58,7 @@ fetch_app() {
 	# vplay/build.sh: b8k-vplay, which needs the keyboard's sysroot).
 	for b in "$dir/build.sh" "$dir/vplay/build.sh"; do
 		[ -f "$b" ] || continue
-		sh "$b" || echo "build-rootfs: $name: ${b#$dir/} failed, parts left out" >&2
+		sh "$b" || lapse "$1: ${b#$dir/} failed, parts left out"
 	done
 	B8K_CACHE=/opt/b8000h/out sh "$dir/install.sh" "$ROOT"
 }
@@ -364,6 +375,9 @@ if [ "$UI_PROFILE" = shell ]; then
 	haltia_repo=${HALTIA_REPO:-https://haltia-de.github.io/packages/alpine/v3.24}
 	locked=
 	if [ -z "${B8K_FROM_SOURCE:-}" ] && [ -f "$lock" ]; then
+		# The lock and sources move together: a lock left behind after a
+		# tag bump would ship the older package with a green build.
+		sh "$REPO/linux-port/apps/check-lock.sh"
 		cache=/opt/b8000h/out/apks
 		mkdir -p "$cache"
 		files=
@@ -400,7 +414,7 @@ if [ "$UI_PROFILE" = shell ]; then
 	grep -v '^#' "$REPO/linux-port/apps/sources" | while read -r name url tag commit private; do
 		[ -n "$name" ] || continue
 		case $locked in *" $name "*) continue ;; esac
-		[ "$private" != apk ] || { echo "warning: $name is only released as apk, not in packages.lock: left out" >&2; continue; }
+		[ "$private" != apk ] || { lapse "$name is only released as apk, not in packages.lock: left out"; continue; }
 		fetch_app "$name" "$url" "$tag" "$commit" "$private"
 	done
 	# Speaker: hardware gain fixed at the clean top step, software volume.

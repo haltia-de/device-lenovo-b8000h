@@ -70,7 +70,7 @@ jobs:
       - name: Root file system and images
         run: |
           req=; [ "$GITHUB_REF_TYPE" = tag ] && req=1
-          docker run --rm --privileged -e B8K_REQUIRE_ISLAND=$req -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
+          docker run --rm --privileged -e B8K_REQUIRE_ISLAND=$req -e B8K_RELEASE=$req -v "$PWD:/src" -v "$RUNNER_TEMP/b8000h:/opt/b8000h" \
             b8k-build sh /src/ci/image.sh
           mkdir -p images
           sudo mv "$RUNNER_TEMP"/b8000h/dist/b8000h-sd-installer.img.xz "$RUNNER_TEMP"/b8000h/dist/b8000h-root.ext4.xz images/
