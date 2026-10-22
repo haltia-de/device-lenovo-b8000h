@@ -4,7 +4,11 @@ calendar haltia-de/calendar 2.0.4 haltia-calendar-2.0.4-r0.apk 010b94d537c127950
 files haltia-de/files 2.1.0 haltia-files-2.1.0-r0.apk 0847242d5d29d6a60b69d472c5e66dbbea6ddd9ff4830b314cc72b1778e79d7a
 firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
 gst-webrtc haltia-de/gst-webrtc 1.28.3 haltia-gst-webrtc-1.28.3-r0.apk 5ff0c5f1eaa7349fa53c6003baa877cd990244b5d778b8a233bce1b6ff20c368
-kit haltia-de/kit 2.2.0 py3-haltia-kit-2.2.0-r0.apk 15231da056f38fc8e22d0a36dabbb9f95c08ddf3d70aec6a3a2c0b934f61a421
+kit haltia-de/kit 2.3.0 py3-haltia-kit-2.3.0-r0.apk 3a1503ba6f807336cbbe8b63ef500ffb1090327e24530a92b02cf7f737a5dfb4
+libcamera haltia-de/libcamera 0.7.1_p1 libcamera-0.7.1_p1-r0.apk 8b0db8bb26ce25bd6603501f66d97c667571ebfb5981bccea38fb270705e614a
+libcamera haltia-de/libcamera 0.7.1_p1 libcamera-gstreamer-0.7.1_p1-r0.apk cf93c432fe82fe283fce9219cdbb0e85ecf4a2142bfd150369f6d736597e9748
+libcamera haltia-de/libcamera 0.7.1_p1 libcamera-ipa-0.7.1_p1-r0.apk dedfbe3a8b05d12d2d3edfcb90afd23fd318a495c4d418de3a49f763cf8e2308
+libcamera haltia-de/libcamera 0.7.1_p1 libcamera-tools-0.7.1_p1-r0.apk 752e7bccf142855a779a0cf02841cef3bd85682fbd8218d365c64f1dfc0b7316
 libnice haltia-de/libnice 0.1.24 libnice-0.1.24-r0.apk 6d64b0ce447d38ed6b9a12ab53641a350bd57f37dee8b8cf9afe04b66292f462
 libnice haltia-de/libnice 0.1.24 libnice-gstreamer-0.1.24-r0.apk 7fef2b0b4f9d13be2a211b4882873cb375f9cb4343f622d188049629bcf92295
 messenger haltia-de/messenger 2.7.0 haltia-messenger-2.7.0-r0.apk 667f5a91a380fe685ad331056c8c1d06d4814a84e823e580df4003616995ca46
