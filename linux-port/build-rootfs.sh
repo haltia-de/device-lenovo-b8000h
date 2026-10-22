@@ -119,7 +119,9 @@ sed -i 's|^root:[^:]*:|root::|' "$ROOT/etc/shadow"
 cat > "$ROOT/etc/fstab" <<'EOF'
 /dev/root	/	ext4	rw,noatime	0 1
 EOF
-for s in devfs dmesg udev udev-trigger udev-settle; do
+# sysfs mounts pstore (the kernel log of the last panic, ramoops: read and
+# cleared by haltia-report) when the initramfs's mount did not come along.
+for s in devfs dmesg sysfs udev udev-trigger udev-settle; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/sysinit/$s"
 done
 for s in hwclock modules sysctl hostname bootmisc syslog; do
