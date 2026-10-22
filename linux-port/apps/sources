@@ -16,17 +16,17 @@ shell      https://github.com/haltia-de/shell.git     v2.10.0 8035e970d023b06740
 kit        https://github.com/haltia-de/kit.git    v2.3.0 5483cedf33749131b59eaf6fedbe20a0adbdc8e1
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
 paint      https://github.com/haltia-de/paint.git     v4.7.4 c403ae04a2ad2cc3f06be2b7f5fc9345d9a75fed
-weather    https://github.com/haltia-de/weather.git   v2.1.3 edc28c170ddf74db770f94df45c6b587026e93eb
-news       https://github.com/haltia-de/news.git      v2.2.2 444ed5860973e850e279e3be26f7de387b9a784d
+weather    https://github.com/haltia-de/weather.git   v2.1.4 0f3f0832d332acd0de2121911fe8eca70abc33fc
+news       https://github.com/haltia-de/news.git      v2.2.3 4162e1c1571ef641548c41539edc7ce49189cc25
 # Voice calls of the Messenger: libnice >= 0.1.23 under Alpine's names and
 # GStreamer's webrtcbin for Alpine's gst-plugins-bad (device issue #23).
 libnice    https://github.com/haltia-de/libnice.git   v0.1.24 1dc9757697f4e8ed9d52238404a5f85fa59df0f9 apk
 gst-webrtc https://github.com/haltia-de/gst-webrtc.git v1.28.3 02c7442fe74f167f6943501a7e95de6f6144b502 apk
 # The front camera: libcamera with the MT6589 SENINF and OV9760 patches.
 libcamera  https://github.com/haltia-de/libcamera.git v0.7.1_p1 6a26d3e897187250544c6929228991c8d8f882d1 apk=libcamera,libcamera-ipa,libcamera-gstreamer,libcamera-tools
-messenger        https://github.com/haltia-de/messenger.git       v2.7.0 10ab54298402db14577cbe5923570ba7c91c3cd7
-video      https://github.com/haltia-de/video.git     v2.4.2 7fdea401a2c7fdb4b5cdc82bce5bce65f778dcb8
-music      https://github.com/haltia-de/music.git     v3.0.1 39fe7ce92ba22e2060e7b8e6d8c2649d1cc6b8d9
-calendar   https://github.com/haltia-de/calendar.git  v2.0.4 3d7668bf2199943db48d04c37e189a03d3c4f033
+messenger        https://github.com/haltia-de/messenger.git       v2.8.0 7b950289619e118e34003962d98830a3b7c72af7
+video      https://github.com/haltia-de/video.git     v2.4.3 61a67bf5981b00b974347a3fa8b197f5851bd379
+music      https://github.com/haltia-de/music.git     v3.0.2 465f5c877728b868db11b4076372f5e528d6f5b7
+calendar   https://github.com/haltia-de/calendar.git  v2.0.5 31f44bf2cd9dd8498301f3f44130e3bf1a3f71a2
 files      https://github.com/haltia-de/files.git     v2.1.0 5f6619cd170d96a7a97b07a5e4cddd70c4d8db4a
-text       https://github.com/haltia-de/text.git      v2.0.3 674f0ef83b49a6a9ca57ef2cd6b302228456c645
+text       https://github.com/haltia-de/text.git      v2.0.4 e01821c179e9121ea5be83142e315790855109dc
