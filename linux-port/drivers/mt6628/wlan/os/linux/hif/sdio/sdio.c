@@ -1161,7 +1161,19 @@ kalDevPortRead (
     {
         int xfer = bNum > 0 ? prSdioFunc->cur_blksize * bNum : count;
 
-        if (b8k_dma_unsafe(pucBuf)) {
+        /*
+         * The read is rounded up to whole SDIO blocks, so it can run past
+         * the caller's buffer: up to a block minus one byte past an RX
+         * packet buffer (CFG_RX_MAX_PKT_SIZE) or the end of the coalescing
+         * buffer under heavy RX (video calls). That overwrote the next
+         * page, a kernel stack among others: "stack-protector: Kernel stack
+         * is corrupted in: mmc_release_host" in tx_thread (device#39).
+         * Such reads go through a bounce buffer too.
+         */
+        if (b8k_dma_unsafe(pucBuf) || xfer > u2ValidOutBufSize) {
+            if (xfer > u2ValidOutBufSize)
+                pr_info_once("wlan_mt6628: SDIO read of %d bytes into a %u-byte buffer, bounced\n",
+                             xfer, u2ValidOutBufSize);
             pucDst = kmalloc(xfer, in_interrupt ? GFP_ATOMIC : GFP_KERNEL);
             if (!pucDst) {
                 if (!in_interrupt)
@@ -1188,7 +1200,7 @@ kalDevPortRead (
     }
 
     if (pucDst != pucBuf) {
-        memcpy(pucBuf, pucDst, u2Len);
+        memcpy(pucBuf, pucDst, min(u2Len, u2ValidOutBufSize));
         kfree(pucDst);
         pucDst = pucBuf;
     }
