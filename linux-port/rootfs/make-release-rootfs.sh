@@ -78,6 +78,13 @@ if [ -x "$R/sbin/wpa_supplicant" ] &&
 fi
 cat > "$R/etc/local.d/00-b8k-modules.start" <<'EOF'
 #!/bin/sh
+# At boot (OpenRC's local service) this runs in the background: local.d
+# runs its scripts in turn before desktop.start, and the session must
+# never wait for Wi-Fi. b8k-netwatch and b8k-suspend call it directly.
+if [ "${RC_SVCNAME:-}" = local ] && [ -z "${B8K_MODULES_BG:-}" ]; then
+	B8K_MODULES_BG=1 setsid sh "$0" </dev/null >/dev/null 2>&1 &
+	exit 0
+fi
 i=0
 while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
 	i=$((i + 1))
@@ -85,15 +92,21 @@ while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
 done
 # One reload at a time: b8k-netwatch and b8k-suspend run this script too,
 # and two at once left modprobe hanging.
+# Bounded: a hung modprobe must not hold the next one forever. (BusyBox
+# flock has no -w; the lock stays with this shell's descriptor.)
 exec 8>/run/b8k-wlan.lock
-flock 8
-rmmod wlan_mt6628 2>/dev/null || true
-rmmod wmt 2>/dev/null || true
-modprobe wmt
+if ! timeout 120 flock 8; then
+	logger -t b8k-modules "Wi-Fi reload skipped: another one holds the lock"
+	exit 1
+fi
+timeout 30 rmmod wlan_mt6628 2>/dev/null || true
+timeout 30 rmmod wmt 2>/dev/null || true
+timeout 60 modprobe wmt || logger -t b8k-modules "modprobe wmt failed or timed out"
 # A fixed MAC from the machine id. Without the Android NVRAM file the
 # driver makes one up on every load, and DHCP gave a new address each boot.
 mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
-modprobe wlan_mt6628 ${mac:+mac=$mac}
+timeout 60 modprobe wlan_mt6628 ${mac:+mac=$mac} ||
+	logger -t b8k-modules "modprobe wlan_mt6628 failed or timed out"
 EOF
 chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 

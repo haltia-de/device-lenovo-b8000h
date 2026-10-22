@@ -8,9 +8,18 @@ set -u
 exec 9>/run/b8k-suspend.lock
 flock -n 9 || exit 0
 
+# The Wi-Fi drivers go under the same lock as 00-b8k-modules.start: a
+# reload by b8k-netwatch running at the same time hung modprobe. If the
+# lock stays held (a reload hangs), no sleep this time.
+exec 8>/run/b8k-wlan.lock
+if ! timeout 30 flock 8; then
+	logger -t b8k-suspend "Wi-Fi busy, not sleeping"
+	exit 0
+fi
 logger -t b8k-suspend "sleep"
-rmmod wlan_mt6628 2>/dev/null
-rmmod wmt 2>/dev/null
+timeout 30 rmmod wlan_mt6628 2>/dev/null
+timeout 30 rmmod wmt 2>/dev/null
+exec 8>&-	# the reload after the wake takes the lock itself
 sync
 echo freeze > /sys/power/state
 logger -t b8k-suspend "awake ($?)"
