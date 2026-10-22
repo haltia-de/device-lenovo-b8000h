@@ -156,6 +156,7 @@ DTS = '''
 		reset-gpios = <&pio 32 GPIO_ACTIVE_LOW>;
 		powerdown-gpios = <&pio 31 GPIO_ACTIVE_LOW>;
 		orientation = <0>;	/* front */
+		rotation = <0>;		/* mounted along the landscape panel */
 
 		port {
 			ov9760_out: endpoint {
