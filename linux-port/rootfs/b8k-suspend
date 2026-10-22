@@ -26,4 +26,4 @@ logger -t b8k-suspend "awake ($?)"
 # The panel shows the Wi-Fi gone at once; NetworkManager's dispatcher
 # signals it again when the network is back.
 /usr/bin/haltia-panel-signal 10 &
-sh /etc/local.d/00-b8k-modules.start >/dev/null 2>&1 &
+/usr/local/sbin/b8k-wlan-reload >/dev/null 2>&1 &

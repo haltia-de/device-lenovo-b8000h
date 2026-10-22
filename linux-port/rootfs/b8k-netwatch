@@ -28,7 +28,7 @@ state() {
 
 reload() {
 	logger -t b8k-netwatch "$1, reloading wlan_mt6628"
-	sh /etc/local.d/00-b8k-modules.start
+	/usr/local/sbin/b8k-wlan-reload
 	misses=0
 	gone=0
 	reloaded=1

@@ -151,40 +151,11 @@ options wlan_mt6628 debug=3
 EOF
 cat > "$ROOT/etc/local.d/00-b8k-modules.start" <<'EOF'
 #!/bin/sh
-# At boot (OpenRC's local service) this runs in the background: local.d
-# runs its scripts in turn before desktop.start, and the session must
-# never wait for Wi-Fi. b8k-netwatch and b8k-suspend call it directly.
-if [ "${RC_SVCNAME:-}" = local ] && [ -z "${B8K_MODULES_BG:-}" ]; then
-	B8K_MODULES_BG=1 setsid sh "$0" </dev/null >/dev/null 2>&1 &
-	exit 0
-fi
 release=$(uname -r)
 if grep -q '/b8k-battery\.ko$' "/lib/modules/$release/modules.builtin" 2>/dev/null; then
-	# Audio and battery are built in. WMT probes before the stock
-	# /system firmware is mounted, so the first load misses WMT.cfg.
-	# Wait, then reload. BusyBox rmmod takes one module name.
-	i=0
-	while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
-		i=$((i + 1))
-		sleep 1
-	done
-	# One reload at a time: b8k-netwatch and b8k-suspend run this script
-	# too, and two at once left modprobe hanging.
-	# Bounded: a hung modprobe must not hold the next one forever. (BusyBox
-# flock has no -w; the lock stays with this shell's descriptor.)
-	exec 8>/run/b8k-wlan.lock
-	if ! timeout 120 flock 8; then
-		logger -t b8k-modules "Wi-Fi reload skipped: another one holds the lock"
-		exit 1
-	fi
-	timeout 30 rmmod wlan_mt6628 2>/dev/null || true
-	timeout 30 rmmod wmt 2>/dev/null || true
-	timeout 60 modprobe wmt || logger -t b8k-modules "modprobe wmt failed or timed out"
-	# A fixed MAC from the machine id. Without the Android NVRAM file the
-	# driver makes one up on every load, and DHCP gave a new address each boot.
-	mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
-	timeout 60 modprobe wlan_mt6628 ${mac:+mac=$mac} ||
-		logger -t b8k-modules "modprobe wlan_mt6628 failed or timed out"
+	# Audio and battery are built in; Wi-Fi loads in the background, so
+	# the session never waits for it (b8k-wlan-reload).
+	setsid /usr/local/sbin/b8k-wlan-reload </dev/null >/dev/null 2>&1 &
 else
 	# Kernel #19 compatibility: its matching out-of-tree modules live here.
 	insmod /root/b8k-battery.ko 2>/dev/null
@@ -490,6 +461,7 @@ EOF
 	install -m 644 "$REPO/linux-port/rootfs/earlyoom.conf" "$ROOT/etc/conf.d/earlyoom"
 	ln -sfn /etc/init.d/earlyoom "$ROOT/etc/runlevels/default/earlyoom"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-netwatch" "$ROOT/usr/local/sbin/b8k-netwatch"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-wlan-reload" "$ROOT/usr/local/sbin/b8k-wlan-reload"
 	cat > "$ROOT/etc/local.d/b8k-netwatch.start" <<'EOF'
 #!/bin/sh
 start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \
