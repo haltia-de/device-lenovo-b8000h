@@ -6,12 +6,13 @@
  * kernel tree (mediatek/custom/common/kernel/imgsensor/ov9760_mipi_raw,
  * OV9760MIPI_Set720P), which the Lenovo B8000-H stock kernel also carries:
  * 24 MHz MCLK, 60 MHz pixel clock, 600 Mbit/s on the lane, HTS 1736,
- * VTS 1148 (30 frames/s).  The 1280x720 window is a centred crop of that
- * array, the only mode: libcamera's software ISP scales it for smaller
- * sizes. A 640x480 subsampled mode was tried and dropped: the vertical
- * skip repeated one Bayer row, the horizontal one blanked every other row,
- * and binning mixed the two, so colours came out wrong (bluish in calls).  No test pattern: the MTK driver has none and neither
- * the SMIA register 0x0601 nor the OmniVision 0x5e00/0x5040/0x503d give one.
+ * VTS 1148 (30 frames/s).  The one mode reads the whole array, 1472x1104
+ * (4:3, like the calls, and as tall as the sensor goes, so a face fits);
+ * libcamera's software ISP scales it for smaller sizes. A 640x480 subsampled mode was tried and dropped: the
+ * vertical skip repeated one Bayer row, the horizontal one blanked every
+ * other row, and binning mixed the two, so colours came out wrong (bluish
+ * in calls). No test pattern: the MTK driver has none and neither the SMIA
+ * register 0x0601 nor the OmniVision 0x5e00/0x5040/0x503d give one.
  */
 
 #include <linux/clk.h>
@@ -110,13 +111,13 @@ static const struct cci_reg_sequence ov9760_init_regs[] = {
  * and offsets 4, 4: the read window is the output plus 24 columns and 20
  * lines. The modes keep that margin around a centred crop.
  */
-static const struct cci_reg_sequence ov9760_720p_regs[] = {
-	{ CCI_REG16(0x0344), 104 },	/* x_addr_start */
-	{ CCI_REG16(0x0346), 194 },	/* y_addr_start */
-	{ CCI_REG16(0x0348), 1407 },	/* x_addr_end */
-	{ CCI_REG16(0x034a), 933 },	/* y_addr_end */
-	{ CCI_REG16(0x034c), 1280 },	/* x_output_size */
-	{ CCI_REG16(0x034e), 720 },	/* y_output_size */
+static const struct cci_reg_sequence ov9760_full_regs[] = {
+	{ CCI_REG16(0x0344), 8 },	/* x_addr_start */
+	{ CCI_REG16(0x0346), 2 },	/* y_addr_start */
+	{ CCI_REG16(0x0348), 1503 },	/* x_addr_end */
+	{ CCI_REG16(0x034a), 1125 },	/* y_addr_end */
+	{ CCI_REG16(0x034c), 1472 },	/* x_output_size */
+	{ CCI_REG16(0x034e), 1104 },	/* y_output_size */
 	{ CCI_REG8(0x3811), 0x04 },	/* x_offset */
 	{ CCI_REG8(0x3813), 0x04 },	/* y_offset */
 	{ CCI_REG8(0x0381), 0x01 },	/* x_even_inc */
@@ -127,10 +128,6 @@ static const struct cci_reg_sequence ov9760_720p_regs[] = {
 	{ CCI_REG8(0x3821), 0x00 },
 };
 
-/*
- * The array as the MTK driver reads it in full: 1472x1104 output. The mode
- * crops it centred.
- */
 #define OV9760_ARRAY_WIDTH		1472
 #define OV9760_ARRAY_HEIGHT		1104
 
@@ -145,9 +142,9 @@ struct ov9760_mode {
 
 static const struct ov9760_mode ov9760_modes[] = {
 	{
-		.width = 1280, .height = 720, .vts_def = OV9760_VTS_DEF,
-		.crop = { 96, 192, 1280, 720 },
-		.regs = ov9760_720p_regs, .num_regs = ARRAY_SIZE(ov9760_720p_regs),
+		.width = 1472, .height = 1104, .vts_def = OV9760_VTS_DEF,
+		.crop = { 0, 0, 1472, 1104 },
+		.regs = ov9760_full_regs, .num_regs = ARRAY_SIZE(ov9760_full_regs),
 	},
 };
 
