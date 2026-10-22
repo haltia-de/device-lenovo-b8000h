@@ -1,7 +1,9 @@
 # Packages the image installs, from GitHub releases (ADR 0002).
 # Written by update-lock.sh; name repository version file sha256.
 calendar haltia-de/calendar 2.0.5 haltia-calendar-2.0.5-r0.apk 87fe9d3256a90d6f1e40e2e26497751ee1601a8c1218a60c875ca1075201f7fe
-files haltia-de/files 2.1.0 haltia-files-2.1.0-r0.apk 0847242d5d29d6a60b69d472c5e66dbbea6ddd9ff4830b314cc72b1778e79d7a
+camera haltia-de/camera 0.1.0 haltia-camera-0.1.0-r0.apk 44dee32adcfc106f612ae2627389f20b55ca5f08947a8c73415799ee9cf3d122
+files haltia-de/files 2.2.0 haltia-documents-2.2.0-r0.apk e6a1877ec08bdfa9cd7cee8cda9a5acfd3a3faafef96a6a6982c8e17e70c235e
+files haltia-de/files 2.2.0 haltia-files-2.2.0-r0.apk 457de619e8d4c2601fb268a0c7a0cfb08bcce6fddf93e67529c18d8ed718d5a9
 firefox haltia-de/firefox 2.0.0 haltia-firefox-2.0.0-r0.apk 72d33d659a5d35e097403c23370d285614ecbf93c2ee4f3707ac22e2031ebaf9
 gst-webrtc haltia-de/gst-webrtc 1.28.3 haltia-gst-webrtc-1.28.3-r0.apk 5ff0c5f1eaa7349fa53c6003baa877cd990244b5d778b8a233bce1b6ff20c368
 kit haltia-de/kit 2.3.0 py3-haltia-kit-2.3.0-r0.apk 3a1503ba6f807336cbbe8b63ef500ffb1090327e24530a92b02cf7f737a5dfb4
@@ -11,11 +13,11 @@ libcamera haltia-de/libcamera 0.7.1_p1 libcamera-ipa-0.7.1_p1-r0.apk dedfbe3a8b0
 libcamera haltia-de/libcamera 0.7.1_p1 libcamera-tools-0.7.1_p1-r0.apk 752e7bccf142855a779a0cf02841cef3bd85682fbd8218d365c64f1dfc0b7316
 libnice haltia-de/libnice 0.1.24 libnice-0.1.24-r0.apk 6d64b0ce447d38ed6b9a12ab53641a350bd57f37dee8b8cf9afe04b66292f462
 libnice haltia-de/libnice 0.1.24 libnice-gstreamer-0.1.24-r0.apk 7fef2b0b4f9d13be2a211b4882873cb375f9cb4343f622d188049629bcf92295
-messenger haltia-de/messenger 2.8.0 haltia-messenger-2.8.0-r0.apk b3e4175295503606ba538e5952b2d1cf391af91308e011587d9c0613701264bf
+messenger haltia-de/messenger 2.9.1 haltia-messenger-2.9.1-r0.apk a76e4404974d2b4349b3cd4a1cc07a1c7d4a0241dec585a1ad2e9b1d3d530b83
 music haltia-de/music 3.0.2 haltia-music-3.0.2-r0.apk f78bdccec8b5124b1041077e71280baa219c8668bf3d1fc573e0e70f2f67c055
 news haltia-de/news 2.2.3 haltia-news-2.2.3-r0.apk 8745afb80552848d9a7bf7bac466b6d7c452cf9944242d1c0ff5199e49c9ba83
-paint haltia-de/paint 4.7.4 haltia-paint-4.7.4-r0.apk 5a43d02dfc30f0b2281fbce207a2573e2f0c2abbfc4034a443f1673f7350bb39
-shell haltia-de/shell 2.10.0 haltia-shell-2.10.0-r0.apk bac9c9f0ccdb27d708192ddbf89b1ac00e40c4627e5e28bebed318e4a5a2730f
+paint haltia-de/paint 4.8.0 haltia-paint-4.8.0-r0.apk 4cd4f1f6c3600c1c519f59d75867dad15dca287533b9f3cdfccb89363542b15c
+shell haltia-de/shell 2.12.0 haltia-shell-2.12.0-r0.apk ba1e80e037421142313f701e886dfd26b35840f7b149a7685bf1bf188357cb79
 text haltia-de/text 2.0.4 haltia-text-2.0.4-r0.apk ad66162f0ae90b4aafb29fa076cd291d99d6384a61ab48c2a03e53c5f89ccf7c
 video haltia-de/video 2.4.3 haltia-video-2.4.3-r0.apk 1300dcadcac8d62b2f1bfabd68e311e61688bc2303088d606088b47dc724a5ed
 weather haltia-de/weather 2.1.4 haltia-weather-2.1.4-r0.apk f80dea05d9e988a23ab8cb5f8c4701ec00b3ef306b542464e5580ff448e6e1a7
