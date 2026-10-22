@@ -25,6 +25,8 @@ gst-webrtc https://github.com/haltia-de/gst-webrtc.git v1.28.3 02c7442fe74f167f6
 # The front camera: libcamera with the MT6589 SENINF and OV9760 patches.
 libcamera  https://github.com/haltia-de/libcamera.git v0.7.1_p1 6a26d3e897187250544c6929228991c8d8f882d1 apk=libcamera,libcamera-ipa,libcamera-gstreamer,libcamera-tools
 messenger        https://github.com/haltia-de/messenger.git       v2.9.3 f89ec2b2de6a42d1b80c997b628a1764f2d34a79
+# Mail (haltia-mail): hidden from the panel; it sends the reports for the helper.
+mail       https://github.com/haltia-de/mail.git      v0.1.0 83b6a9895c5a03ee39e970bcc41e33e434e6667c
 video      https://github.com/haltia-de/video.git     v2.4.3 61a67bf5981b00b974347a3fa8b197f5851bd379
 music      https://github.com/haltia-de/music.git     v3.0.2 465f5c877728b868db11b4076372f5e528d6f5b7
 calendar   https://github.com/haltia-de/calendar.git  v2.0.5 31f44bf2cd9dd8498301f3f44130e3bf1a3f71a2
