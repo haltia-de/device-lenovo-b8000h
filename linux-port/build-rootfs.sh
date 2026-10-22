@@ -153,25 +153,9 @@ cat > "$ROOT/etc/local.d/00-b8k-modules.start" <<'EOF'
 #!/bin/sh
 release=$(uname -r)
 if grep -q '/b8k-battery\.ko$' "/lib/modules/$release/modules.builtin" 2>/dev/null; then
-	# Audio and battery are built in. WMT probes before the stock
-	# /system firmware is mounted, so the first load misses WMT.cfg.
-	# Wait, then reload. BusyBox rmmod takes one module name.
-	i=0
-	while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
-		i=$((i + 1))
-		sleep 1
-	done
-	# One reload at a time: b8k-netwatch and b8k-suspend run this script
-	# too, and two at once left modprobe hanging.
-	exec 8>/run/b8k-wlan.lock
-	flock 8
-	rmmod wlan_mt6628 2>/dev/null || true
-	rmmod wmt 2>/dev/null || true
-	modprobe wmt
-	# A fixed MAC from the machine id. Without the Android NVRAM file the
-	# driver makes one up on every load, and DHCP gave a new address each boot.
-	mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
-	modprobe wlan_mt6628 ${mac:+mac=$mac}
+	# Audio and battery are built in; Wi-Fi loads in the background, so
+	# the session never waits for it (b8k-wlan-reload).
+	setsid /usr/local/sbin/b8k-wlan-reload </dev/null >/dev/null 2>&1 &
 else
 	# Kernel #19 compatibility: its matching out-of-tree modules live here.
 	insmod /root/b8k-battery.ko 2>/dev/null
@@ -477,6 +461,7 @@ EOF
 	install -m 644 "$REPO/linux-port/rootfs/earlyoom.conf" "$ROOT/etc/conf.d/earlyoom"
 	ln -sfn /etc/init.d/earlyoom "$ROOT/etc/runlevels/default/earlyoom"
 	install -m 755 "$REPO/linux-port/rootfs/b8k-netwatch" "$ROOT/usr/local/sbin/b8k-netwatch"
+	install -m 755 "$REPO/linux-port/rootfs/b8k-wlan-reload" "$ROOT/usr/local/sbin/b8k-wlan-reload"
 	cat > "$ROOT/etc/local.d/b8k-netwatch.start" <<'EOF'
 #!/bin/sh
 start-stop-daemon --start --background --exec /usr/local/sbin/b8k-netwatch \

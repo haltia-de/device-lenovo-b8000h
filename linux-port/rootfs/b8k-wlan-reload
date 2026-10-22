@@ -1,0 +1,37 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Load (or reload) the MT6628 Wi-Fi drivers: wmt, then wlan_mt6628 with a
+# fixed MAC. At boot 00-b8k-modules.start runs it in the background, so
+# the session never waits on Wi-Fi; b8k-netwatch and b8k-suspend run it
+# directly and wait for it.
+#
+# WMT probes before the stock /system firmware is mounted, so the first
+# load at boot misses WMT.cfg: wait for it (30 s at most). One reload at a
+# time: two at once left modprobe hanging, so /run/b8k-wlan.lock is held,
+# and waited for 120 s at most (BusyBox flock has no -w; the lock taken by
+# flock under timeout stays with this shell's descriptor). timeout only
+# sends TERM: it bounds a modprobe that waits, not one stuck in the kernel,
+# which then holds the lock and makes the next caller give up after 120 s.
+log() { logger -t b8k-wlan "$*"; }
+run() { # seconds, command...: log the command's output when it fails
+	t=$1
+	shift
+	out=$(timeout "$t" "$@" 2>&1) || log "$* failed or timed out: $out"
+}
+i=0
+while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+exec 8>/run/b8k-wlan.lock
+if ! timeout 120 flock 8; then
+	log "reload skipped: another one holds the lock"
+	exit 1
+fi
+timeout 30 rmmod wlan_mt6628 2>/dev/null || true
+timeout 30 rmmod wmt 2>/dev/null || true
+run 60 modprobe wmt
+# A fixed MAC from the machine id. Without the Android NVRAM file the
+# driver makes one up on every load, and DHCP gave a new address each boot.
+mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
+run 60 modprobe wlan_mt6628 ${mac:+mac=$mac}

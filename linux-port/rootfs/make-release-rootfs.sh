@@ -78,22 +78,8 @@ if [ -x "$R/sbin/wpa_supplicant" ] &&
 fi
 cat > "$R/etc/local.d/00-b8k-modules.start" <<'EOF'
 #!/bin/sh
-i=0
-while [ ! -e /system/etc/firmware/WMT.cfg ] && [ "$i" -lt 30 ]; do
-	i=$((i + 1))
-	sleep 1
-done
-# One reload at a time: b8k-netwatch and b8k-suspend run this script too,
-# and two at once left modprobe hanging.
-exec 8>/run/b8k-wlan.lock
-flock 8
-rmmod wlan_mt6628 2>/dev/null || true
-rmmod wmt 2>/dev/null || true
-modprobe wmt
-# A fixed MAC from the machine id. Without the Android NVRAM file the
-# driver makes one up on every load, and DHCP gave a new address each boot.
-mac=$(md5sum /etc/machine-id 2>/dev/null | sed -E 's/^(..)(..)(..).*/00:08:22:\1:\2:\3/')
-modprobe wlan_mt6628 ${mac:+mac=$mac}
+# Wi-Fi loads in the background, so the session never waits for it.
+setsid /usr/local/sbin/b8k-wlan-reload </dev/null >/dev/null 2>&1 &
 EOF
 chmod 755 "$R/etc/local.d/00-b8k-modules.start"
 
