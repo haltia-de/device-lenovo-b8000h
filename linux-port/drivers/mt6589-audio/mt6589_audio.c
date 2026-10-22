@@ -849,10 +849,41 @@ static void b8k_audio_remove(struct platform_device *pdev)
 	snd_card_free(a->card);
 }
 
+/*
+ * System sleep (s2idle): a stream still running would leave the AFE DMA
+ * looping its last ~85 ms of buffer with the amplifier on. The PCM is
+ * suspended (trigger SUSPEND: DMA off, amplifier and analog path off, the
+ * period timer stopped) and the card marked D3hot; on wake the card is D0
+ * again and the sound server prepares and restarts the stream (no
+ * SNDRV_PCM_INFO_RESUME, so ALSA reports the stream as suspended to it).
+ */
+static int b8k_audio_suspend(struct device *dev)
+{
+	struct b8k_audio *a = dev_get_drvdata(dev);
+
+	snd_power_change_state(a->card, SNDRV_CTL_POWER_D3hot);
+	snd_pcm_suspend_all(a->pcm);
+	return 0;
+}
+
+static int b8k_audio_resume(struct device *dev)
+{
+	struct b8k_audio *a = dev_get_drvdata(dev);
+
+	snd_power_change_state(a->card, SNDRV_CTL_POWER_D0);
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(b8k_audio_pm_ops, b8k_audio_suspend,
+				b8k_audio_resume);
+
 static struct platform_driver b8k_audio_driver = {
 	.probe = b8k_audio_probe,
 	.remove = b8k_audio_remove,
-	.driver = { .name = DRV_NAME },
+	.driver = {
+		.name = DRV_NAME,
+		.pm = pm_sleep_ptr(&b8k_audio_pm_ops),
+	},
 };
 
 static int __init b8k_audio_init(void)
