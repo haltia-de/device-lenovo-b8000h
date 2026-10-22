@@ -849,10 +849,43 @@ static void b8k_audio_remove(struct platform_device *pdev)
 	snd_card_free(a->card);
 }
 
+/*
+ * System sleep (s2idle). The ALSA core's PCM device PM already suspends a
+ * running stream (trigger SUSPEND: DMA, amplifier and analog path off, the
+ * period timer stopped), which stopped the ~85 ms loop the DMA played with
+ * the amplifier on. Here the card's power state follows: D3hot while
+ * asleep, so nothing reopens or starts a stream before the wake, and D0
+ * after it, when the sound server prepares and restarts the stream (no
+ * SNDRV_PCM_INFO_RESUME). snd_pcm_suspend_all() is kept for kernels whose
+ * core does not do it; a second call finds nothing running.
+ */
+static int b8k_audio_suspend(struct device *dev)
+{
+	struct b8k_audio *a = dev_get_drvdata(dev);
+
+	snd_power_change_state(a->card, SNDRV_CTL_POWER_D3hot);
+	snd_pcm_suspend_all(a->pcm);
+	return 0;
+}
+
+static int b8k_audio_resume(struct device *dev)
+{
+	struct b8k_audio *a = dev_get_drvdata(dev);
+
+	snd_power_change_state(a->card, SNDRV_CTL_POWER_D0);
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(b8k_audio_pm_ops, b8k_audio_suspend,
+				b8k_audio_resume);
+
 static struct platform_driver b8k_audio_driver = {
 	.probe = b8k_audio_probe,
 	.remove = b8k_audio_remove,
-	.driver = { .name = DRV_NAME },
+	.driver = {
+		.name = DRV_NAME,
+		.pm = pm_sleep_ptr(&b8k_audio_pm_ops),
+	},
 };
 
 static int __init b8k_audio_init(void)
