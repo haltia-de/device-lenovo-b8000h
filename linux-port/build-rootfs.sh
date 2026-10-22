@@ -118,6 +118,9 @@ printf 'root::0:0:root:/root:/bin/sh\n' > /tmp/root-pw
 sed -i 's|^root:[^:]*:|root::|' "$ROOT/etc/shadow"
 cat > "$ROOT/etc/fstab" <<'EOF'
 /dev/root	/	ext4	rw,noatime	0 1
+# The kernel log of the last panic (ramoops, patch 0049): read and cleared by
+# haltia-report. The initramfs mounts it too, but switch_root does not keep it.
+pstore	/sys/fs/pstore	pstore	nosuid,nodev,noexec	0 0
 EOF
 for s in devfs dmesg udev udev-trigger udev-settle; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/sysinit/$s"
