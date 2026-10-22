@@ -11,9 +11,9 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library haltia-kit (ADR 0001, 0004).
-shell      https://github.com/haltia-de/shell.git     v2.12.0 2c3e7e9331f33ec93fb024cf004fdb22ed4fe640
+shell      https://github.com/haltia-de/shell.git     v2.12.1 b0debc9d35e2766693522947b8496ed323972ee4
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
-kit        https://github.com/haltia-de/kit.git    v2.3.0 5483cedf33749131b59eaf6fedbe20a0adbdc8e1
+kit        https://github.com/haltia-de/kit.git    v2.3.1 36712a3905ca98e42fd567932af42858d42c90c6
 firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
 paint      https://github.com/haltia-de/paint.git     v4.8.0 ecc88d040071a05a13c0013f6391880aee686748
 weather    https://github.com/haltia-de/weather.git   v2.1.4 0f3f0832d332acd0de2121911fe8eca70abc33fc
@@ -24,7 +24,7 @@ libnice    https://github.com/haltia-de/libnice.git   v0.1.24 1dc9757697f4e8ed9d
 gst-webrtc https://github.com/haltia-de/gst-webrtc.git v1.28.3 02c7442fe74f167f6943501a7e95de6f6144b502 apk
 # The front camera: libcamera with the MT6589 SENINF and OV9760 patches.
 libcamera  https://github.com/haltia-de/libcamera.git v0.7.1_p1 6a26d3e897187250544c6929228991c8d8f882d1 apk=libcamera,libcamera-ipa,libcamera-gstreamer,libcamera-tools
-messenger        https://github.com/haltia-de/messenger.git       v2.9.1 e96a450f7f880df4b805c5e03c3a85aa9564235a
+messenger        https://github.com/haltia-de/messenger.git       v2.9.3 f89ec2b2de6a42d1b80c997b628a1764f2d34a79
 video      https://github.com/haltia-de/video.git     v2.4.3 61a67bf5981b00b974347a3fa8b197f5851bd379
 music      https://github.com/haltia-de/music.git     v3.0.2 465f5c877728b868db11b4076372f5e528d6f5b7
 calendar   https://github.com/haltia-de/calendar.git  v2.0.5 31f44bf2cd9dd8498301f3f44130e3bf1a3f71a2
