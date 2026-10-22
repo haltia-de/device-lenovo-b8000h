@@ -496,6 +496,22 @@ static dma_addr_t seninf_buf_addr(struct seninf_buffer *b)
 	return vb2_dma_contig_plane_dma_addr(&b->vb.vb2_buf, 0);
 }
 
+/*
+ * Stop IMGO at once (in the IRQ, with irqlock held): after an IMGO or DMA
+ * error the DMA must not keep writing, which could run past the buffer into
+ * other memory. The program gets an error on its queue. (SENINF2_DEBUG_4
+ * cannot check the frame size here: at IMGO done its line count already
+ * reads 0.)
+ */
+static void seninf_halt(struct mt6589_seninf *s, const char *why, u32 val)
+{
+	rmw(s->isp + CAM_TG2_VF_CON, VF_VFDATA_EN, 0);
+	rmw(s->isp + CAM_CTL_DMA_EN, DMA_IMGO_EN, 0);
+	s->streaming = false;
+	dev_err(s->dev, "capture stopped: %s (%08x)\n", why, val);
+	vb2_queue_error(&s->queue);
+}
+
 static irqreturn_t seninf_irq(int irq, void *data)
 {
 	struct mt6589_seninf *s = data;
@@ -516,10 +532,13 @@ static irqreturn_t seninf_irq(int irq, void *data)
 			dev_warn(s->dev, "pass 1 error: int %08x dma %04x imgo %08x\n",
 				 st, dma, readl(s->isp + CAM_IMGO_ERR_STAT));
 		rmw(s->isp + CAM_CTL_INT_EN, st & (INT_TG2_ERR | INT_IMGO_ERR | INT_DMA_ERR), 0);
+		if (s->streaming && (st & (INT_IMGO_ERR | INT_DMA_ERR)))
+			seninf_halt(s, "IMGO/DMA error", readl(s->isp + CAM_IMGO_ERR_STAT));
 	}
 
 	if (!s->streaming)
 		goto out;
+
 
 	/*
 	 * IMGO done: the frame is in memory. Only then the buffer goes back
