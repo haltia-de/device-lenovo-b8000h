@@ -14,20 +14,23 @@
 > так называются готовые образы для планшетов.
 
 *English summary: an experimental port of mainline-based Linux 7.1 (TeamYogaBlade2
-kernel + 45 device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
-**B8000-H** (MT8389/MT6589, 3G). Display, multitouch, Wi-Fi, speakers and charging
-work. The compositor phoc renders on the PowerVR SGX544 through libhybris and the
-stock Android 4.4 blobs; the Haltia touch desktop (a waybar panel on the left with large program
-buttons, haltia-de/shell) runs on it, with its own GTK3 programs. Ready-to-flash
-images (Pertin Haltia) are built by GitHub Actions and published as releases. Until early October the kernel crashed every 10–40
-minutes; kernel 23 ran an hour of full load at 1.2 GHz without a crash or a
-memory error.
+kernel plus the device patches) with Alpine Linux to the Lenovo YOGA Tablet 10
+**B8000-H** (MT8389/MT6589, 3G). Display, multitouch, rotation, Wi-Fi, speakers,
+the microphone and the front camera work. Headphones, Bluetooth, GPS, 3G and the
+rear camera do not. The compositor phoc renders on the PowerVR SGX544 through
+libhybris and the stock Android 4.4 blobs; the Haltia touch desktop
+([haltia-de/shell](https://github.com/haltia-de/shell)) runs on it, with its own
+GTK 3 programs. Ready-to-flash images (Pertin Haltia) are built by GitHub Actions
+and published as releases. The current build is kernel 27 (`-b8000h27`). Kernel 23
+ran an hour of full load at 1.2 GHz without a crash or a memory error; kernel 25
+later hit one oops that did not repeat under a memory-pattern check.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
 
-> **Статус: альфа для энтузиастов.**
+> **Статус: альфа для энтузиастов. Текущая сборка — ядро 27.**
 > По замерам до начала октября ядро падало раз в 10–40 минут. На ядре 23 час полной нагрузки на
 > 1,2 ГГц (все четыре ядра и сверка 150 МБ памяти) прошёл без падений и
-> ошибок памяти, но длительной проверки в обычной работе ещё не было. Установка стирает пользовательские
+> ошибок памяти. На ядре 25 один раз случился oops, под сверкой памяти он не повторился
+> ([todo.md](docs/todo.md)). Длительной проверки в обычной работе ещё не было. Установка стирает пользовательские
 > данные Android.
 
 ## Для какого устройства
@@ -44,29 +47,31 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Экран 1280×800, подсветка, яркость | работает (mediatek-drm, DSI); яркость — ползунок на панели, сохраняется |
 | GPU PowerVR SGX544 | композитор phoc рисует на GPU (60 fps) через libhybris и стоковые блобы Android 4.4 из раздела `/system` самого планшета |
 | Оболочка: домашний экран с плитками программ, часами и погодой, панель слева, кнопка закрытия, яркость, громкость, Wi-Fi, батарея | работает ([Haltia](https://github.com/haltia-de/shell)) |
-| Настройки | свои, «Настройки» Haltia: сеть, звук, экран, дата и время, касания, обновления, «О системе» |
+| Настройки | свои, «Настройки» Haltia: сеть, звук, экран, дата и время, касания, обновления, «О системе»; скрытый раздел «Для помощника» с отчётами о сбоях |
 | Обновления | «Настройки → Обновления» или `doas haltia-update upgrade`: снимок перед обновлением, откат при сбое, описание изменений каждой программы |
 | Поворот экрана | работает, по акселерометру (iio-sensor-proxy); выключается в Настройки → Экран |
-| Программы: Firefox, Сообщения (MAX), Видео, Музыка, Файлы с галереей, Блокнот, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором, иконки — в едином стиле Haltia. Свои программы — лёгкие GTK3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine из [репозитория Haltia](https://haltia-de.github.io/packages/) (там же — deb для Ubuntu 24.04 и Debian 13 и Flatpak: шесть программ работают и на обычном компьютере, [план](https://github.com/haltia-de/haltia/blob/main/docs/plans/desktop-packages.md)); «Сообщения» — собственный клиент MAX со счётчиком непрочитанных и отметкой проигрывания на кнопке |
-| Видео | 480p H.264 — 30 к/с (программный декодер), 720p — нет |
+| Программы: Firefox, Сообщения (MAX), Видео, Музыка, Файлы с галереей, Документы (PDF), Камера, Блокнот, Календарь, Погода, Новости, Раскраска, калькулятор, пасьянсы, терминал | работает; приложения рисуются процессором, иконки — в едином стиле Haltia. Свои программы — лёгкие GTK 3, каждая в своём репозитории `haltia-de/*`, ставятся подписанными пакетами Alpine из [репозитория Haltia](https://haltia-de.github.io/packages/) (там же — deb для Ubuntu 24.04, Ubuntu 26.04 и Debian 13 и Flatpak: шесть программ работают и на обычном компьютере, [план](https://github.com/haltia-de/haltia/blob/main/docs/plans/desktop-packages.md)); «Сообщения» — собственный клиент MAX со счётчиком непрочитанных и отметкой проигрывания на кнопке. «Почта» в образе есть и скрыта с домашнего экрана: через неё уходят отчёты помощнику |
+| Видео | программный декодер: 480p H.264 около 30 к/с; тяжёлые 720p и 1080p не гарантируются |
 | Экранная клавиатура | работает (wvkbd с крупной раскладкой, появляется в текстовом поле) |
 | Сенсорный экран | работает, до 10 касаний: щипок и прокрутка двумя пальцами (GTK, Раскраска). Фильтр касаний оболочки отсекает ладонь и случайные касания и даёт вибро-отклик; мультитач в нём отключается. В Firefox щипок пока не масштабирует страницу |
 | Вибромотор | работает: короткий толчок на каждое нажатие (фильтр касаний оболочки) |
-| Wi-Fi (MT6628) | работает |
+| Wi-Fi (MT6628) | работает. Во сне на батарее драйвер выгружается, пробуждения по сети нет ([calls-wake.md](docs/calls-wake.md)) |
 | Звук через динамики | работает; громкость — кнопками, индикатор на панели. Чистый тон на большой громкости дрожит ([sound-mt6589.md](docs/sound-mt6589.md)) |
 | Батарея, зарядка до 2 А | работает; процент во время зарядки завышен |
 | SSH, USB | работает |
-| Наушники, микрофон | нет ([#1](https://github.com/haltia-de/device-lenovo-b8000h/issues/1)) |
+| Микрофон | работает: запись, голосовые сообщения и звонки |
+| Наушники | нет: аудиотракт и переключение выхода ещё не поддержаны ([#1](https://github.com/haltia-de/device-lenovo-b8000h/issues/1)) |
 | Bluetooth | нет (не портирован) |
 | GPS | нет; возможен через стоковую библиотеку MNL ([#2](https://github.com/haltia-de/device-lenovo-b8000h/issues/2)) |
 | 3G-модем | нет ([#3](https://github.com/haltia-de/device-lenovo-b8000h/issues/3)) |
-| Камеры | нет ([#4](https://github.com/haltia-de/device-lenovo-b8000h/issues/4)) |
-| Сон (suspend) | s2idle через 30 с после того, как экран погашен кнопкой Power; глубокого сна нет ([shell.md](docs/shell.md)) |
-| GPU для самих приложений | невозможно: GTK4 требует OpenGL ES 3.0, у SGX544 только ES 2.0 |
+| Фронтальная камера | работает: проверена OV9760, кадр идёт через libcamera и программный ISP. Другие датчики в партиях не подтверждены ([camera-front.md](docs/camera-front.md)) |
+| Задняя камера | не подтверждена: работа A5142 не проверялась ([#4](https://github.com/haltia-de/device-lenovo-b8000h/issues/4)) |
+| Сон | на батарее s2idle через 30 с после погасания экрана, Wi-Fi во сне выключен; на зарядке экран гаснет, система остаётся активной для сообщений и звонков. Глубокого сна нет ([calls-wake.md](docs/calls-wake.md)) |
+| GPU для самих приложений | программы GTK 3 рисуются процессором: у SGX544 только OpenGL ES 2.0 |
 | Аппаратное декодирование видео | нет |
-| Перезагрузка и выключение | работает (меню: удержание Power 1 с) |
+| Перезагрузка и выключение | работает (меню: удержание Power 1 с). Кнопка Power гасит и включает экран |
 | Память | 1 ГБ и 512 МБ сжатой подкачки в памяти (zram, lz4); `earlyoom` закрывает одну программу раньше, чем система встанет. Firefox с одной страницей занимает около 550 МБ ([power.md](docs/power.md)) |
-| Стабильность | ядро 23: час полной нагрузки на 1,2 ГГц без падений; если планшет завис — держать Power 15–20 с |
+| Стабильность | текущая сборка — ядро 27. Ядро 23: час полной нагрузки на 1,2 ГГц без падений. Ядро 25: один oops на 38-й минуте, под сверкой памяти не повторился ([todo.md](docs/todo.md)). Если планшет завис — держать Power 15–20 с |
 
 Подробности по узлам — в `docs/`.
 
