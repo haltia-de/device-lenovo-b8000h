@@ -1,0 +1,251 @@
+From: Mikhail Nevskiy
+Subject: [PATCH] DEBUG mmc: report a frame that changes while it waits for the host
+
+device#39: three stack-protector panics on k27 printed "mmc_release_host+0x1".
+That is the return address of the __stack_chk_fail call that ends
+__mmc_claim_host, so the canary that changed is __mmc_claim_host's, at sp+0x18
+right above its on-stack wait entry, in a kworker (sdio_irq_work, mmc_rescan)
+that slept there while MSDC3 (MT6628 SDIO) was held by the Wi-Fi thread.
+
+While a task sleeps in __mmc_claim_host, keep a copy of 64 bytes of its frame
+from the wait entry up (wait entry, canary, saved registers; the list links
+masked) and compare after each wake-up. On a change, print both copies, the
+physical address of the stack page and the host's last 32 data requests
+(opcode, argument, size, direction, DMA and physical address of the first
+segments, start and end jiffies). If the stack's physical address falls in
+or next to a recorded DMA range, the writer is that transfer; if the bytes
+look like 802.11/IP data, it is a Wi-Fi RX copy or DMA; if no request
+matches, a CPU writer elsewhere.
+
+Costs one 64-byte copy and compare per sleep in __mmc_claim_host and about
+2 KB per MSDC host. Not for release images without a decision.
+
+diff --git a/drivers/mmc/core/core.c b/drivers/mmc/core/core.c
+--- a/drivers/mmc/core/core.c
++++ b/drivers/mmc/core/core.c
+@@ -23,6 +23,7 @@
+ #include <linux/fault-inject.h>
+ #include <linux/random.h>
+ #include <linux/slab.h>
++#include <linux/vmalloc.h>
+ #include <linux/of.h>
+ 
+ #include <linux/mmc/card.h>
+@@ -776,6 +777,93 @@
+ 		host->claimer->task = task;
+ }
+ 
++/*
++ * B8K debug (device#39): three stack-protector panics named the canary of
++ * __mmc_claim_host, each time in a task that had slept here waiting for
++ * MSDC3 (the MT6628 SDIO host). While a task sleeps here, keep a copy of
++ * its frame from the wait entry up (the canary and the saved registers lie
++ * above it) and, after it wakes, report anything that changed meanwhile:
++ * the bytes, the physical address of the stack page, and what the host
++ * driver last transferred. The list links of the wait entry change when
++ * other waiters come and go and are left out.
++ */
++#define B8K_CLAIM_WATCH		64
++#define B8K_CLAIM_SLOTS		16
++
++void (*b8k_mmc_dump_hook)(struct mmc_host *host);
++EXPORT_SYMBOL_GPL(b8k_mmc_dump_hook);
++
++struct b8k_claim_slot {
++	struct task_struct *task;
++	const void *addr;
++	u32 seen[B8K_CLAIM_WATCH / 4];
++};
++
++static struct b8k_claim_slot b8k_claim_slots[B8K_CLAIM_SLOTS];
++static DEFINE_SPINLOCK(b8k_claim_lock);
++static atomic_t b8k_claim_hits = ATOMIC_INIT(0);
++
++static void b8k_claim_mask(u32 *w)
++{
++	size_t o = offsetof(struct wait_queue_entry, entry) / 4;
++
++	w[o] = 0;
++	w[o + 1] = 0;
++}
++
++static noinline struct b8k_claim_slot *b8k_claim_save(const void *addr)
++{
++	struct b8k_claim_slot *s = NULL;
++	unsigned long flags;
++	int i;
++
++	spin_lock_irqsave(&b8k_claim_lock, flags);
++	for (i = 0; i < B8K_CLAIM_SLOTS; i++) {
++		if (!b8k_claim_slots[i].task) {
++			s = &b8k_claim_slots[i];
++			s->task = current;
++			s->addr = addr;
++			memcpy(s->seen, addr, sizeof(s->seen));
++			b8k_claim_mask(s->seen);
++			break;
++		}
++	}
++	spin_unlock_irqrestore(&b8k_claim_lock, flags);
++	return s;
++}
++
++static noinline void b8k_claim_check(struct mmc_host *host,
++				     struct b8k_claim_slot *s)
++{
++	u32 now[B8K_CLAIM_WATCH / 4];
++	struct page *pg;
++	phys_addr_t pa = 0;
++	unsigned long flags;
++
++	if (!s)
++		return;
++	memcpy(now, s->addr, sizeof(now));
++	b8k_claim_mask(now);
++	if (memcmp(now, s->seen, sizeof(now))) {
++		pg = is_vmalloc_addr(s->addr) ? vmalloc_to_page(s->addr) :
++		     virt_to_page(s->addr);
++		if (pg)
++			pa = page_to_phys(pg) + offset_in_page(s->addr);
++		pr_emerg("B8K_CLAIM %s: frame of %s/%d at %px (phys %pa) changed while it slept, hit %d\n",
++			 mmc_hostname(host), current->comm, current->pid,
++			 s->addr, &pa, atomic_inc_return(&b8k_claim_hits));
++		print_hex_dump(KERN_EMERG, "B8K_CLAIM was ", DUMP_PREFIX_OFFSET,
++			       16, 4, s->seen, sizeof(now), false);
++		print_hex_dump(KERN_EMERG, "B8K_CLAIM now ", DUMP_PREFIX_OFFSET,
++			       16, 4, now, sizeof(now), false);
++		if (b8k_mmc_dump_hook)
++			b8k_mmc_dump_hook(host);
++	}
++	spin_lock_irqsave(&b8k_claim_lock, flags);
++	s->task = NULL;
++	spin_unlock_irqrestore(&b8k_claim_lock, flags);
++}
++
+ /**
+  *	__mmc_claim_host - exclusively claim a host
+  *	@host: mmc host to claim
+@@ -796,6 +884,7 @@
+ 	unsigned long flags;
+ 	int stop;
+ 	bool pm = false;
++	struct b8k_claim_slot *b8k_slot;
+ 
+ 	might_sleep();
+ 
+@@ -807,7 +896,10 @@
+ 		if (stop || !host->claimed || mmc_ctx_matches(host, ctx, task))
+ 			break;
+ 		spin_unlock_irqrestore(&host->lock, flags);
++		/* Through unsigned long: the watch reads past the entry. */
++		b8k_slot = b8k_claim_save((const void *)(unsigned long)&wait);
+ 		schedule();
++		b8k_claim_check(host, b8k_slot);
+ 		spin_lock_irqsave(&host->lock, flags);
+ 	}
+ 	set_current_state(TASK_RUNNING);
+diff --git a/drivers/mmc/host/mtk-sd.c b/drivers/mmc/host/mtk-sd.c
+--- a/drivers/mmc/host/mtk-sd.c
++++ b/drivers/mmc/host/mtk-sd.c
+@@ -466,7 +466,23 @@
+ 	u8 final_phase;
+ };
+ 
++extern void (*b8k_mmc_dump_hook)(struct mmc_host *host);
++static const struct mmc_host_ops mt_msdc_ops;
++
++/* B8K debug (device#39): the last data requests, for b8k_mmc_dump_hook. */
++#define B8K_RING	32
++struct b8k_rq {
++	unsigned long start, done;	/* jiffies */
++	u32 opcode, arg, blocks, blksz, flags;
++	int sg_count, error;
++	dma_addr_t dma0, dma1;
++	u32 len0, len1;
++	phys_addr_t phys0;
++};
++
+ struct msdc_host {
++	struct b8k_rq b8k_ring[B8K_RING];
++	unsigned int b8k_head;
+ 	struct device *dev;
+ 	const struct mtk_mmc_compatible *dev_comp;
+ 	int cmd_rsp;
+@@ -1344,8 +1360,13 @@
+ 	spin_unlock_irqrestore(&host->lock, flags);
+ 
+ 	msdc_track_cmd_data(host, mrq->cmd);
+-	if (mrq->data)
++	if (mrq->data) {
++		struct b8k_rq *r = &host->b8k_ring[(host->b8k_head - 1) % B8K_RING];
++
++		r->done = jiffies;
++		r->error = mrq->data->error ? mrq->data->error : mrq->cmd->error;
+ 		msdc_unprepare_data(host, mrq->data);
++	}
+ 	if (host->error)
+ 		msdc_reset_hw(host);
+ 	mmc_request_done(mmc, mrq);
+@@ -1539,6 +1560,25 @@
+ 
+ 	if (mrq->data) {
+ 		msdc_prepare_data(host, mrq->data);
++		if (msdc_data_prepared(mrq->data)) {
++			struct mmc_data *d = mrq->data;
++			struct b8k_rq *r = &host->b8k_ring[host->b8k_head++ % B8K_RING];
++
++			r->start = jiffies;
++			r->done = 0;
++			r->error = 0;
++			r->opcode = mrq->cmd->opcode;
++			r->arg = mrq->cmd->arg;
++			r->blocks = d->blocks;
++			r->blksz = d->blksz;
++			r->flags = d->flags;
++			r->sg_count = d->sg_count;
++			r->phys0 = sg_phys(d->sg);
++			r->dma0 = sg_dma_address(d->sg);
++			r->len0 = sg_dma_len(d->sg);
++			r->dma1 = d->sg_count > 1 ? sg_dma_address(sg_next(d->sg)) : 0;
++			r->len1 = d->sg_count > 1 ? sg_dma_len(sg_next(d->sg)) : 0;
++		}
+ 		if (!msdc_data_prepared(mrq->data)) {
+ 			host->mrq = NULL;
+ 			/*
+@@ -1918,6 +1958,28 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++static void b8k_msdc_dump(struct mmc_host *mmc)
++{
++	struct msdc_host *host;
++	unsigned int i, n;
++
++	if (mmc->ops != &mt_msdc_ops)
++		return;
++	host = mmc_priv(mmc);
++	n = host->b8k_head;
++	pr_emerg("B8K_CLAIM %s: last data requests, now %lu, newest last\n",
++		 mmc_hostname(mmc), jiffies);
++	for (i = n > B8K_RING ? n - B8K_RING : 0; i < n; i++) {
++		struct b8k_rq *r = &host->b8k_ring[i % B8K_RING];
++
++		pr_emerg("B8K_CLAIM  #%u t=%lu..%lu op=%u arg=%08x %ux%u %s sg=%d dma=%pad+%u phys=%pa dma1=%pad+%u err=%d\n",
++			 i, r->start, r->done, r->opcode, r->arg, r->blocks,
++			 r->blksz, r->flags & MMC_DATA_READ ? "rd" : "wr",
++			 r->sg_count, &r->dma0, r->len0, &r->phys0, &r->dma1,
++			 r->len1, r->error);
++	}
++}
++
+ static void msdc_init_hw(struct msdc_host *host)
+ {
+ 	u32 val, pb1_val, pb2_val;
+@@ -3231,6 +3293,7 @@
+ 	pm_runtime_set_autosuspend_delay(host->dev, MTK_MMC_AUTOSUSPEND_DELAY);
+ 	pm_runtime_use_autosuspend(host->dev);
+ 	pm_runtime_enable(host->dev);
++	b8k_mmc_dump_hook = b8k_msdc_dump;
+ 	ret = mmc_add_host(mmc);
+ 
+ 	if (ret)
