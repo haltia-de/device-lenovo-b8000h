@@ -119,12 +119,25 @@ sed -i 's|^root:[^:]*:|root::|' "$ROOT/etc/shadow"
 cat > "$ROOT/etc/fstab" <<'EOF'
 /dev/root	/	ext4	rw,noatime	0 1
 EOF
-# sysfs mounts pstore (the kernel log of the last panic, ramoops: read and
-# cleared by haltia-report) when the initramfs's mount did not come along.
+# sysfs mounts pstore (the kernel log of the last panic, ramoops, read by
+# haltia-report; docs/crash-evidence.md) when the initramfs's mount did not
+# come along.
 for s in devfs dmesg sysfs udev udev-trigger udev-settle; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/sysinit/$s"
 done
-for s in hwclock modules sysctl hostname bootmisc syslog; do
+# klogd puts the kernel's warnings into syslog, so an OOM kill or a WARN
+# outlives dmesg's 128 KiB ring, which MSDC's and the Wi-Fi's counters
+# (info) fill in hours (device#38). Only warning and worse: the info lines
+# would push everything else out of the 200 KB messages file.
+cat > "$ROOT/etc/syslog.conf" <<'EOF'
+kern.warning		/var/log/messages
+*.*;kern.none		/var/log/messages
+EOF
+# Alpine waits 120 s after a panic with a frozen screen; the record is in
+# pstore by then, so reboot after 10.
+mkdir -p "$ROOT/etc/sysctl.d"
+echo 'kernel.panic = 10' > "$ROOT/etc/sysctl.d/b8k-panic.conf"
+for s in hwclock modules sysctl hostname bootmisc syslog klogd; do
 	ln -sf /etc/init.d/$s "$ROOT/etc/runlevels/boot/$s"
 done
 for s in seatd local; do
