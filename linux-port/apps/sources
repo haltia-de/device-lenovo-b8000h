@@ -11,23 +11,23 @@
 #
 # name     repository                                     tag    commit                                    [private]
 # The shell first, then the program library haltia-kit (ADR 0001, 0004).
-shell      https://github.com/haltia-de/shell.git     v2.12.2 5e2745fc32327633dc3daf16d429cb2947f4c6e4
+shell      https://github.com/haltia-de/shell.git     v2.13.0 9444250c33e79ed9025882cc277f4abac1f5ab97
 # haltia-kit first: the library the programs below import (ADR 0001, 0004).
 kit        https://github.com/haltia-de/kit.git    v2.3.1 36712a3905ca98e42fd567932af42858d42c90c6
-firefox    https://github.com/haltia-de/firefox.git   v2.0.0 ece6d083d0d913b1642a705c6b884f9c4d20fdfb
+firefox    https://github.com/haltia-de/firefox.git   v2.1.0 cb570dbf2d70bdd2f1cec92fcb5d1fa9be192b8e
 paint      https://github.com/haltia-de/paint.git     v4.8.0 ecc88d040071a05a13c0013f6391880aee686748
 weather    https://github.com/haltia-de/weather.git   v2.1.4 0f3f0832d332acd0de2121911fe8eca70abc33fc
 news       https://github.com/haltia-de/news.git      v2.2.3 4162e1c1571ef641548c41539edc7ce49189cc25
 # Voice calls of the Messenger: libnice >= 0.1.23 under Alpine's names and
 # GStreamer's webrtcbin for Alpine's gst-plugins-bad (device issue #23).
-libnice    https://github.com/haltia-de/libnice.git   v0.1.24 1dc9757697f4e8ed9d52238404a5f85fa59df0f9 apk
+libnice    https://github.com/haltia-de/libnice.git   v0.1.24_p2 ff1a8accd1a99a6f939c7aa122dee2afd3e0b9dd apk
 gst-webrtc https://github.com/haltia-de/gst-webrtc.git v1.28.3 02c7442fe74f167f6943501a7e95de6f6144b502 apk
 # The front camera: libcamera with the MT6589 SENINF and OV9760 patches.
 libcamera  https://github.com/haltia-de/libcamera.git v0.7.1_p1 6a26d3e897187250544c6929228991c8d8f882d1 apk=libcamera,libcamera-ipa,libcamera-gstreamer,libcamera-tools
-messenger        https://github.com/haltia-de/messenger.git       v2.9.4 177c746e50c32cd71ab627a5015dd1d334b09a32
+messenger        https://github.com/haltia-de/messenger.git       v2.9.5 71ab79ac84efaa238fe9ca854b2e6575dd13b9d3
 # Mail (haltia-mail): hidden from the panel; it sends the reports for the helper.
 mail       https://github.com/haltia-de/mail.git      v0.1.1 905c65e0719f0c650a0f2d9a3c988c7fff616773
-video      https://github.com/haltia-de/video.git     v2.4.3 61a67bf5981b00b974347a3fa8b197f5851bd379
+video      https://github.com/haltia-de/video.git     v2.11.0 4ae5620ad8b6f25a9da50806fe50905284482560
 music      https://github.com/haltia-de/music.git     v3.0.2 465f5c877728b868db11b4076372f5e528d6f5b7
 calendar   https://github.com/haltia-de/calendar.git  v2.0.5 31f44bf2cd9dd8498301f3f44130e3bf1a3f71a2
 files      https://github.com/haltia-de/files.git     v2.2.0 170d1fee4609710e680dcefbec3785d0221ca428
