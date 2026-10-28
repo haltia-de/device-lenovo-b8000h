@@ -11,6 +11,9 @@
 # - DEBUG_LIST and BUG_ON_DATA_CORRUPTION stop on a corrupted list, the first
 #   thing a stray write into a wait queue entry breaks.
 # - SCHED_STACK_END_CHECK catches a task that ran over its stack.
+# - A soft lockup (a CPU kept in the kernel for 20 s) panics, so a hang leaves
+#   a record in pstore and reboots instead of freezing (#38); a task blocked
+#   for 120 s only logs its stack.
 # - MAGIC_SYSRQ with every key function off and none over the serial line:
 #   only root's /proc/sysrq-trigger works ("echo c" to test pstore, #38).
 import os
@@ -23,6 +26,9 @@ CONFIG_DMA_API_DEBUG=y
 CONFIG_DEBUG_LIST=y
 CONFIG_BUG_ON_DATA_CORRUPTION=y
 CONFIG_SCHED_STACK_END_CHECK=y
+CONFIG_SOFTLOCKUP_DETECTOR=y
+CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC=1
+CONFIG_DETECT_HUNG_TASK=y
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x0
 # CONFIG_MAGIC_SYSRQ_SERIAL is not set
