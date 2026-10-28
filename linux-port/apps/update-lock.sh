@@ -7,8 +7,12 @@
 # taken from the release's SHA256SUMS. A repository whose release carries
 # no apk keeps its old lines (or none: the image builds it from sources).
 # Needs gh (signed in) or curl for the GitHub API, and sha256 sums in the
-# release. The -pyc subpackages are left out (they only save the first
-# start), and so are -dev and -dbg.
+# release. -dev and -dbg subpackages are left out. The -pyc ones of Python
+# packages (py3-*, python3-*; that is py3-haltia-kit-pyc) are kept: the
+# session user cannot write __pycache__ under the root-owned /usr/lib, so
+# without them every start compiles the modules again (haltia-de/haltia
+# docs/research/2026-10-26-gtk3-performance.md, 1.1). Programs ship their
+# bytecode inside the main package and have no -pyc of their own.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 lock=$here/packages.lock
@@ -39,7 +43,8 @@ for a in json.load(sys.stdin).get("assets", []):
     n = a["name"]
     # armv7 and noarch only: the files of other architectures carry
     # theirs in the name (name.aarch64.apk).
-    if (n.endswith(".apk") and not any(s in n for s in ("-pyc-", "-dev-", "-dbg-"))
+    if (n.endswith(".apk") and not any(s in n for s in ("-dev-", "-dbg-"))
+            and ("-pyc-" not in n or n.startswith(("py3-", "python3-")))
             and not n.endswith((".aarch64.apk", ".x86_64.apk"))
             and (not only or re.sub(r"-[0-9][^-]*-r[0-9]+\.apk$", "", n) in only)):
         print(n, a["browser_download_url"])')

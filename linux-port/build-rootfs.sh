@@ -71,6 +71,11 @@ UI_PROFILE=${UI_PROFILE:-labwc}
 
 case "$UI_PROFILE" in
 	labwc) UI_PACKAGES="labwc waybar fuzzel foot wvkbd swaybg pcmanfm" ;;
+	# pyc: Alpine's -pyc subpackages (install_if "pyc") for python3 and every
+	# py3-* package, now and on later upgrades. The session user cannot
+	# write __pycache__ under /usr/lib, so without them each start compiles
+	# the modules again. Today a dependency already pulls pyc in (62 -pyc
+	# packages either way, CI 28 Oct 2026); naming it keeps that true.
 	shell) UI_PACKAGES="phoc waybar dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc
 		iio-sensor-proxy iio-sensor-proxy-openrc feedbackd feedbackd-device-themes
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
@@ -81,7 +86,7 @@ case "$UI_PROFILE" in
 		py3-aiohttp py3-pydantic py3-aiofiles py3-aiosqlite py3-msgpack
 		py3-python-socks py3-qrcode py3-websockets py3-zstandard
 		aisleriot aisleriot-lang earlyoom earlyoom-openrc fuzzel gtk-layer-shell
-		py3-gobject3 openssh doas
+		py3-gobject3 openssh doas pyc
 		mpv-libs yt-dlp yt-dlp-ejs quickjs py3-mpv py3-requests nftables ffmpeg py3-mutagen mako" ;;
 	*) echo "Unsupported UI_PROFILE: $UI_PROFILE (use labwc or shell)" >&2; exit 2 ;;
 esac
