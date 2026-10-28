@@ -74,7 +74,8 @@ case "$UI_PROFILE" in
 	# pyc: Alpine's -pyc subpackages (install_if "pyc") for python3 and every
 	# py3-* package, now and on later upgrades. The session user cannot
 	# write __pycache__ under /usr/lib, so without them each start compiles
-	# the modules again. About 38 MiB installed (yt-dlp alone 11 MiB).
+	# the modules again. Today a dependency already pulls pyc in (62 -pyc
+	# packages either way, CI 28 Oct 2026); naming it keeps that true.
 	shell) UI_PACKAGES="phoc waybar dbus elogind polkit polkit-elogind-libs upower networkmanager networkmanager-openrc
 		iio-sensor-proxy iio-sensor-proxy-openrc feedbackd feedbackd-device-themes
 		pulseaudio pulseaudio-alsa pulseaudio-utils alsa-plugins-pulse alsa-utils alsa-ucm-conf
