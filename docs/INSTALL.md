@@ -21,10 +21,10 @@
    `/src` и рабочий каталог `/opt/b8000h`; контейнер — привилегированный (chroot,
    binfmt).
 2. **Ядро.** [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1)
-   ветка `blade/v7.1`, коммит `7dd245445adf` (берёт `ci/sources.sh` вместе с ядерной
+   ветка `blade/v7.1`, коммит `df53029131d4` (берёт `ci/sources.sh` вместе с ядерной
    частью PowerVR DDK и openpvrsgx); поверх — патчи `linux-port/patches/` по
    порядку номеров (`ci/apply-patches.sh`; несколько патчей — Python-скрипты);
-   конфиг `lenovo-blade_defconfig` из патчей, `CONFIG_LOCALVERSION="-b8000h27"`. Номер сборки в
+   конфиг `lenovo-blade_defconfig` из патчей, `CONFIG_LOCALVERSION="-b8000h29"`. Номер сборки в
    версии ядра выбирает каталог модулей GPU (`/usr/lib/b8k/k27`), так что
    система загружается и со старым ядром, если его модули на месте. `ci/kernel.sh`
    делает шаги 2–4 разом и кладёт `boot.img` и архив ядра в `/opt/b8000h/dist`.
