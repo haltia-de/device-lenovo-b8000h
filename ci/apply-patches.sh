@@ -11,7 +11,7 @@ REPO=/src
 git config --global --add safe.directory "$K"
 cd "$K"
 echo "HEAD $(git rev-parse HEAD)"
-git checkout --detach 7dd245445adf6eaa27018cf92fbd5a92ec0b118e
+git checkout --detach df53029131d4af964c52f26f2394d067632c2915
 git reset --hard HEAD
 git clean -fd
 echo "PIN $(git rev-parse HEAD)"

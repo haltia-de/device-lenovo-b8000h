@@ -1,13 +1,6 @@
 K='/opt/b8000h/linux-drm/'
-# 1. clock: msdcpll_208m is VCO/8 (before the /4 post divider) = msdcpll/2
-c=K+'drivers/clk/mediatek/clk-mt6589-apmixedsys.c'
-s=open(c).read()
-old='\tFACTOR(CLK_APMIXED_MSDCPLL_208M, "msdcpll_208m", "msdcpll", 1, 8),'
-new=('\t/*\n\t * The MSDC source tap is VCO/8 (vendor MSDC_CLKSRC_200MHZ), taken\n'
-     '\t * before the /4 post divider that "msdcpll" (390 MHz) includes.\n'
-     '\t * With 1, 8 every MSDC bus clock ran 4x faster than requested.\n\t */\n'
-     '\tFACTOR(CLK_APMIXED_MSDCPLL_208M, "msdcpll_208m", "msdcpll", 1, 2),')
-if old in s: s=s.replace(old,new); open(c,'w').write(s); print('clk fixed')
+# The MSDCPLL half is upstream since 7.1 (commit d464074c, "clk:
+# mediatek: mt6589: fix pll div rate"). Only the DTS part stays here.
 # 2. DTS: MSDC3 pins with pull-ups, fixed vmmc
 d=K+'arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts'
 s=open(d).read()
