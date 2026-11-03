@@ -26,7 +26,7 @@ index b67b94b7c..ad65a1bc4 100644
 	model = "Lenovo YOGA Tablet 10 B8000-H (eMMC root)";
 
 	chosen {
-		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel root=/dev/mmcblk0p20";
+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 consoleblank=0 loglevel=8 ignore_loglevel root=/dev/mmcblk0p20";
 	};
 };
 

@@ -53,7 +53,7 @@ index 000000000..5ef0a61e1
 +	compatible = "lenovo,b8000-h", "mediatek,mt6589";
 +
 +	chosen {
-+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=8 ignore_loglevel";
++		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 consoleblank=0 loglevel=8 ignore_loglevel";
 +	};
 +};
 +

@@ -13,7 +13,7 @@
 	model = "Lenovo YOGA Tablet 10 B8000-H";
 
 	chosen {
-		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 loglevel=0 vt.global_cursor_default=0 splash=1 root=PARTNAME=USRDATA";
+		bootargs = "clk_ignore_unused printk.always_kmsg_dump=1 rdinit=/init console=tty0 consoleblank=0 loglevel=0 vt.global_cursor_default=0 splash=1 root=PARTNAME=USRDATA";
 	};
 };
 
