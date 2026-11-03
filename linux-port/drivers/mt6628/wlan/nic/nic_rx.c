@@ -2872,11 +2872,18 @@ nicRxSDIOAggReceiveRFBs (
             //DBGLOG(RX, INFO, ("u4RxAggCount = %d, u4RxAggLength = %d\n",
             //            u4RxAggCount, u4RxAggLength));
 
+            /*
+             * The read is rounded up to whole SDIO blocks, up to 464 bytes
+             * past CFG_RX_COALESCING_BUFFER_SIZE. The coalescing buffer is
+             * shared with TX and u4CoalescingBufCachedSize (44800) long, so
+             * it holds the rounded read; pass that as the valid size so
+             * that kalDevPortRead does not bounce every large read.
+             */
             HAL_READ_RX_PORT(prAdapter,
                          rxNum,
                          u4RxAggLength,
                          prRxCtrl->pucRxCoalescingBufPtr,
-                         CFG_RX_COALESCING_BUFFER_SIZE);
+                         prAdapter->u4CoalescingBufCachedSize);
             if (!fgResult) {
                 DBGLOG(RX, ERROR, ("Read RX Agg Packet Error\n"));
                 continue;
@@ -2889,6 +2896,21 @@ nicRxSDIOAggReceiveRFBs (
                 u2PktLength = (rxNum == 0 ?
                         prEnhDataStr->rRxInfo.u.au2Rx0Len[i] :
                         prEnhDataStr->rRxInfo.u.au2Rx1Len[i]);
+
+                /*
+                 * The length comes from the chip's status block and was
+                 * only checked against the whole coalescing buffer. Each
+                 * SW_RFB holds an skb of CFG_RX_MAX_PKT_SIZE bytes, so a
+                 * longer frame would be copied past it into the next page
+                 * fragment (device#39, #50). Drop such a frame.
+                 */
+                if (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) > CFG_RX_MAX_PKT_SIZE) {
+                    pr_warn_ratelimited("wlan_mt6628: RX%u frame of %u bytes does not fit the %u-byte buffer, dropped\n",
+                            (unsigned int)rxNum, (unsigned int)u2PktLength,
+                            (unsigned int)CFG_RX_MAX_PKT_SIZE);
+                    pucSrcAddr += ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN);
+                    continue;
+                }
 
                 KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
                 QUEUE_REMOVE_HEAD(&prRxCtrl->rFreeSwRfbList, prSwRfb, P_SW_RFB_T);

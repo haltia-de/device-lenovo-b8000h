@@ -1161,7 +1161,18 @@ kalDevPortRead (
     {
         int xfer = bNum > 0 ? prSdioFunc->cur_blksize * bNum : count;
 
-        if (b8k_dma_unsafe(pucBuf)) {
+        /*
+         * A read of a block or more is rounded up to whole blocks, so it
+         * can run up to 511 bytes past u2Len. When that passes the end of
+         * the caller's buffer (an event or response buffer sized to the
+         * packet), the DMA would write over whatever follows it. Bounce
+         * such reads too; the RX aggregation read passes the real size of
+         * the coalescing buffer and never needs it.
+         */
+        if (b8k_dma_unsafe(pucBuf) || xfer > u2ValidOutBufSize) {
+            if (xfer > u2ValidOutBufSize)
+                pr_info_ratelimited("wlan_mt6628: SDIO read of %d bytes into a %u-byte buffer, bounced\n",
+                        xfer, (unsigned int)u2ValidOutBufSize);
             pucDst = kmalloc(xfer, in_interrupt ? GFP_ATOMIC : GFP_KERNEL);
             if (!pucDst) {
                 if (!in_interrupt)
@@ -1188,7 +1199,7 @@ kalDevPortRead (
     }
 
     if (pucDst != pucBuf) {
-        memcpy(pucBuf, pucDst, u2Len);
+        memcpy(pucBuf, pucDst, min(u2Len, u2ValidOutBufSize));
         kfree(pucDst);
         pucDst = pucBuf;
     }

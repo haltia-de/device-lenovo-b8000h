@@ -1,0 +1,99 @@
+From: Mikhail Nevskiy
+Subject: [PATCH] wlan_mt6628: keep RX copies and SDIO reads inside their buffers
+
+The driver source in patch 0033 is a snapshot of linux-port/drivers/mt6628;
+this carries the same change into the kernel tree.
+
+nicRxSDIOAggReceiveRFBs copied every frame of an RX aggregate into its
+SW_RFB with the length from the chip's status block, checked only against
+the whole coalescing buffer. The SW_RFB's skb holds CFG_RX_MAX_PKT_SIZE
+(2352) bytes, so a longer frame was written past it into the next page
+fragment. Such frames are now dropped with a warning.
+
+kalDevPortRead rounds reads of a block or more up to whole blocks and let
+the DMA run up to 511 bytes past the caller's buffer. It now bounces a read
+that would pass u2ValidOutBufSize. The aggregate read passes the real size
+of the coalescing buffer (44800, shared with TX), which holds the rounded
+read, so the hot path does not bounce.
+
+Looked for under device#39 (stack-protector in __mmc_claim_host) and #50.
+
+diff --git a/drivers/net/wireless/mediatek/mt6628/wlan/nic/nic_rx.c b/drivers/net/wireless/mediatek/mt6628/wlan/nic/nic_rx.c
+index 186b885..0383938 100644
+--- a/drivers/net/wireless/mediatek/mt6628/wlan/nic/nic_rx.c
++++ b/drivers/net/wireless/mediatek/mt6628/wlan/nic/nic_rx.c
+@@ -2872,11 +2872,18 @@ nicRxSDIOAggReceiveRFBs (
+             //DBGLOG(RX, INFO, ("u4RxAggCount = %d, u4RxAggLength = %d\n",
+             //            u4RxAggCount, u4RxAggLength));
+ 
++            /*
++             * The read is rounded up to whole SDIO blocks, up to 464 bytes
++             * past CFG_RX_COALESCING_BUFFER_SIZE. The coalescing buffer is
++             * shared with TX and u4CoalescingBufCachedSize (44800) long, so
++             * it holds the rounded read; pass that as the valid size so
++             * that kalDevPortRead does not bounce every large read.
++             */
+             HAL_READ_RX_PORT(prAdapter,
+                          rxNum,
+                          u4RxAggLength,
+                          prRxCtrl->pucRxCoalescingBufPtr,
+-                         CFG_RX_COALESCING_BUFFER_SIZE);
++                         prAdapter->u4CoalescingBufCachedSize);
+             if (!fgResult) {
+                 DBGLOG(RX, ERROR, ("Read RX Agg Packet Error\n"));
+                 continue;
+@@ -2890,6 +2897,21 @@ nicRxSDIOAggReceiveRFBs (
+                         prEnhDataStr->rRxInfo.u.au2Rx0Len[i] :
+                         prEnhDataStr->rRxInfo.u.au2Rx1Len[i]);
+ 
++                /*
++                 * The length comes from the chip's status block and was
++                 * only checked against the whole coalescing buffer. Each
++                 * SW_RFB holds an skb of CFG_RX_MAX_PKT_SIZE bytes, so a
++                 * longer frame would be copied past it into the next page
++                 * fragment (device#39, #50). Drop such a frame.
++                 */
++                if (ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN) > CFG_RX_MAX_PKT_SIZE) {
++                    pr_warn_ratelimited("wlan_mt6628: RX%u frame of %u bytes does not fit the %u-byte buffer, dropped\n",
++                            (unsigned int)rxNum, (unsigned int)u2PktLength,
++                            (unsigned int)CFG_RX_MAX_PKT_SIZE);
++                    pucSrcAddr += ALIGN_4(u2PktLength + HIF_RX_HW_APPENDED_LEN);
++                    continue;
++                }
++
+                 KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
+                 QUEUE_REMOVE_HEAD(&prRxCtrl->rFreeSwRfbList, prSwRfb, P_SW_RFB_T);
+                 KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
+diff --git a/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/hif/sdio/sdio.c b/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/hif/sdio/sdio.c
+index 123a410..fd9acf5 100644
+--- a/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/hif/sdio/sdio.c
++++ b/drivers/net/wireless/mediatek/mt6628/wlan/os/linux/hif/sdio/sdio.c
+@@ -1161,7 +1161,18 @@ kalDevPortRead (
+     {
+         int xfer = bNum > 0 ? prSdioFunc->cur_blksize * bNum : count;
+ 
+-        if (b8k_dma_unsafe(pucBuf)) {
++        /*
++         * A read of a block or more is rounded up to whole blocks, so it
++         * can run up to 511 bytes past u2Len. When that passes the end of
++         * the caller's buffer (an event or response buffer sized to the
++         * packet), the DMA would write over whatever follows it. Bounce
++         * such reads too; the RX aggregation read passes the real size of
++         * the coalescing buffer and never needs it.
++         */
++        if (b8k_dma_unsafe(pucBuf) || xfer > u2ValidOutBufSize) {
++            if (xfer > u2ValidOutBufSize)
++                pr_info_ratelimited("wlan_mt6628: SDIO read of %d bytes into a %u-byte buffer, bounced\n",
++                        xfer, (unsigned int)u2ValidOutBufSize);
+             pucDst = kmalloc(xfer, in_interrupt ? GFP_ATOMIC : GFP_KERNEL);
+             if (!pucDst) {
+                 if (!in_interrupt)
+@@ -1188,7 +1199,7 @@ kalDevPortRead (
+     }
+ 
+     if (pucDst != pucBuf) {
+-        memcpy(pucBuf, pucDst, u2Len);
++        memcpy(pucBuf, pucDst, min(u2Len, u2ValidOutBufSize));
+         kfree(pucDst);
+         pucDst = pucBuf;
+     }
