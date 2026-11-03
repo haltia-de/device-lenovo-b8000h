@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0
 # Fetch what the kernel build needs from outside this repository, at the
 # commits it is pinned to (ADR 0003):
-#   /opt/b8000h/linux-drm             TeamYogaBlade2/linux blade/v7.1 @ 7dd245445adf
+#   /opt/b8000h/linux-drm             TeamYogaBlade2/linux blade/v7.1 @ df53029131d4
 #   /src/external/mt6589-pvr-ddk-1.12 the MT6589 PowerVR DDK 1.12 kernel side
 #                                     (bq/aquaris-5HD @ 1b08ad7, only its pvr tree)
 #   /src/external/linux_openpvrsgx    openpvrsgx @ c017d06 (only drivers/gpu/drm/pvrsgx)
@@ -11,7 +11,7 @@ set -eu
 K=/opt/b8000h/linux-drm
 E=/src/external
 KERNEL_URL=https://github.com/TeamYogaBlade2/linux.git
-KERNEL_COMMIT=7dd245445adf6eaa27018cf92fbd5a92ec0b118e
+KERNEL_COMMIT=df53029131d4af964c52f26f2394d067632c2915
 DDK_URL=https://github.com/bq/aquaris-5HD.git
 DDK_COMMIT=1b08ad7554a863adb3eb2f8ec255c46f82571d94
 DDK_PATH=mediatek/platform/mt6589/kernel/drivers/gpu/pvr
