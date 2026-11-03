@@ -21,12 +21,12 @@ rear camera do not. The compositor phoc renders on the PowerVR SGX544 through
 libhybris and the stock Android 4.4 blobs; the Haltia touch desktop
 ([haltia-de/shell](https://github.com/haltia-de/shell)) runs on it, with its own
 GTK 3 programs. Ready-to-flash images (Pertin Haltia) are built by GitHub Actions
-and published as releases. The current build is kernel 27 (`-b8000h27`). Kernel 23
+and published as releases. The current build is kernel 29 (`-b8000h29`, on the upstream 7.1 tree at `df530291`). Kernel 23
 ran an hour of full load at 1.2 GHz without a crash or a memory error; kernel 25
 later hit one oops that did not repeat under a memory-pattern check.
 Alpha quality, for enthusiasts. Documentation is in Russian.*
 
-> **Статус: альфа для энтузиастов. Текущая сборка — ядро 27.**
+> **Статус: альфа для энтузиастов. Текущая сборка — ядро 29.**
 > По замерам до начала октября ядро падало раз в 10–40 минут. На ядре 23 час полной нагрузки на
 > 1,2 ГГц (все четыре ядра и сверка 150 МБ памяти) прошёл без падений и
 > ошибок памяти. На ядре 25 один раз случился oops, под сверкой памяти он не повторился
@@ -71,7 +71,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 | Аппаратное декодирование видео | нет |
 | Перезагрузка и выключение | работает (меню: удержание Power 1 с). Кнопка Power гасит и включает экран |
 | Память | 1 ГБ и 512 МБ сжатой подкачки в памяти (zram, lz4); `earlyoom` закрывает одну программу раньше, чем система встанет. Firefox с одной страницей занимает около 550 МБ ([power.md](docs/power.md)) |
-| Стабильность | текущая сборка — ядро 27. Ядро 23: час полной нагрузки на 1,2 ГГц без падений. Ядро 25: один oops на 38-й минуте, под сверкой памяти не повторился ([todo.md](docs/todo.md)). Если планшет завис — держать Power 15–20 с |
+| Стабильность | текущая сборка — ядро 29. Ядро 23: час полной нагрузки на 1,2 ГГц без падений. Ядро 25: один oops на 38-й минуте, под сверкой памяти не повторился ([todo.md](docs/todo.md)). Если планшет завис — держать Power 15–20 с |
 
 Подробности по узлам — в `docs/`.
 
@@ -111,7 +111,7 @@ Alpha quality, for enthusiasts. Documentation is in Russian.*
 те же сценарии из `ci/` работают и локально в контейнере из `ci/Dockerfile`
 (подробно — [docs/INSTALL.md](docs/INSTALL.md), §0).
 
-- Ядро — [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1) `blade/v7.1` @ `7dd245445adf`
+- Ядро — [TeamYogaBlade2/linux](https://github.com/TeamYogaBlade2/linux/tree/blade/v7.1) `blade/v7.1` @ `df53029131d4`
   плюс патчи из `linux-port/patches/` (`ci/sources.sh`, `ci/apply-patches.sh`, `ci/kernel.sh`).
   Wi-Fi MT6628, звук и батарея собираются в ядре; вне дерева — только модули GPU
   (`linux-port/drivers/pvrsrvkm`, `dc_nohw`, `ion-legacy`).

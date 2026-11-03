@@ -63,16 +63,21 @@
   в репозитории Haltia; нужен merge request в pmaports.
 - Музыка: значок проигрывания на кнопке панели (MPRIS) — сделано в 2.1.0,
   пришло через «Настройки → Обновления», пауза и стоп с кнопки работают.
-- Ядро 27 — текущая сборка (`-b8000h27`): кучи DMA-BUF для программного ISP libcamera.
-  На нём три паники stack-protector в `__mmc_claim_host` (тестовый планшет и
-  планшет пользователя), подозрение — запись драйвера MT6628 мимо буфера
-  ([#39](https://github.com/haltia-de/device-lenovo-b8000h/issues/39),
+- Ядро 29 — текущая сборка (`-b8000h29`): rebase на `blade/v7.1` `df530291`
+  (151 коммит после 27-го), кучи DMA-BUF (патч 0047) и стек камеры на месте,
+  `consoleblank=0` и BLS-подсветка без конфликта с upstream disp-pwm.
+  `arch_sys_counter` снова clocksource: обход защёлки CNTPCT теперь апстримный
+  (`timer-mediatek`), наши 0008/0012/0041 убраны. Проверено 3 ноября 2026 на
+  тестовом планшете: экран, тач, подсветка, Power, Wi-Fi, GPU, звук, камера
+  (libcamera + софт-ISP), 100 МБ по Wi-Fi. Дальше — suspend/resume, звонки и
+  длительный сок.
+- Ядро 27: на нём три паники stack-protector в `__mmc_claim_host` (тестовый
+  планшет и планшет пользователя), подозрение — запись драйвера MT6628 мимо
+  буфера ([#39](https://github.com/haltia-de/device-lenovo-b8000h/issues/39),
   [#50](https://github.com/haltia-de/device-lenovo-b8000h/issues/50)).
-- Ядро 28 — тестовое, не для выпуска
-  ([PR #54](https://github.com/haltia-de/device-lenovo-b8000h/pull/54)):
-  исправление границ RX у MT6628, слежка за кадром `__mmc_claim_host`, KFENCE,
-  DMA_API_DEBUG, паника при soft lockup. Ждёт планшета. Чистое ядро после него
-  получит номер 29.
+- Ядро 28 — тестовое ([PR #54](https://github.com/haltia-de/device-lenovo-b8000h/pull/54)):
+  исправление границ RX, слежка за кадром `__mmc_claim_host`, KFENCE,
+  DMA_API_DEBUG, паника при soft lockup. Проверено 3 ноября, заменено ядром 29.
 - Где искать следы падений — `docs/crash-evidence.md`.
 - Ядро 25: 20 октября 2026 года на 38-й минуте работы один oops в
   `anon_vma_interval_tree_insert` (fork в `b8k-charger.start`): в указателе
