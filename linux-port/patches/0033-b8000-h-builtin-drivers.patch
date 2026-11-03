@@ -1,8 +1,9 @@
 diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
+index 09f8617ad..68bd4b15c 100644
 --- a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
 +++ b/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts
-@@ -225,6 +225,16 @@
- 
+@@ -226,6 +226,16 @@ &gpu {
+ 	power-domains = <&spm MT6589_POWER_DOMAIN_MFG>;
  };
  
 +/*
@@ -15,22 +16,23 @@ diff --git a/arch/arm/boot/dts/mediatek/mt6589-lenovo-b8000-h.dts b/arch/arm/boo
 +	};
 +};
 +
- 
  /*
-  * mediatek-gpt-tick: the arch timer comparator dies after the 32-bit counter
+  * MT6628 Wi-Fi/BT/GPS/FM combo (vendor lenovo89_tb_x10_jb2 DCT/board.c):
+  * WMT/STP uses UART3; WMT owns PMU_EN and RST and enables the Wi-Fi function
 diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-blade_defconfig
+index e5e6c83bc..c8c21c565 100644
 --- a/arch/arm/configs/lenovo-blade_defconfig
 +++ b/arch/arm/configs/lenovo-blade_defconfig
 @@ -12,11 +12,13 @@ CONFIG_ARM_THUMBEE=y
  CONFIG_SCHED_MC=y
  
  CONFIG_MODULES=y
-+CONFIG_LOCALVERSION="-b8000h20"
 -CONFIG_SOUND=m
 -CONFIG_SND=m
 -CONFIG_SND_TIMER=m
 -CONFIG_SND_PCM=m
 -CONFIG_SND_HRTIMER=m
++CONFIG_LOCALVERSION="-b8000h20"
 +CONFIG_SOUND=y
 +CONFIG_SND=y
 +CONFIG_SND_TIMER=y
@@ -40,7 +42,7 @@ diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-b
  # CONFIG_SND_SOC is not set
  
  ### Drivers
-@@ -157,8 +158,10 @@ CONFIG_KEYBOARD_MTK_PMIC=y
+@@ -179,8 +181,10 @@ CONFIG_KEYBOARD_MTK_PMIC=y
  
  ## Battery
  CONFIG_CHARGER_BQ24190=y
@@ -53,71 +55,18 @@ diff --git a/arch/arm/configs/lenovo-blade_defconfig b/arch/arm/configs/lenovo-b
  
  ## Regulator
  CONFIG_REGULATOR=y
-diff --git a/sound/arm/Kconfig b/sound/arm/Kconfig
---- a/sound/arm/Kconfig
-+++ b/sound/arm/Kconfig
-@@ -11,6 +11,14 @@ menuconfig SND_ARM
- 
- if SND_ARM
- 
-+config SND_MT6589_B8000
-+	tristate "Lenovo B8000-H MT6589/MT6320 audio"
-+	depends on ARCH_MEDIATEK && GPIOLIB
-+	select SND_PCM
-+	help
-+	  Minimal driver for the MT6589 AFE and MT6320 codec of the Lenovo
-+	  YOGA Tablet 10 B8000-H: speaker playback and microphone capture.
-+
- config SND_ARMAACI
- 	tristate "ARM PrimeCell PL041 AC Link support"
- 	depends on ARM_AMBA
-diff --git a/sound/arm/Makefile b/sound/arm/Makefile
---- a/sound/arm/Makefile
-+++ b/sound/arm/Makefile
-@@ -3,6 +3,8 @@
- # Makefile for ALSA
- #
- 
-+obj-$(CONFIG_SND_MT6589_B8000)	+= mt6589-b8000.o
-+
- obj-$(CONFIG_SND_ARMAACI)	+= snd-aaci.o
- snd-aaci-y			:= aaci.o
- 
-diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
---- a/drivers/power/supply/Kconfig
-+++ b/drivers/power/supply/Kconfig
-@@ -1164,5 +1164,13 @@ config MACSMC_POWER
- 	  power supply framework.
- 
- 	  Say Y or M here if you have an Apple Silicon based Mac.
- 
-+config BATTERY_B8K
-+	tristate "Lenovo B8000-H MT6320 battery gauge"
-+	depends on ARCH_MEDIATEK
-+	help
-+	  Report battery voltage and an OCV-derived capacity estimate using the
-+	  MT6320 AUXADC on Lenovo YOGA Tablet 10 B8000-H systems without a
-+	  dedicated fuel-gauge IC.
-+
- endif # POWER_SUPPLY
-diff --git a/drivers/power/supply/Makefile b/drivers/power/supply/Makefile
---- a/drivers/power/supply/Makefile
-+++ b/drivers/power/supply/Makefile
-@@ -129,4 +129,5 @@ obj-$(CONFIG_BATTERY_UG3105)	+= ug3105_battery.o
- obj-$(CONFIG_CHARGER_QCOM_SMB2)	+= qcom_smbx.o
- obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
- obj-$(CONFIG_MACSMC_POWER)	+= macsmc-power.o
-+obj-$(CONFIG_BATTERY_B8K)	+= b8k-battery.o
- obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
 diff --git a/drivers/net/wireless/mediatek/Kconfig b/drivers/net/wireless/mediatek/Kconfig
+index bd4db1282..3bf57700e 100644
 --- a/drivers/net/wireless/mediatek/Kconfig
 +++ b/drivers/net/wireless/mediatek/Kconfig
-@@ -12,3 +12,4 @@ if WLAN_VENDOR_MEDIATEK
+@@ -13,4 +13,5 @@ config WLAN_VENDOR_MEDIATEK
+ if WLAN_VENDOR_MEDIATEK
  source "drivers/net/wireless/mediatek/mt7601u/Kconfig"
  source "drivers/net/wireless/mediatek/mt76/Kconfig"
 +source "drivers/net/wireless/mediatek/mt6628/Kconfig"
  endif # WLAN_VENDOR_MEDIATEK
 diff --git a/drivers/net/wireless/mediatek/Makefile b/drivers/net/wireless/mediatek/Makefile
+index 806172659..8dc2387ed 100644
 --- a/drivers/net/wireless/mediatek/Makefile
 +++ b/drivers/net/wireless/mediatek/Makefile
 @@ -1,3 +1,4 @@
@@ -125,25 +74,6 @@ diff --git a/drivers/net/wireless/mediatek/Makefile b/drivers/net/wireless/media
  obj-$(CONFIG_MT7601U)	+= mt7601u/
  obj-$(CONFIG_MT76_CORE)	+= mt76/
 +obj-$(CONFIG_MT6628_WMT)	+= mt6628/
-diff --git a/sound/core/control.c b/sound/core/control.c
---- a/sound/core/control.c
-+++ b/sound/core/control.c
-@@ -407,12 +407,10 @@ static void add_hash_entries(struct snd_card *card,
- {
- 	struct snd_ctl_elem_id id = kcontrol->id;
- 	int i;
- 
--	/* Keep snd.ko loadable on the already-running B8000 kernel, whose
--	 * exported XArray API predates xa_store_range(). */
--	for (i = 0; i < kcontrol->count; i++)
--		xa_store(&card->ctl_numids, kcontrol->id.numid + i,
--			 kcontrol, GFP_KERNEL);
-+	xa_store_range(&card->ctl_numids, kcontrol->id.numid,
-+		       kcontrol->id.numid + kcontrol->count - 1,
-+		       kcontrol, GFP_KERNEL);
- 
- 	for (i = 0; i < kcontrol->count; i++) {
- 		id.index = kcontrol->id.index + i;
 diff --git a/drivers/net/wireless/mediatek/mt6628/Kconfig b/drivers/net/wireless/mediatek/mt6628/Kconfig
 new file mode 100644
 index 000000000..fe211fca8
@@ -158051,6 +157981,33 @@ index 000000000..8f843dc61
 +MODULE_FIRMWARE(MT6628_FW_PATCH_E2_0);
 +MODULE_FIRMWARE(MT6628_FW_PATCH_E2_1);
 +MODULE_FIRMWARE(MT6628_FW_CONFIG);
+diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
+index 83392ed6a..39f8a3ab0 100644
+--- a/drivers/power/supply/Kconfig
++++ b/drivers/power/supply/Kconfig
+@@ -1165,4 +1165,12 @@ config MACSMC_POWER
+ 
+ 	  Say Y or M here if you have an Apple Silicon based Mac.
+ 
++config BATTERY_B8K
++	tristate "Lenovo B8000-H MT6320 battery gauge"
++	depends on ARCH_MEDIATEK
++	help
++	  Report battery voltage and an OCV-derived capacity estimate using the
++	  MT6320 AUXADC on Lenovo YOGA Tablet 10 B8000-H systems without a
++	  dedicated fuel-gauge IC.
++
+ endif # POWER_SUPPLY
+diff --git a/drivers/power/supply/Makefile b/drivers/power/supply/Makefile
+index 7ee839dca..e2e2c9d8a 100644
+--- a/drivers/power/supply/Makefile
++++ b/drivers/power/supply/Makefile
+@@ -130,4 +130,5 @@ obj-$(CONFIG_BATTERY_UG3105)	+= ug3105_battery.o
+ obj-$(CONFIG_CHARGER_QCOM_SMB2)	+= qcom_smbx.o
+ obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
+ obj-$(CONFIG_MACSMC_POWER)	+= macsmc-power.o
++obj-$(CONFIG_BATTERY_B8K)	+= b8k-battery.o
+ obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
 diff --git a/drivers/power/supply/b8k-battery.c b/drivers/power/supply/b8k-battery.c
 new file mode 100755
 index 000000000..e78db069d
@@ -158342,9 +158299,41 @@ index 000000000..e78db069d
 +
 +MODULE_DESCRIPTION("Lenovo B8000-H battery (MT6320 AUXADC + OCV table)");
 +MODULE_LICENSE("GPL");
+diff --git a/sound/arm/Kconfig b/sound/arm/Kconfig
+index e4d7288d1..d38c690c3 100644
+--- a/sound/arm/Kconfig
++++ b/sound/arm/Kconfig
+@@ -12,6 +12,14 @@ menuconfig SND_ARM
+ 
+ if SND_ARM
+ 
++config SND_MT6589_B8000
++	tristate "Lenovo B8000-H MT6589/MT6320 audio"
++	depends on ARCH_MEDIATEK && GPIOLIB
++	select SND_PCM
++	help
++	  Minimal driver for the MT6589 AFE and MT6320 codec of the Lenovo
++	  YOGA Tablet 10 B8000-H: speaker playback and microphone capture.
++
+ config SND_ARMAACI
+ 	tristate "ARM PrimeCell PL041 AC Link support"
+ 	depends on ARM_AMBA
+diff --git a/sound/arm/Makefile b/sound/arm/Makefile
+index 99325a66c..8e464162a 100644
+--- a/sound/arm/Makefile
++++ b/sound/arm/Makefile
+@@ -3,6 +3,8 @@
+ # Makefile for ALSA
+ #
+ 
++obj-$(CONFIG_SND_MT6589_B8000)	+= mt6589-b8000.o
++
+ obj-$(CONFIG_SND_ARMAACI)	+= snd-aaci.o
+ snd-aaci-y			:= aaci.o
+ 
 diff --git a/sound/arm/mt6589-b8000.c b/sound/arm/mt6589-b8000.c
 new file mode 100755
-index 000000000..11f61277f
+index 000000000..dadaa5897
 --- /dev/null
 +++ b/sound/arm/mt6589-b8000.c
 @@ -0,0 +1,543 @@
@@ -158891,3 +158880,22 @@ index 000000000..11f61277f
 +MODULE_DESCRIPTION("Lenovo B8000-H MT6589/MT6320 minimal ALSA playback");
 +MODULE_AUTHOR("kz-creator");
 +MODULE_LICENSE("GPL");
+diff --git a/sound/core/control.c b/sound/core/control.c
+index c3509dcfe..5e5185763 100644
+--- a/sound/core/control.c
++++ b/sound/core/control.c
+@@ -410,11 +410,9 @@ static void add_hash_entries(struct snd_card *card,
+ 	struct snd_ctl_elem_id id = kcontrol->id;
+ 	int i;
+ 
+-	/* Keep snd.ko loadable on the already-running B8000 kernel, whose
+-	 * exported XArray API predates xa_store_range(). */
+-	for (i = 0; i < kcontrol->count; i++)
+-		xa_store(&card->ctl_numids, kcontrol->id.numid + i,
+-			 kcontrol, GFP_KERNEL);
++	xa_store_range(&card->ctl_numids, kcontrol->id.numid,
++		       kcontrol->id.numid + kcontrol->count - 1,
++		       kcontrol, GFP_KERNEL);
+ 
+ 	for (i = 0; i < kcontrol->count; i++) {
+ 		id.index = kcontrol->id.index + i;

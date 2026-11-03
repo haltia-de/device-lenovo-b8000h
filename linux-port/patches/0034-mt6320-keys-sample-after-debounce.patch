@@ -1,5 +1,5 @@
 diff --git a/drivers/input/keyboard/mtk-pmic-keys.c b/drivers/input/keyboard/mtk-pmic-keys.c
-index 35269a644..16eed622a 100644
+index 990f3256f..34a996a18 100644
 --- a/drivers/input/keyboard/mtk-pmic-keys.c
 +++ b/drivers/input/keyboard/mtk-pmic-keys.c
 @@ -21,6 +21,7 @@
@@ -10,24 +10,24 @@ index 35269a644..16eed622a 100644
  
  #define MTK_PMIC_RST_DU_MASK	GENMASK(9, 8)
  #define MTK_PMIC_PWRKEY_RST	BIT(6)
-@@ -57,6 +58,8 @@ struct mtk_pmic_regs {
- 	u32 pmic_rst_reg;
- 	u32 rst_lprst_mask; /* Long-press reset timeout bitmask */
+@@ -59,6 +60,8 @@ struct mtk_pmic_regs {
+ 	u32 homekey_puen_reg;
+ 	u32 homekey_puen_mask;
  	bool key_release_irq;
 +	/* read the debounced status this long after the last raw-edge IRQ */
 +	unsigned int settle_ms;
  };
  
  static const struct mtk_pmic_regs mt6320_regs = {
-@@ -68,6 +71,7 @@ static const struct mtk_pmic_regs mt6320_regs = {
- 		0x10, MT6320_INT_RSV, 0x8, MTK_PMIC_HOMEKEY_RST),
- 	.pmic_rst_reg = MT6320_TOP_RST_MISC,
+@@ -72,6 +75,7 @@ static const struct mtk_pmic_regs mt6320_regs = {
  	.rst_lprst_mask = MTK_PMIC_RST_DU_MASK,
+ 	.homekey_puen_reg = MT6320_GPIO_SMT_CON3,
+ 	.homekey_puen_mask = BIT(8),
 +	.settle_ms = 50,
  };
  
  static const struct mtk_pmic_regs mt6397_regs = {
-@@ -153,12 +157,15 @@ struct mtk_pmic_keys_info {
+@@ -157,12 +161,15 @@ struct mtk_pmic_keys_info {
  	int irq;
  	int irq_r; /* optional: release irq if different */
  	bool wakeup:1;
@@ -43,7 +43,7 @@ index 35269a644..16eed622a 100644
  	struct mtk_pmic_keys_info keys[MTK_PMIC_MAX_KEY_COUNT];
  };
  
-@@ -214,11 +221,50 @@ static void mtk_pmic_keys_lp_reset_setup(struct mtk_pmic_keys *keys,
+@@ -218,11 +225,50 @@ static void mtk_pmic_keys_lp_reset_setup(struct mtk_pmic_keys *keys,
  	regmap_update_bits(keys->regmap, regs->pmic_rst_reg, mask, value);
  }
  
@@ -94,7 +94,7 @@ index 35269a644..16eed622a 100644
  	regmap_read(info->keys->regmap, info->regs->deb_reg, &key_deb);
  
  	key_deb &= info->regs->deb_mask;
-@@ -240,6 +286,13 @@ static int mtk_pmic_key_setup(struct mtk_pmic_keys *keys,
+@@ -244,6 +290,13 @@ static int mtk_pmic_key_setup(struct mtk_pmic_keys *keys,
  	int ret;
  
  	info->keys = keys;
@@ -108,7 +108,7 @@ index 35269a644..16eed622a 100644
  
  	ret = regmap_update_bits(keys->regmap, info->regs->intsel_reg,
  				 info->regs->intsel_mask,
-@@ -358,6 +411,7 @@ static int mtk_pmic_keys_probe(struct platform_device *pdev)
+@@ -362,6 +415,7 @@ static int mtk_pmic_keys_probe(struct platform_device *pdev)
  	keys->dev = &pdev->dev;
  	keys->regmap = pmic_chip->regmap;
  	mtk_pmic_regs = of_id->data;
